@@ -52,7 +52,9 @@ export default function TransactionsPage() {
         {txns.length === 0 ? (
           <div className="card-shell p-8 text-center text-fg-muted">
             <Icon.Transaction className="mx-auto mb-2 opacity-50" size={32} />
-            No transactions logged yet. Use the form above to log your first spend.
+            <div>No transactions logged yet.</div>
+            <div className="mt-1 text-sm">Open <b className="text-fg">Recommend</b>, enter what you&apos;re buying + the amount, then hit <b className="text-fg">&ldquo;Log this expense&rdquo;</b> to record it here.</div>
+            <Link href="/recommend" className="btn-primary inline-flex mt-4"><Icon.Zap size={16} /> Go to Recommend to log</Link>
           </div>
         ) : (
           <div className="card-shell">
