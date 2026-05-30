@@ -62,7 +62,7 @@ export type Transaction = {
   amount: number;
   channel: "online" | "offline_pos" | "upi" | "upi_normal" | "merchant_app" | "foreign";
   cardId: string;
-  path: "direct" | "shopwise" | "cashkaro" | "kiwi" | "district" | "blck_coupon" | "dreamplug" | "amazon_brand";
+  path: "direct" | "shopwise" | "cashkaro" | "kiwi" | "district" | "blck_coupon" | "dreamplug" | "amazon_brand" | "manual";
   effectivePct: number;
   rewardInr: number;
   notes?: string;
