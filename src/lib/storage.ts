@@ -1,0 +1,204 @@
+import type { Transaction, Investment } from "./types";
+
+const KEYS = {
+  TXNS: "ccm.transactions.v1",
+  STATE: "ccm.state.v1",
+  INVESTMENTS: "ccm.investments.v1",
+} as const;
+
+export type AppState = {
+  // Per-card cycle tracking
+  ptccEligibleSpend: number;
+  mrccCycleSpend: number;
+  bobYtdSpend: number;
+  bobCycleSpend5x: number;
+  sbiYtdSpend: number;
+  idfcYtdSpend: number;
+  blckYtdSpend: number;
+  scapiaMonthlySpend: number;
+  kiwiNeonCycleSpend: number;
+  // Calendar-month / cycle milestone counters
+  goldThisMonthTxnsAt1k: number;
+  mrccThisCycleTxnsAt1500: number;
+  mrccThisCycleAmount: number;
+  goldShopwiseUsedThisMonth: number;
+  // Welcome windows
+  bobEternaIssueDate: string;
+  bobWelcomeUnlocked: boolean;
+  amazonPayIciciIssueDate: string;
+  swiggyBlckIssueDate?: string;
+  // Amazon Pay balance (idle gift-card money)
+  amazonPayBalance: number;
+  // Amazon Pay ICICI one-time welcome coupons already used (offer ids)
+  amazonWelcomeClaimed: string[];
+  // Live gift-card discount overrides, keyed by "STORE:Merchant" → % off (you enter from CRED/CheQ app)
+  giftCardRateOverrides: Record<string, number>;
+  // Monthly counters (legacy, kept for compat)
+  monthlyTxns: {
+    [yearMonth: string]: {
+      goldTxns: { count: number; amount: number };
+      mrccTxns: { count: number; amount: number; total: number };
+      scapiaSpend: number;
+      kiwiSpend: number;
+    };
+  };
+  // Reward balances
+  amexMrPooled: number;
+  indigoBluChips: number;
+  scapiaCoins: number;
+  sbiRp: number;
+  bobRp: number;
+  kiwiCashback: number;
+  kiwiLifetimeEarned: number;
+  credCoins: number;
+  cheqChips: number;
+  // Card states
+  swiggyBlckIssued: boolean;
+  amazonPayIciciIssued: boolean;
+  primeMember: boolean;
+  // Milestone hits
+  milestonesHit: string[]; // [`${cardId}:${threshold}`]
+  // Lounge usage YTD
+  ptccLoungesUsed: number;
+  ptccLoungesUsedThisQuarter: number;
+};
+
+export const DEFAULT_STATE: AppState = {
+  ptccEligibleSpend: 177707,
+  mrccCycleSpend: 33885,
+  bobYtdSpend: 0,
+  bobCycleSpend5x: 0,
+  sbiYtdSpend: 91614,
+  idfcYtdSpend: 508923,
+  blckYtdSpend: 0,
+  scapiaMonthlySpend: 44009,
+  kiwiNeonCycleSpend: 11849,
+  goldThisMonthTxnsAt1k: 6,
+  mrccThisCycleTxnsAt1500: 4,
+  mrccThisCycleAmount: 9600,
+  goldShopwiseUsedThisMonth: 0,
+  bobEternaIssueDate: "2026-05-27",
+  bobWelcomeUnlocked: false,
+  amazonPayIciciIssueDate: "2026-05-25",
+  swiggyBlckIssueDate: undefined,
+  amazonPayBalance: 3338,
+  amazonWelcomeClaimed: [],
+  giftCardRateOverrides: {},
+  monthlyTxns: {},
+  amexMrPooled: 127710,
+  indigoBluChips: 14172,
+  scapiaCoins: 7205,
+  sbiRp: 2457,
+  bobRp: 0,
+  kiwiCashback: 1316,
+  kiwiLifetimeEarned: 9825,
+  credCoins: 1531012,
+  cheqChips: 3846,
+  swiggyBlckIssued: false,
+  amazonPayIciciIssued: true,
+  primeMember: true,
+  milestonesHit: ["amex_plat_travel:190000", "idfc_indigo:200000", "idfc_indigo:500000"],
+  ptccLoungesUsed: 1,
+  ptccLoungesUsedThisQuarter: 1,
+};
+
+function isClient(): boolean {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+export function loadState(): AppState {
+  if (!isClient()) return DEFAULT_STATE;
+  const raw = localStorage.getItem(KEYS.STATE);
+  if (!raw) return DEFAULT_STATE;
+  try {
+    return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_STATE;
+  }
+}
+
+export function saveState(s: AppState): void {
+  if (!isClient()) return;
+  localStorage.setItem(KEYS.STATE, JSON.stringify(s));
+}
+
+export function loadTransactions(): Transaction[] {
+  if (!isClient()) return [];
+  const raw = localStorage.getItem(KEYS.TXNS);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveTransactions(t: Transaction[]): void {
+  if (!isClient()) return;
+  localStorage.setItem(KEYS.TXNS, JSON.stringify(t));
+}
+
+export function addTransaction(t: Transaction): Transaction[] {
+  const all = loadTransactions();
+  all.unshift(t);
+  saveTransactions(all);
+  return all;
+}
+
+export function deleteTransaction(id: string): Transaction[] {
+  const all = loadTransactions().filter((t) => t.id !== id);
+  saveTransactions(all);
+  return all;
+}
+
+export function loadInvestments(): Investment[] {
+  if (!isClient()) return [];
+  const raw = localStorage.getItem(KEYS.INVESTMENTS);
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
+
+export function saveInvestments(arr: Investment[]): void {
+  if (!isClient()) return;
+  localStorage.setItem(KEYS.INVESTMENTS, JSON.stringify(arr));
+}
+
+export function addInvestment(inv: Investment): Investment[] {
+  const all = loadInvestments();
+  all.unshift(inv);
+  saveInvestments(all);
+  return all;
+}
+
+export function deleteInvestment(id: string): Investment[] {
+  const all = loadInvestments().filter((i) => i.id !== id);
+  saveInvestments(all);
+  return all;
+}
+
+export function exportAll(): string {
+  return JSON.stringify({
+    state: loadState(),
+    transactions: loadTransactions(),
+    investments: loadInvestments(),
+  }, null, 2);
+}
+
+export function importAll(json: string): boolean {
+  try {
+    const parsed = JSON.parse(json);
+    if (parsed.state) saveState({ ...DEFAULT_STATE, ...parsed.state });
+    if (Array.isArray(parsed.transactions)) saveTransactions(parsed.transactions);
+    if (Array.isArray(parsed.investments)) saveInvestments(parsed.investments);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearAll(): void {
+  if (!isClient()) return;
+  localStorage.removeItem(KEYS.STATE);
+  localStorage.removeItem(KEYS.TXNS);
+  localStorage.removeItem(KEYS.INVESTMENTS);
+}
