@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { DEFAULT_STATE, exportAll, importAll, loadState, saveState, clearAll, type AppState } from "@/lib/storage";
 import { Callout } from "@/components/Callout";
 import { uniqueGiftCardDeals, AMAZON_WELCOME_OFFERS } from "@/lib/stacking";
+import { isSupabaseConfigured, getSupabase } from "@/lib/supabase";
+import { onSyncStatus, pullFromCloud, pushToCloud, type SyncStatus } from "@/lib/cloudSync";
 
 const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boolean }[] = [
   { key: "ptccEligibleSpend", label: "Amex Plat Travel — eligible cycle spend (₹)", group: "Annual milestone progress", numeric: true },
@@ -167,6 +169,8 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      <CloudSyncSection />
+
       <section className="card-shell">
         <div className="card-header"><div className="font-semibold">Backup / restore</div></div>
         <div className="card-body space-y-3">
@@ -211,5 +215,56 @@ export default function SettingsPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function CloudSyncSection() {
+  const [status, setStatus] = useState<SyncStatus>("offline");
+  const [email, setEmail] = useState<string | null>(null);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    const off = onSyncStatus(setStatus);
+    const sb = getSupabase();
+    sb?.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+    return () => { off(); };
+  }, []);
+
+  if (!isSupabaseConfigured) {
+    return (
+      <section className="card-shell">
+        <div className="card-header"><div className="font-semibold">Cloud sync</div></div>
+        <div className="card-body">
+          <Callout tone="info" title="Local-only mode">
+            Cloud sync is not configured, so all data lives in this browser only. To enable cross-device sync, set the Supabase env vars (see README) and redeploy. Until then, use Export/Restore below as your backup.
+          </Callout>
+        </div>
+      </section>
+    );
+  }
+
+  const label: Record<SyncStatus, string> = {
+    idle: "Idle", syncing: "Syncing…", synced: "Synced ✓", error: "Sync error", offline: "Local only",
+  };
+  const tone = status === "synced" ? "text-success" : status === "error" ? "text-danger" : "text-fg-muted";
+
+  return (
+    <section className="card-shell">
+      <div className="card-header">
+        <div className="font-semibold">Cloud sync</div>
+        <span className={`text-sm font-medium ${tone}`}>{label[status]}</span>
+      </div>
+      <div className="card-body space-y-3">
+        <div className="text-sm text-fg-muted">
+          Signed in as <b className="text-fg">{email ?? "…"}</b>. Your data syncs automatically to your private Supabase row after every change.
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary" onClick={async () => { setMsg(""); const ok = await pushToCloud(); setMsg(ok ? "Pushed to cloud." : "Push failed."); }}>Push now</button>
+          <button className="btn-secondary" onClick={async () => { setMsg(""); const r = await pullFromCloud(); setMsg(r.pulled ? "Pulled latest from cloud. Refresh to see it." : "No remote data found."); }}>Pull latest</button>
+          <button className="btn-secondary border-danger/40 text-danger" onClick={async () => { await getSupabase()?.auth.signOut(); location.reload(); }}>Sign out</button>
+          {msg && <span className="text-sm text-fg-muted self-center">{msg}</span>}
+        </div>
+      </div>
+    </section>
   );
 }

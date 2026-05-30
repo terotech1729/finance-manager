@@ -106,6 +106,17 @@ function isClient(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
+// Change notification — cloud sync registers here to push after any local write.
+let onChangeCb: (() => void) | null = null;
+let suppressChange = false;
+export function setStorageOnChange(fn: (() => void) | null): void {
+  onChangeCb = fn;
+}
+function fireChange(): void {
+  if (suppressChange) return;
+  try { onChangeCb?.(); } catch { /* ignore */ }
+}
+
 export function loadState(): AppState {
   if (!isClient()) return DEFAULT_STATE;
   const raw = localStorage.getItem(KEYS.STATE);
@@ -120,6 +131,7 @@ export function loadState(): AppState {
 export function saveState(s: AppState): void {
   if (!isClient()) return;
   localStorage.setItem(KEYS.STATE, JSON.stringify(s));
+  fireChange();
 }
 
 export function loadTransactions(): Transaction[] {
@@ -136,6 +148,7 @@ export function loadTransactions(): Transaction[] {
 export function saveTransactions(t: Transaction[]): void {
   if (!isClient()) return;
   localStorage.setItem(KEYS.TXNS, JSON.stringify(t));
+  fireChange();
 }
 
 export function addTransaction(t: Transaction): Transaction[] {
@@ -161,6 +174,7 @@ export function loadInvestments(): Investment[] {
 export function saveInvestments(arr: Investment[]): void {
   if (!isClient()) return;
   localStorage.setItem(KEYS.INVESTMENTS, JSON.stringify(arr));
+  fireChange();
 }
 
 export function addInvestment(inv: Investment): Investment[] {
@@ -184,12 +198,17 @@ export function exportAll(): string {
   }, null, 2);
 }
 
-export function importAll(json: string): boolean {
+export function importAll(json: string, silent = false): boolean {
   try {
     const parsed = JSON.parse(json);
-    if (parsed.state) saveState({ ...DEFAULT_STATE, ...parsed.state });
-    if (Array.isArray(parsed.transactions)) saveTransactions(parsed.transactions);
-    if (Array.isArray(parsed.investments)) saveInvestments(parsed.investments);
+    if (silent) suppressChange = true;
+    try {
+      if (parsed.state) saveState({ ...DEFAULT_STATE, ...parsed.state });
+      if (Array.isArray(parsed.transactions)) saveTransactions(parsed.transactions);
+      if (Array.isArray(parsed.investments)) saveInvestments(parsed.investments);
+    } finally {
+      if (silent) suppressChange = false;
+    }
     return true;
   } catch {
     return false;
