@@ -708,20 +708,24 @@ export function recommend(input: RecommendInput): RecommendationResult {
     const bogoAvailable = input.bobBogoUsedThisMonth !== true;
     if (bogoAvailable) {
       // Buy-1-Get-1: 2nd ticket 100% off up to ₹250, once per calendar month — DISTRICT app only.
+      // Paying via BOB on District ALSO counts toward the ₹50K welcome window, so add that marginal.
       const savings = Math.min(amt / 2, 250);
+      const bobW = bobWelcomeBonus(input, amt);
+      const welcomeInr = bobW?.inr ?? 0;
       add({
         cardId: "bob_eterna",
         label: "BOB Eterna BOGO — book via District app (2nd ticket free, up to ₹250)",
-        effectivePct: (savings / amt) * 100,
+        effectivePct: ((savings + welcomeInr) / amt) * 100,
         baseRewardInr: savings,
+        bonusRewardInr: welcomeInr,
         worstCasePct: 0,
-        bestCasePct: (250 / Math.max(amt, 1)) * 100,
+        bestCasePct: ((250 + welcomeInr) / Math.max(amt, 1)) * 100,
         pros: [
           `Buy-1-Get-1: 2nd ticket 100% off up to ₹250 — ≈ ${inr(savings)} off this booking`,
-          "Once per calendar month",
+          welcomeInr > 0 ? `Also counts toward the BOB ₹50K welcome (+${inr(welcomeInr)})` : "Once per calendar month",
         ],
         cons: ["Works on the District app ONLY — not BookMyShow", "Once per calendar month", "Needs 2+ tickets; free-ticket value capped at ₹250"],
-        rationale: `BOB Eterna's monthly BOGO is a District-app benefit (not BookMyShow). Book the same show on District to get the 2nd ticket free (up to ₹250) — about ${inr(savings)} off a 2-ticket booking.`,
+        rationale: `BOB Eterna's monthly BOGO is a District-app benefit (not BookMyShow). Book the same show on District to get the 2nd ticket free (up to ₹250) — about ${inr(savings)} off${welcomeInr > 0 ? `, and it also drives your ₹50K welcome (+${inr(welcomeInr)})` : ""}.`,
         steps: [
           "Open the District app (NOT BookMyShow) — the BOGO only works there",
           "Select 2 tickets for the same show",
@@ -1049,6 +1053,26 @@ function finalize(
       rationale: `Amazon Pay accepts this payment — paying with the Amazon Pay ICICI card earns ${rate}%${ckInr > 0 ? ` and the Cashkaro Amazon link adds ${inr(ckInr)}` : ""}.`,
       steps: [ckInr > 0 ? "Open Cashkaro → Amazon link first" : "Open Amazon Pay", `Pay ${inr(amt)} with Amazon Pay ICICI`, `${rate}% back as Amazon Pay balance`],
     }));
+  }
+
+  // ---- Universal BOB Eterna welcome push (60-day ₹50K → ₹2,500 window) ----
+  // While the welcome window is open, EVERY decent spend (any category) should be a candidate for
+  // BOB Eterna, because each rupee drives the ₹50K milestone — even excluded MCCs count toward it.
+  {
+    const bobW = bobWelcomeBonus(input, amt);
+    if (bobW && !options.some((o) => o.cardId === "bob_eterna" && /welcome/i.test(o.label))) {
+      options.push(mkOption(amt, {
+        cardId: "bob_eterna",
+        label: "BOB Eterna (welcome push to ₹50K)",
+        effectivePct: 0.75 + (bobW.inr / amt) * 100,
+        baseRewardInr: amt * 0.0075,
+        bonusRewardInr: bobW.inr,
+        pros: [bobW.note, "Inside the 60-day welcome window — every spend drives the ₹50K → ₹2,500 bonus (all categories count)"],
+        cons: ["Base only 0.75% on non-5× categories — the value is the welcome milestone, not the base rate"],
+        rationale: `You're inside the BOB 60-day welcome window — ${bobW.note} Route most decent spends here until you hit ₹50K; the marginal value far exceeds the base 0.75%.`,
+        steps: ["Pay with BOB Eterna", `Drives the ₹50K welcome milestone (₹2,500 bonus)`],
+      }));
+    }
   }
 
   // ---- Normal UPI (PhonePe / GPay) — always available, 0% (last resort) ----

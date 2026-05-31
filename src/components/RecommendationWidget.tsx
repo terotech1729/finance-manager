@@ -76,9 +76,11 @@ export function RecommendationWidget({ onLogged }: Props) {
       goldShopwiseUsedThisMonth: state.goldShopwiseUsedThisMonth,
       scapiaMonthlySpend: state.scapiaMonthlySpend,
       kiwiNeonCycleSpend: state.kiwiNeonCycleSpend,
-      bobBogoUsedThisMonth:
-        state.bobBogoUsedThisMonth ||
-        loadTransactions().some((t) => t.cardId === "bob_eterna" && t.path === "district" && t.date.slice(0, 7) === date.slice(0, 7)),
+      // Purely derived from the log so it self-heals (delete the txn → BOGO available again).
+      bobBogoUsedThisMonth: loadTransactions().some(
+        (t) => t.cardId === "bob_eterna" && t.date.slice(0, 7) === date.slice(0, 7) &&
+          (t.path === "district" || /district|bogo/i.test(`${t.merchant} ${t.category}`))
+      ),
       swiggyBlckIssued: state.swiggyBlckIssued,
       amazonPayIciciIssued: state.amazonPayIciciIssued,
       primeMember: state.primeMember,
