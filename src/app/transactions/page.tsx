@@ -19,9 +19,18 @@ const PAYMENT_MODES: { id: string; label: string; isCard: boolean }[] = [
   { id: "other", label: "Other", isCard: false },
 ];
 
+type SortKey = "date_desc" | "date_asc" | "amount_desc" | "amount_asc";
+const SORTS: { v: SortKey; l: string }[] = [
+  { v: "date_desc", l: "Latest first" },
+  { v: "date_asc", l: "Oldest first" },
+  { v: "amount_desc", l: "Amount: high → low" },
+  { v: "amount_asc", l: "Amount: low → high" },
+];
+
 export default function TransactionsPage() {
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [sort, setSort] = useState<SortKey>("date_desc");
 
   // manual form state
   const [date, setDate] = useState(() => todayLocal());
@@ -72,6 +81,13 @@ export default function TransactionsPage() {
   const totalSpent = txns.reduce((acc, t) => acc + t.amount, 0);
   const totalReward = txns.reduce((acc, t) => acc + t.rewardInr, 0);
   const effectiveRate = totalSpent > 0 ? (totalReward / totalSpent) * 100 : 0;
+
+  const sortedTxns = [...txns].sort((a, b) => {
+    if (sort === "date_desc") return b.date.localeCompare(a.date);
+    if (sort === "date_asc") return a.date.localeCompare(b.date);
+    if (sort === "amount_desc") return b.amount - a.amount;
+    return a.amount - b.amount;
+  });
 
   return (
     <div className="space-y-6">
@@ -164,9 +180,14 @@ export default function TransactionsPage() {
       </div>
 
       <section>
-        <div className="flex items-baseline justify-between mb-3">
+        <div className="flex items-baseline justify-between mb-3 gap-3 flex-wrap">
           <h2 className="text-xl font-bold">Transaction log ({txns.length})</h2>
-          <div className="text-xs text-fg-muted">Synced to your account</div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-fg-muted">Sort</span>
+            <select className="input py-1 text-sm" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+              {SORTS.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
+            </select>
+          </div>
         </div>
         {txns.length === 0 ? (
           <div className="card-shell p-8 text-center text-fg-muted">
@@ -190,7 +211,7 @@ export default function TransactionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {txns.slice(0, 100).map((t) => {
+                {sortedTxns.slice(0, 100).map((t) => {
                   const card = getCardById(t.cardId);
                   const modeLabel = card?.short ?? PAYMENT_MODES.find((m) => m.id === t.cardId)?.label ?? t.cardId;
                   return (

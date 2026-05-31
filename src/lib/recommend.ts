@@ -1,4 +1,4 @@
-import { CARDS, getCardById } from "./cards";
+import { CARDS, getCardById, ANNUAL_MILESTONES } from "./cards";
 import { findCashkaro } from "./cashkaro";
 import { findGiftCardDeals, findWelcomeOffer } from "./stacking";
 import { findRedemption } from "./redemptions";
@@ -71,6 +71,8 @@ export type RecommendInput = {
   bobYtdSpend?: number;
   bobCycleSpend5x?: number;
   sbiYtdSpend?: number;
+  idfcYtdSpend?: number;
+  blckYtdSpend?: number;
   goldThisMonthTxnsAt1k?: number;
   mrccThisCycleTxnsAt1500?: number;
   mrccThisCycleAmount?: number;
@@ -84,6 +86,7 @@ export type RecommendInput = {
   amazonPayBalance?: number;
   amazonWelcomeClaimed?: string[];
   giftCardRateOverrides?: Record<string, number>;
+  cashkaroPctOverride?: number; // live Cashkaro % you see (e.g. a limited-time sale) — overrides defaults
   bobEternaIssueDate?: string;
   bobWelcomeUnlocked?: boolean;
   today?: string; // ISO; used for calendar-month milestone feasibility
@@ -221,13 +224,50 @@ function amexExcluded(category: string): boolean {
   return /fuel|petrol|diesel|insurance|\brent\b|wallet|\btax\b|govt|government|emi/.test(c);
 }
 
+/** Year-to-date spend tracked for each card's annual milestone. */
+function ytdForCard(cardId: string, input: RecommendInput): number {
+  switch (cardId) {
+    case "amex_plat_travel": return input.ptccEligibleSpend ?? 0;
+    case "amex_mrcc": return input.mrccCycleSpend ?? 0;
+    case "sbi_simplyclick": return input.sbiYtdSpend ?? 0;
+    case "idfc_indigo": return input.idfcYtdSpend ?? 0;
+    case "bob_eterna": return input.bobYtdSpend ?? 0;
+    case "swiggy_blck": return input.blckYtdSpend ?? 0;
+    default: return 0;
+  }
+}
+
+/**
+ * Marginal value of pushing THIS spend toward a card's next ANNUAL milestone.
+ * Completing the milestone (crossing the threshold) attributes the FULL reward; partial
+ * progress is pro-rata over the threshold. Reads thresholds from ANNUAL_MILESTONES.
+ */
+function annualMilestoneBonus(cardId: string, input: RecommendInput, amt: number): { inr: number; note: string; threshold: number } | null {
+  const ytd = ytdForCard(cardId, input);
+  const ms = ANNUAL_MILESTONES.filter((m) => m.cardId === cardId).slice().sort((a, b) => a.threshold - b.threshold);
+  const next = ms.find((m) => !m.hit && ytd < m.threshold); // skip already-hit milestones
+  if (!next) return null;
+  const remaining = next.threshold - ytd;
+  const completes = amt >= remaining;
+  const value = completes ? next.rewardValueInr : (amt / next.threshold) * next.rewardValueInr;
+  const short = getCardById(cardId)?.short ?? cardId;
+  const note = completes
+    ? `Completes ${short}'s ${inr(next.threshold)} milestone → unlocks ${next.reward} (${inr(next.rewardValueInr)})`
+    : `Builds toward ${short}'s ${inr(next.threshold)} milestone — ${inr(remaining)} to go (${next.reward})`;
+  return { inr: value, note, threshold: next.threshold };
+}
+
 /**
  * Cashkaro reward when paying ON THE AMAZON PLATFORM (you click the Cashkaro Amazon
  * link first, then do the same payment with a card — Cashkaro tracks the Amazon order
  * and pays on top). Recharges/bills = flat ₹1.5; shopping = category %.
  * Only valid when paying with a CARD (not Amazon Pay balance/voucher, which voids tracking).
  */
-function amazonPlatformCashkaro(category: string, amt: number): { inr: number; bestInr: number; note: string } | null {
+function amazonPlatformCashkaro(category: string, amt: number, override?: number): { inr: number; bestInr: number; note: string } | null {
+  if (override != null && override > 0) {
+    const v = amt * (override / 100);
+    return { inr: v, bestInr: v, note: `Cashkaro live rate ${override}% (you entered)` };
+  }
   const cat = category.toLowerCase();
   if (/recharge|mobile|broadband|dth|\btv\b|electric|\bgas\b|water|utility|bill/.test(cat)) {
     return { inr: 1.5, bestInr: 1.5, note: "Amazon recharge/bills Cashkaro link ≈ flat ₹1.5 (stacks on top)" };
@@ -360,7 +400,10 @@ export function recommend(input: RecommendInput): RecommendationResult {
   const cat = (input.category || "").toLowerCase().trim();
   const amt = input.amount;
   const isForeign = input.isForeign || input.channel === "foreign";
-  const ck = ckRange(input.merchant, input.category);
+  const ckOverride = input.cashkaroPctOverride && input.cashkaroPctOverride > 0 ? input.cashkaroPctOverride : undefined;
+  const ck = ckOverride != null
+    ? { mid: ckOverride, min: ckOverride, max: ckOverride, zone: "reliable" as const }
+    : ckRange(input.merchant, input.category);
   const apBal = input.amazonPayBalance ?? 0;
   const prime = input.primeMember !== false;
 
@@ -470,11 +513,9 @@ export function recommend(input: RecommendInput): RecommendationResult {
 
   // ============ UTILITIES (electricity / mobile / broadband / TV / gas / water) ============
   if (cat.includes("utility") || cat.includes("electric") || cat.includes("mobile") || cat.includes("recharge") || cat.includes("broadband") || cat.includes("tv") || cat.includes("gas") || cat.includes("water") || cat.includes("dth")) {
-    const isTelecom = cat.includes("mobile") || cat.includes("recharge") || cat.includes("broadband") || cat.includes("tv") || cat.includes("dth");
-
     // Option A: Amazon Pay ICICI via Amazon Pay bill-pay = 2% (regardless of Prime), + Cashkaro flat ₹1.5
     {
-      const ckAmz = amazonPlatformCashkaro(cat, amt);
+      const ckAmz = amazonPlatformCashkaro(cat, amt, ckOverride);
       const ckInr = ckAmz?.inr ?? 0;
       const baseCash = amt * 0.02;
       add({
@@ -519,7 +560,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
     // Option C: BOB Eterna — telecom now earns base RP (1 Apr 2026) + WELCOME PUSH
     if (input.swiggyBlckIssued !== undefined) {
       const bobWelcome = bobWelcomeBonus(input, amt);
-      const bobBase = isTelecom ? amt * 0.0075 : amt * 0.0075; // base 3 RP/₹100 = 0.75%
+      const bobBase = amt * 0.0075; // base 3 RP/₹100 = 0.75% (telecom earns base RP from 1 Apr 2026)
       add({
         cardId: "bob_eterna",
         label: bobWelcome ? "BOB Eterna (welcome push to ₹50K)" : "BOB Eterna (base 0.75%)",
@@ -556,7 +597,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
         ? ["< ₹1,000 → does NOT count toward the 6-txn milestone", "Monthly milestone may already be hit this calendar month"]
         : goldBonus ? [] : ["Monthly 6-txn milestone already hit this calendar month → no bonus"],
       rationale: amt < 1000
-        ? "Amex Gold earns 1% on utilities but this ₹" + Math.round(amt) + " is below the ₹1,000 minimum for the 6-txn milestone, and the May milestone is already met (statement cut 28th)."
+        ? `Amex Gold earns 1% on utilities, but ₹${Math.round(amt)} is below the ₹1,000 minimum that counts toward the 6-txn monthly milestone.`
         : "Amex Gold earns 1% + the txn counts toward the 6×₹1K monthly milestone if not yet hit.",
       steps: ["Open biller app", `Pay ${inr(amt)} with Amex Gold`, "Earn 1 MR per ₹50"],
     });
@@ -627,9 +668,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
 
   // ============ AMAZON ============
   if (merchant.includes("amazon")) {
-    const isElectronics = cat.includes("electronics") || cat.includes("phone") || cat.includes("mobile");
-    const apIciciRate = isElectronics ? 5.0 : (prime ? 5.0 : 3.0); // Amazon.in shopping
-    const realApRate = prime ? 5.0 : 3.0;
+    const realApRate = prime ? 5.0 : 3.0; // Amazon.in earns 5% (Prime) / 3% (non-Prime) incl. electronics
 
     // Use idle Amazon Pay balance first if present
     if (apBal >= 100) {
@@ -970,7 +1009,7 @@ function finalize(
       const baseRate = isAmazonShop ? (prime ? 5 : 3) : 2; // bills/recharges/partner = 2%
       const baseCash = amt * (baseRate / 100);
       // Cashkaro Amazon link stacks on top (you must click through Cashkaro FIRST and pay with the card)
-      const ckAmz = amazonPlatformCashkaro(input.category || "", amt);
+      const ckAmz = amazonPlatformCashkaro(input.category || "", amt, input.cashkaroPctOverride);
       const ckInr = ckAmz?.inr ?? 0;
       const total = welcomeCash + baseCash + ckInr;
       if (total > 0) {
@@ -1091,7 +1130,7 @@ function finalize(
   if (!isForeign && amazonPayable(input.category || "", input.merchant || "") && !options.some((o) => o.cardId === "amazon_pay_icici")) {
     const isAmazonShop = /amazon/.test(`${input.category} ${input.merchant}`.toLowerCase()) && !/recharge|bill/.test(`${input.category}`.toLowerCase());
     const rate = isAmazonShop ? (input.primeMember !== false ? 5 : 3) : 2;
-    const ckAmz = amazonPlatformCashkaro(input.category || "", amt);
+    const ckAmz = amazonPlatformCashkaro(input.category || "", amt, input.cashkaroPctOverride);
     const ckInr = ckAmz?.inr ?? 0;
     const base = amt * (rate / 100);
     options.push(mkOption(amt, {
@@ -1159,6 +1198,35 @@ function finalize(
         cons: [],
         rationale: `Routing this to Amex MRCC — ${mB.note}`,
         steps: ["Pay with Amex MRCC", "Fills the monthly milestone (4×₹1.5K + ₹20K)"],
+      }));
+    }
+  }
+
+  // ---- Universal ANNUAL-milestone push (SBI ₹1L/₹2L, IDFC BluChip tiers, Amex PT ₹4L/₹7L) ----
+  // Surfaces the marginal value of pushing a spend toward a card's next annual milestone —
+  // huge when you're close enough to COMPLETE it (e.g. SBI near ₹1L → ₹2,499 voucher).
+  if (!isForeign) {
+    for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel"]) {
+      if (cardId === "amex_plat_travel" && amexExcluded(input.category || "")) continue;
+      // Skip if this card already has a milestone/bonus option (monthly/welcome takes precedence).
+      if (options.some((o) => o.cardId === cardId && o.bonusRewardInr > 0)) continue;
+      const mb = annualMilestoneBonus(cardId, input, amt);
+      if (!mb || mb.inr < 1) continue;
+      const baseEval = genericCardEval(cardId, input, false);
+      const basePct = baseEval?.pct ?? 0;
+      const eff = basePct + (mb.inr / amt) * 100;
+      if (eff <= basePct + 0.05) continue; // negligible — skip noise
+      const short = getCardById(cardId)?.short ?? cardId;
+      options.push(mkOption(amt, {
+        cardId,
+        label: `${short} — push to ${inr(mb.threshold)} annual milestone`,
+        effectivePct: eff,
+        baseRewardInr: (amt * basePct) / 100,
+        bonusRewardInr: mb.inr,
+        pros: [mb.note],
+        cons: ["Annual-milestone value assumes you'll actually reach the threshold this cycle"],
+        rationale: `Routing this to ${short}: ${mb.note}`,
+        steps: [`Pay with ${short}`, `Builds toward the ${inr(mb.threshold)} annual milestone`],
       }));
     }
   }

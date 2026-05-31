@@ -35,6 +35,7 @@ export function RecommendationWidget({ onLogged }: Props) {
   const [showOverride, setShowOverride] = useState(false);
   const [overrideCategory, setOverrideCategory] = useState<string>("");
   const [overrideChannel, setOverrideChannel] = useState<ChannelType | "">("");
+  const [cashkaroOverride, setCashkaroOverride] = useState<string>("");
   const [showAlts, setShowAlts] = useState(false);
 
   useEffect(() => { setStateLocal(loadState()); }, []);
@@ -70,6 +71,8 @@ export function RecommendationWidget({ onLogged }: Props) {
       bobYtdSpend: state.bobYtdSpend,
       bobCycleSpend5x: state.bobCycleSpend5x,
       sbiYtdSpend: state.sbiYtdSpend,
+      idfcYtdSpend: state.idfcYtdSpend,
+      blckYtdSpend: state.blckYtdSpend,
       goldThisMonthTxnsAt1k: state.goldThisMonthTxnsAt1k,
       mrccThisCycleTxnsAt1500: state.mrccThisCycleTxnsAt1500,
       mrccThisCycleAmount: state.mrccThisCycleAmount,
@@ -87,12 +90,13 @@ export function RecommendationWidget({ onLogged }: Props) {
       amazonPayBalance: state.amazonPayBalance,
       amazonWelcomeClaimed: state.amazonWelcomeClaimed,
       giftCardRateOverrides: state.giftCardRateOverrides,
+      cashkaroPctOverride: Number((cashkaroOverride || "").replace(/[^0-9.]/g, "")) || undefined,
       bobEternaIssueDate: state.bobEternaIssueDate,
       bobWelcomeUnlocked: state.bobWelcomeUnlocked,
       today: localDateToISO(date),
     };
     return recommend(input);
-  }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date]);
+  }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride]);
 
   const best = rec?.best;
   const alts = rec?.alternatives ?? [];
@@ -162,6 +166,7 @@ export function RecommendationWidget({ onLogged }: Props) {
     setClarificationAnswer(null);
     setOverrideCategory("");
     setOverrideChannel("");
+    setCashkaroOverride("");
     setShowOverride(false);
     setShowAlts(false);
     onLogged?.();
@@ -267,7 +272,18 @@ export function RecommendationWidget({ onLogged }: Props) {
                   {ALL_CHANNELS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
+              <div>
+                <label className="label mb-1 block">Live Cashkaro % (if you see a better rate)</label>
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  placeholder="e.g. 7.5 (limited-time sale)"
+                  value={cashkaroOverride}
+                  onChange={(e) => setCashkaroOverride(e.target.value)}
+                />
+              </div>
             </div>
+            <div className="text-xs text-fg-muted mt-2">Enter the actual Cashkaro rate you see on the merchant&apos;s Cashkaro page (limited-time sales aren&apos;t auto-detected) and the recommendation recalculates with it.</div>
           </div>
         )}
 
