@@ -5,13 +5,16 @@ import Link from "next/link";
 import { recommend, type RecommendInput } from "@/lib/recommend";
 import { detectCategory, ALL_CATEGORIES, ALL_CHANNELS, type ChannelType } from "@/lib/categorize";
 import { findWelcomeOffer } from "@/lib/stacking";
-import { addTransaction, loadState, saveState, type AppState } from "@/lib/storage";
+import { addTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
 import { getCardById } from "@/lib/cards";
 
 function routeName(cardId: string): string {
   const c = getCardById(cardId);
   if (c) return c.short;
   if (cardId === "giftcard") return "Gift-card route";
+  if (cardId === "upi") return "UPI (PhonePe/GPay)";
+  if (cardId === "cash") return "Cash";
+  if (cardId === "amazon_pay_balance") return "Amazon Pay balance";
   return cardId;
 }
 import { inr, newId, todayLocal, localDateToISO } from "@/lib/utils";
@@ -73,7 +76,9 @@ export function RecommendationWidget({ onLogged }: Props) {
       goldShopwiseUsedThisMonth: state.goldShopwiseUsedThisMonth,
       scapiaMonthlySpend: state.scapiaMonthlySpend,
       kiwiNeonCycleSpend: state.kiwiNeonCycleSpend,
-      bobBogoUsedThisMonth: state.bobBogoUsedThisMonth,
+      bobBogoUsedThisMonth:
+        state.bobBogoUsedThisMonth ||
+        loadTransactions().some((t) => t.cardId === "bob_eterna" && t.path === "district" && t.date.slice(0, 7) === date.slice(0, 7)),
       swiggyBlckIssued: state.swiggyBlckIssued,
       amazonPayIciciIssued: state.amazonPayIciciIssued,
       primeMember: state.primeMember,
@@ -131,9 +136,8 @@ export function RecommendationWidget({ onLogged }: Props) {
       if (amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);
       if (best.label.toLowerCase().includes("shopwise")) next.goldShopwiseUsedThisMonth += amt;
     }
-    if (best.cardId === "bob_eterna" && best.label.toLowerCase().includes("bogo")) {
-      next.bobBogoUsedThisMonth = true;
-    }
+    // BOGO "used" is derived from the logged District transaction (path "district"),
+    // so deleting that transaction automatically frees it up again — no sticky flag.
     if (best.cardId === "amazon_pay_icici" && best.label.toLowerCase().includes("balance")) {
       next.amazonPayBalance = Math.max(0, next.amazonPayBalance - Math.min(next.amazonPayBalance, amt));
     }
@@ -416,6 +420,9 @@ function AltTableRow({ alt, rank }: { alt: RouteOption; rank: number }) {
       </td>
       <td className="px-2 py-2 text-right whitespace-nowrap">
         <div className="font-semibold">{alt.effectivePct.toFixed(2)}%</div>
+        {alt.redemptionRange && (
+          <div className="text-[10px] text-fg-muted">{alt.redemptionRange.worstPct.toFixed(1)}–{alt.redemptionRange.bestPct.toFixed(1)}%</div>
+        )}
         <div className="text-xs text-fg-muted">{inr(alt.totalRewardInr)}</div>
       </td>
     </tr>

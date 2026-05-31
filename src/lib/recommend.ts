@@ -5,11 +5,32 @@ import { findRedemption } from "./redemptions";
 import type { Card, RecommendationResult, RouteOption } from "./types";
 
 /**
+ * How liquid/usable a route's reward is:
+ *  - "cash"     → cashback, statement credit, gift-card discount, Cashkaro, Kiwi, BOB/SBI RP
+ *  - "flexible" → Amex MR (good but needs redemption/transfer)
+ *  - "locked"   → travel-locked coins you must accumulate & redeem on travel (Scapia, BluChips)
+ * Used to weight ranking so locked currencies don't out-rank equal-nominal liquid cash.
+ */
+function liquidityOf(cardId: string, label: string): "cash" | "flexible" | "locked" {
+  const l = label.toLowerCase();
+  if (cardId === "scapia") return l.includes("forex") ? "cash" : "locked"; // 0% forex saving is real cash; coins are locked
+  if (cardId === "idfc_indigo") return l.includes("forex") ? "cash" : "locked"; // BluChips travel-locked
+  if (cardId === "amex_gold" || cardId === "amex_plat_travel" || cardId === "amex_mrcc") return "flexible";
+  return "cash"; // kiwi (cashable), bob/sbi RP (statement credit), amazon cashback, gift cards, cashkaro, etc.
+}
+
+/**
  * Redemption-value range for a points-based route. The reward scales linearly with
  * the point value (₹/point), while any fixed ShopWise fee stays constant.
  */
+// Only these cards earn genuinely variable-value POINTS (everything else is cashback/discount/fixed).
+const VARIABLE_POINTS_CARDS = new Set(["amex_gold", "amex_plat_travel", "amex_mrcc", "idfc_indigo", "sbi_simplyclick"]);
+
 function pointsRange(cardId: string, label: string, totalRewardInr: number, effectivePct: number, amt: number):
   { worstPct: number; typicalPct: number; bestPct: number; currency: string } | null {
+  if (!VARIABLE_POINTS_CARDS.has(cardId)) return null; // BOGO/cashback/discount routes aren't points
+  // A discount/cashback/coupon route on a points card (rare) isn't earning that card's points:
+  if (/bogo|cashback|gift card|discount|district/i.test(label)) return null;
   const r = findRedemption(cardId);
   if (!r || amt <= 0 || totalRewardInr <= 0) return null;
   if (r.worst === r.best) return null; // fixed-value currency → no range
@@ -182,6 +203,12 @@ function ckRange(merchant: string, category: string): { mid: number; min: number
   const m = findCashkaro(merchant, category);
   if (!m) return null;
   return { mid: (m.minRate + m.maxRate) / 2, min: m.minRate, max: m.maxRate, zone: m.zone };
+}
+
+/** Does Amazon Pay accept this payment? (bills/recharges/Amazon/insurance/partner merchants). */
+function amazonPayable(category: string, merchant: string): boolean {
+  const c = `${category} ${merchant}`.toLowerCase();
+  return /utilit|electric|mobile|recharge|broadband|\btv\b|dth|\bgas\b|water|amazon|bookmyshow|\bbms\b|movie|insurance/.test(c);
 }
 
 /**
@@ -702,6 +729,16 @@ export function recommend(input: RecommendInput): RecommendationResult {
         ],
       });
     }
+    // Amazon Pay partner route — BookMyShow is an Amazon Pay partner (2% via Amazon Pay)
+    add({
+      cardId: "amazon_pay_icici",
+      label: "Pay via Amazon Pay (BookMyShow is an Amazon Pay partner) — 2%",
+      effectivePct: 2.0,
+      pros: ["2% cashback (Amazon Pay balance) if you pay via Amazon Pay 'Login & Pay'", "Cashback is liquid"],
+      cons: ["Works where the platform accepts Amazon Pay (BookMyShow yes; District — verify)"],
+      rationale: "BookMyShow is an Amazon Pay partner merchant — paying via Amazon Pay with the ICICI card earns 2% (liquid cashback).",
+      steps: ["At checkout choose Amazon Pay", "Pay with Amazon Pay ICICI", "2% back as Amazon Pay balance"],
+    });
     // Additional tickets / when BOGO is used up: Cashkaro → BookMyShow → Amex Gold
     add({
       cardId: "amex_gold",
@@ -989,6 +1026,45 @@ function finalize(
     }));
   }
 
+  // ---- Universal Amazon Pay rail (Amazon ICICI stacks) ----
+  // Amazon Pay accepts many payments (bills/recharges/Amazon/insurance/partner merchants like
+  // BookMyShow). Paying via Amazon Pay with the ICICI card earns 5% (Amazon) / 2% (bills/partner),
+  // stacks Cashkaro, and is liquid cashback. Other cards via Amazon Pay just earn their normal
+  // rate (= paying direct), so only the ICICI bonus route is worth surfacing here.
+  if (!isForeign && amazonPayable(input.category || "", input.merchant || "") && !options.some((o) => o.cardId === "amazon_pay_icici")) {
+    const isAmazonShop = /amazon/.test(`${input.category} ${input.merchant}`.toLowerCase()) && !/recharge|bill/.test(`${input.category}`.toLowerCase());
+    const rate = isAmazonShop ? (input.primeMember !== false ? 5 : 3) : 2;
+    const ckAmz = amazonPlatformCashkaro(input.category || "", amt);
+    const ckInr = ckAmz?.inr ?? 0;
+    const base = amt * (rate / 100);
+    options.push(mkOption(amt, {
+      cardId: "amazon_pay_icici",
+      label: ckInr > 0 ? `Cashkaro → Amazon Pay ICICI (${rate}% + Cashkaro)` : `Pay via Amazon Pay with ICICI (${rate}%)`,
+      effectivePct: ((base + ckInr) / amt) * 100,
+      baseRewardInr: base + ckInr,
+      cashkaroSuggested: !!ckAmz,
+      worstCasePct: rate,
+      pros: [`${rate}% cashback via Amazon Pay${ckInr > 0 ? ` + Cashkaro ${inr(ckInr)}` : ""}`, "Liquid (Amazon Pay balance)"],
+      cons: ["Only where the platform accepts Amazon Pay", "Pay with the card (not balance) so Cashkaro tracks"],
+      rationale: `Amazon Pay accepts this payment — paying with the Amazon Pay ICICI card earns ${rate}%${ckInr > 0 ? ` and the Cashkaro Amazon link adds ${inr(ckInr)}` : ""}.`,
+      steps: [ckInr > 0 ? "Open Cashkaro → Amazon link first" : "Open Amazon Pay", `Pay ${inr(amt)} with Amazon Pay ICICI`, `${rate}% back as Amazon Pay balance`],
+    }));
+  }
+
+  // ---- Normal UPI (PhonePe / GPay) — always available, 0% (last resort) ----
+  if (!isForeign && input.channel !== "upi_normal" && !options.some((o) => o.cardId === "upi")) {
+    options.push(mkOption(amt, {
+      cardId: "upi",
+      label: "Normal UPI (PhonePe / GPay) — 0%",
+      effectivePct: 0,
+      baseRewardInr: 0,
+      pros: [],
+      cons: ["No card rewards — last resort, or for categories every card excludes"],
+      rationale: "Direct bank UPI earns nothing. Only use if no card/route applies or the category is reward-excluded everywhere.",
+      steps: [`Pay ${inr(amt)} via PhonePe / GPay UPI`],
+    }));
+  }
+
   // Ensure every active card has at least a reasoning entry so the user always
   // sees WHY a card (incl. Kiwi/Scapia/SBI) was not the top pick.
   const present = new Set(options.map((o) => o.cardId));
@@ -1019,9 +1095,18 @@ function finalize(
     });
   }
 
+  // Tag each option with liquidity + a redemption range, then rank by a LIQUIDITY-WEIGHTED
+  // score so travel-locked coins (Scapia/BluChips) don't out-rank equal-nominal liquid cash.
+  const LIQ_WEIGHT: Record<string, number> = { cash: 1.0, flexible: 0.9, locked: 0.7 };
+  for (const o of options) {
+    o.liquidity = liquidityOf(o.cardId, o.label);
+    const rng = pointsRange(o.cardId, o.label, o.totalRewardInr, o.effectivePct, amt);
+    if (rng) o.redemptionRange = { worstPct: rng.worstPct, bestPct: rng.bestPct };
+  }
+  const score = (o: RouteOption) => o.totalRewardInr * (LIQ_WEIGHT[o.liquidity ?? "cash"] ?? 1);
   const ranked = [...options].sort((a, b) => {
     if (a.feasible !== b.feasible) return a.feasible ? -1 : 1;
-    return b.totalRewardInr - a.totalRewardInr;
+    return score(b) - score(a);
   });
   const best = ranked[0];
   const card = pickCard(best.cardId);

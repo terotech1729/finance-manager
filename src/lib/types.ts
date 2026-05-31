@@ -108,6 +108,10 @@ export type RouteOption = {
   bestCasePct: number;
   steps: string[];
   rationale: string;
+  // How usable the reward is — affects ranking (locked < flexible < cash).
+  liquidity?: "cash" | "flexible" | "locked";
+  // Redemption-value range for points rewards (shown per row in the alternatives table).
+  redemptionRange?: { worstPct: number; bestPct: number };
 };
 
 export type RecommendationResult = {
