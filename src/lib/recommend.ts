@@ -205,10 +205,14 @@ function ckRange(merchant: string, category: string): { mid: number; min: number
   return { mid: (m.minRate + m.maxRate) / 2, min: m.minRate, max: m.maxRate, zone: m.zone };
 }
 
-/** Does Amazon Pay accept this payment? (bills/recharges/Amazon/insurance/partner merchants). */
+/**
+ * Does Amazon Pay accept this payment cleanly? (bills/recharges/Amazon/partner merchants).
+ * NOTE: insurance is intentionally EXCLUDED — Amazon Pay levies convenience fees on insurance
+ * premiums (+ ₹1L / 6-per-month caps), so 2% doesn't net out; pay the insurer/PolicyBazaar direct.
+ */
 function amazonPayable(category: string, merchant: string): boolean {
   const c = `${category} ${merchant}`.toLowerCase();
-  return /utilit|electric|mobile|recharge|broadband|\btv\b|dth|\bgas\b|water|amazon|bookmyshow|\bbms\b|movie|insurance/.test(c);
+  return /utilit|electric|mobile|recharge|broadband|\btv\b|dth|\bgas\b|water|amazon|bookmyshow|\bbms\b|movie/.test(c);
 }
 
 /** Categories where Amex earns no MR AND doesn't count toward Amex milestones. */
@@ -233,8 +237,8 @@ function amazonPlatformCashkaro(category: string, amt: number): { inr: number; b
     const mid = (m.minRate + m.maxRate) / 2;
     return { inr: amt * (mid / 100) * 0.85, bestInr: amt * (m.maxRate / 100), note: `Amazon ${m.category ?? ""} Cashkaro ~${mid}% (tracking unreliable — treat as bonus)` };
   }
-  // Generic Amazon Pay link still typically pays a small flat amount
-  return { inr: 1.5, bestInr: 1.5, note: "Amazon Cashkaro link ≈ flat ₹1.5 (stacks on top)" };
+  // No Cashkaro link for this category (e.g. insurance, generic) → none.
+  return null;
 }
 
 /**
@@ -585,10 +589,11 @@ export function recommend(input: RecommendInput): RecommendationResult {
       });
     }
     add({
-      cardId: "idfc_indigo", label: "IDFC Indigo / NEFT direct", effectivePct: 0.33,
-      pros: ["Best non-welcome option"], cons: ["Amex excludes these MCCs; watch 1-2% biller convenience fee"],
-      rationale: "These MCCs are excluded on most cards. Prefer NEFT/UPI unless filling BOB welcome.",
-      steps: ["Prefer NEFT/UPI from bank", "If CC needed: IDFC Indigo (~0.33%)"],
+      cardId: "idfc_indigo", label: "Pay direct on insurer / PolicyBazaar (or NEFT) — IDFC ~0.33%", effectivePct: 0.33,
+      pros: ["Paying the insurer/PolicyBazaar directly avoids the platform convenience fee (e.g. Amazon Pay charges fees on insurance)"],
+      cons: ["Insurance/rent/tax earn little on any card; most exclude them. Watch for any 1-2% biller convenience fee — UPI/NEFT direct is often cheapest"],
+      rationale: "These MCCs earn almost nothing on any card and platforms like Amazon Pay add fees — so pay the insurer/PolicyBazaar directly (CC for ~0.33% via IDFC, or NEFT/UPI to avoid fees), unless you're filling the BOB welcome.",
+      steps: ["Pay on the insurer's site / PolicyBazaar directly (avoid wallet platform fees)", "Use IDFC (~0.33%) or NEFT/UPI"],
     });
     return finalize(options, input, amt, isForeign, ck);
   }
@@ -888,6 +893,23 @@ function genericCardEval(
         return { pct: 0, label: "HDFC BLCK (abroad)", reason: "Forex excluded from BLCK cashback; 3.5% markup." };
       default:
         return null;
+    }
+  }
+  // Reward-excluded MCC families: most cards earn ~0 or base-only here, no accelerated rates.
+  const rewardExcluded = /insurance|\brent\b|\btax\b|govt|government|fuel|petrol|diesel|wallet/.test(cat);
+  if (rewardExcluded) {
+    switch (cardId) {
+      case "amex_gold": case "amex_plat_travel": case "amex_mrcc":
+        return { pct: 0, label: "Amex", reason: "Amex earns no MR on insurance / rent / fuel / tax / wallet (excluded MCCs)." };
+      case "amazon_pay_icici":
+        return { pct: 0, label: "Amazon Pay ICICI", reason: "Excluded outside Amazon (rent / tax / utilities / insurance earn no cashback)." };
+      case "sbi_simplyclick":
+        return { pct: 0.25, label: "SBI SimplyCLICK", reason: "Base 0.25% only — these aren't reward categories (no 5×/10×)." };
+      case "idfc_indigo":
+        return { pct: 0.5 * 0.45, label: "IDFC Indigo", reason: "0.5 BluChip/₹100 ≈ 0.23% on these MCCs (travel-locked)." };
+      case "bob_eterna":
+        return { pct: 0.75, label: "BOB Eterna", reason: "Base 0.75% (5× doesn't apply). Only worth it during the ₹50K welcome window, where every spend counts." };
+      // scapia / yes_kiwi fall through to their exclusion handling below (→ 0).
     }
   }
   switch (cardId) {
