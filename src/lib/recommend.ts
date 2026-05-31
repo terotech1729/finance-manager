@@ -211,6 +211,12 @@ function amazonPayable(category: string, merchant: string): boolean {
   return /utilit|electric|mobile|recharge|broadband|\btv\b|dth|\bgas\b|water|amazon|bookmyshow|\bbms\b|movie|insurance/.test(c);
 }
 
+/** Categories where Amex earns no MR AND doesn't count toward Amex milestones. */
+function amexExcluded(category: string): boolean {
+  const c = category.toLowerCase();
+  return /fuel|petrol|diesel|insurance|\brent\b|wallet|\btax\b|govt|government|emi/.test(c);
+}
+
 /**
  * Cashkaro reward when paying ON THE AMAZON PLATFORM (you click the Cashkaro Amazon
  * link first, then do the same payment with a card — Cashkaro tracks the Amazon order
@@ -314,18 +320,29 @@ function buildKiwiOption(input: RecommendInput, amt: number): RouteOption {
   else if (k < 150000) { marginal = 7; mileNote = `Past ₹1L — the next ₹${(150000 - k).toLocaleString("en-IN")} toward ₹1.5L earns ~7% effective once milestone 3 credits.`; }
   else { marginal = 2; mileNote = "All three Neon milestones cleared this cycle → flat 2%."; }
 
+  // Like the BOB welcome, reflect the Neon milestone marginal in the effective %:
+  // 2% lands immediately; the retroactive top-up lifts it to ~3/5/7% as you march to the
+  // next threshold. Worst case (if you stall before the milestone) is the guaranteed 2%.
+  const baseInr = amt * 0.02;
+  const milestoneInr = amt * ((marginal - 2) / 100);
   return opt({
-    label: "YES Bank Kiwi — UPI scan & pay (2%)", effectivePct: 2.0, baseRewardInr: amt * 0.02,
-    worstCasePct: 2.0, bestCasePct: marginal,
-    pros: ["2% instant cashback on Kiwi scan & pay (1 Kiwi = ₹0.25, cashable)", mileNote],
-    cons: amt < 100 ? ["Kiwis accrue per ₹100 slab; sub-₹100 rounds down"] : [],
+    label: marginal > 2
+      ? `YES Bank Kiwi — UPI scan & pay (~${marginal}% with Neon milestone)`
+      : "YES Bank Kiwi — UPI scan & pay (2%)",
+    effectivePct: marginal,
+    baseRewardInr: baseInr,
+    bonusRewardInr: milestoneInr,
+    worstCasePct: 2.0,
+    bestCasePct: marginal,
+    pros: [`2% instant${marginal > 2 ? ` + Neon milestone top-up → ~${marginal}% effective` : ""} (1 Kiwi = ₹0.25, cashable)`, mileNote],
+    cons: amt < 100 ? ["Kiwis accrue per ₹100 slab; sub-₹100 rounds down"] : (marginal > 2 ? ["The extra above 2% credits only when you actually hit the next Neon milestone"] : []),
     steps: [
       "Open the Kiwi app",
       "Scan the merchant's UPI QR (or enter UPI ID)",
       `Pay ${inr(amt)} via Kiwi (RuPay credit card on UPI)`,
-      "Earn 2% now; the spend also counts toward Neon milestones (retroactive 3% / 4% / 5%)",
+      `Earn 2% now; the spend counts toward Neon milestones (retroactive ~${marginal}% once the next threshold credits)`,
     ],
-    rationale: `Kiwi turns an in-person UPI payment into 2% cashback. ${mileNote}`,
+    rationale: `Kiwi turns an in-person UPI payment into 2% now, and — like the BOB welcome — the Neon milestone top-up lifts it to ~${marginal}% as you march to the next threshold. ${mileNote}`,
   });
 }
 
@@ -1071,6 +1088,41 @@ function finalize(
         cons: ["Base only 0.75% on non-5× categories — the value is the welcome milestone, not the base rate"],
         rationale: `You're inside the BOB 60-day welcome window — ${bobW.note} Route most decent spends here until you hit ₹50K; the marginal value far exceeds the base 0.75%.`,
         steps: ["Pay with BOB Eterna", `Drives the ₹50K welcome milestone (₹2,500 bonus)`],
+      }));
+    }
+  }
+
+  // ---- Universal Amex monthly-milestone fillers (Gold 6×₹1K, MRCC 4×₹1.5K + ₹20K) ----
+  // Considered for EVERY eligible expense (not just generic), so the engine surfaces the high
+  // value of completing a monthly milestone — esp. the final txn (full ₹500). Skipped for
+  // Amex-excluded categories (fuel/insurance/rent/wallet/tax) which don't count.
+  if (!isForeign && !amexExcluded(input.category || "")) {
+    const gB = goldMilestoneBonus(input, amt);
+    if (gB && gB.inr > 0 && !options.some((o) => o.cardId === "amex_gold" && /milestone/i.test(o.label))) {
+      options.push(mkOption(amt, {
+        cardId: "amex_gold",
+        label: "Amex Gold (fills 6-txn monthly milestone)",
+        effectivePct: 0.78 + (gB.inr / amt) * 100,
+        baseRewardInr: amt * 0.0078,
+        bonusRewardInr: gB.inr,
+        pros: [gB.note],
+        cons: ["Needs ≥₹1K per txn"],
+        rationale: `Routing this to Amex Gold ${gB.note}`,
+        steps: ["Pay with Amex Gold", "Counts toward the 6×₹1K monthly milestone"],
+      }));
+    }
+    const mB = mrccMilestoneBonus(input, amt);
+    if (mB && mB.inr > 0 && !options.some((o) => o.cardId === "amex_mrcc" && /milestone/i.test(o.label))) {
+      options.push(mkOption(amt, {
+        cardId: "amex_mrcc",
+        label: "Amex MRCC (fills monthly milestone)",
+        effectivePct: 0.78 + (mB.inr / amt) * 100,
+        baseRewardInr: amt * 0.0078,
+        bonusRewardInr: mB.inr,
+        pros: [mB.note],
+        cons: [],
+        rationale: `Routing this to Amex MRCC — ${mB.note}`,
+        steps: ["Pay with Amex MRCC", "Fills the monthly milestone (4×₹1.5K + ₹20K)"],
       }));
     }
   }
