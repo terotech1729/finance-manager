@@ -67,8 +67,8 @@ const RULES: Rule[] = [
   { match: /\bjiomart\b|reliance\s*digital/i, category: "online (general)", prettyLabel: "Reliance / JioMart", channel: "online", confidence: "high" },
 
   // ---- MOVIES / EVENTS ----
-  { match: /\bbookmyshow\b|\bbms\b|movie\s*ticket|\bpvr\b|\binox\b/i, category: "bookmyshow / movies", prettyLabel: "Movie tickets", channel: "online", confidence: "high" },
-  { match: /\bdistrict\b/i, category: "bookmyshow / movies", prettyLabel: "District (events)", channel: "merchant_app", confidence: "high" },
+  { match: /\bdistrict\b/i, category: "movies / events (District)", prettyLabel: "District (movies/events)", channel: "merchant_app", confidence: "high" },
+  { match: /\bbookmyshow\b|\bbms\b|movie\s*ticket|movie|\bpvr\b|\binox\b|cinema/i, category: "movies / events", prettyLabel: "Movie tickets", channel: "online", confidence: "high" },
 
   // ---- FOOD DELIVERY ----
   { match: /\bswiggy\s*instamart\b|\binstamart\b/i, category: "groceries", prettyLabel: "Swiggy Instamart", channel: "merchant_app", confidence: "high" },
@@ -212,7 +212,8 @@ export const ALL_CATEGORIES = [
   "nykaa",
   "tata cliq",
   "meesho",
-  "bookmyshow / movies",
+  "movies / events (District)",
+  "movies / events",
   "swiggy",
   "zomato",
   "groceries",

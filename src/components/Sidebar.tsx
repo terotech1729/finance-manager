@@ -7,9 +7,13 @@ const items = [
   { href: "/", label: "Home", icon: Icon.Dashboard },
   { href: "/recommend", label: "Recommend", icon: Icon.Zap },
   { href: "/transactions", label: "Transactions", icon: Icon.Transaction },
+  { href: "/bills", label: "Bill Tracker", icon: Icon.Card },
+  { href: "/spend", label: "Spend Analyzer", icon: Icon.Dashboard },
   { href: "/investments", label: "Investments", icon: Icon.Trophy },
+  { href: "/portfolio", label: "Investment Analyzer", icon: Icon.Dashboard },
   { href: "/cards", label: "Cards", icon: Icon.Card },
   { href: "/milestones", label: "Milestones", icon: Icon.Sparkles },
+  { href: "/redemptions", label: "Redemptions", icon: Icon.Plane },
   { href: "/settings", label: "Settings", icon: Icon.Settings },
 ];
 

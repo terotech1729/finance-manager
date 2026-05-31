@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { addTransaction, deleteTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
+import { addTransaction, deleteTransaction, loadState, loadTransactions, saveState } from "@/lib/storage";
 import { CARDS, getCardById } from "@/lib/cards";
 import { ALL_CATEGORIES } from "@/lib/categorize";
+import { applyCardSpend } from "@/lib/spendTracking";
 import { inr, inrExact, newId, todayLocal, localDateToISO } from "@/lib/utils";
 import type { Transaction } from "@/lib/types";
 import { Icon } from "@/components/Icons";
@@ -17,30 +18,6 @@ const PAYMENT_MODES: { id: string; label: string; isCard: boolean }[] = [
   { id: "cash", label: "Cash", isCard: false },
   { id: "other", label: "Other", isCard: false },
 ];
-
-/** Mirror of the recommend-log state update, so a manual entry keeps milestone tracking accurate. */
-function applyCardSpend(next: AppState, cardId: string, amt: number, rewardInr: number): void {
-  if (cardId === "amex_plat_travel") next.ptccEligibleSpend += amt;
-  if (cardId === "amex_mrcc") {
-    next.mrccCycleSpend += amt;
-    next.mrccThisCycleAmount += amt;
-    if (amt >= 1500) next.mrccThisCycleTxnsAt1500 = Math.min(4, next.mrccThisCycleTxnsAt1500 + 1);
-  }
-  if (cardId === "bob_eterna") {
-    next.bobYtdSpend += amt;
-    if (next.bobYtdSpend >= 50000) next.bobWelcomeUnlocked = true;
-  }
-  if (cardId === "sbi_simplyclick") next.sbiYtdSpend += amt;
-  if (cardId === "idfc_indigo") next.idfcYtdSpend += amt;
-  if (cardId === "swiggy_blck") next.blckYtdSpend += amt;
-  if (cardId === "scapia") next.scapiaMonthlySpend += amt;
-  if (cardId === "amex_gold" && amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);
-  if (cardId === "yes_kiwi") {
-    next.kiwiNeonCycleSpend += amt;
-    next.kiwiCashback += rewardInr / 0.25;
-    next.kiwiLifetimeEarned += rewardInr;
-  }
-}
 
 export default function TransactionsPage() {
   const [txns, setTxns] = useState<Transaction[]>([]);

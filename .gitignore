@@ -8,3 +8,6 @@ dist
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+
+# Private project guide — contains personal card details & strategy. Keep OUT of the public repo.
+AGENT_GUIDE.md

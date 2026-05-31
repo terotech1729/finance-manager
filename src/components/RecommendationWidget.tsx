@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { recommend, type RecommendInput } from "@/lib/recommend";
 import { detectCategory, ALL_CATEGORIES, ALL_CHANNELS, type ChannelType } from "@/lib/categorize";
 import { findWelcomeOffer } from "@/lib/stacking";
@@ -282,9 +283,15 @@ export function RecommendationWidget({ onLogged }: Props) {
                 <div className="text-sm font-medium text-accent mt-1">{best.label}</div>
               </div>
               <div className="text-right shrink-0">
-                <div className="label">Total value</div>
+                <div className="label">{rec.effectiveRange ? "Value (typical redemption)" : "Total value"}</div>
                 <div className="text-3xl font-bold text-success">{best.effectivePct.toFixed(2)}%</div>
                 <div className="text-xs text-fg-muted">≈ {inr(best.totalRewardInr)}{best.bonusRewardInr > 0 ? ` (${inr(best.baseRewardInr)} base + ${inr(best.bonusRewardInr)} milestone)` : ""}</div>
+                {rec.effectiveRange && (
+                  <div className="text-xs text-fg-muted mt-1">
+                    Range <b className="text-fg">{rec.effectiveRange.worstPct.toFixed(2)}%</b>–<b className="text-success">{rec.effectiveRange.bestPct.toFixed(2)}%</b> by {rec.effectiveRange.currency.replace(/\s*\(.*\)/, "")} redemption
+                    <Link href="/redemptions" className="text-accent hover:underline ml-1">details →</Link>
+                  </div>
+                )}
               </div>
             </div>
 

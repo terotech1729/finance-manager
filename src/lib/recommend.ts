@@ -1,7 +1,28 @@
 import { CARDS, getCardById } from "./cards";
 import { findCashkaro } from "./cashkaro";
 import { findGiftCardDeals, findWelcomeOffer } from "./stacking";
+import { findRedemption } from "./redemptions";
 import type { Card, RecommendationResult, RouteOption } from "./types";
+
+/**
+ * Redemption-value range for a points-based route. The reward scales linearly with
+ * the point value (₹/point), while any fixed ShopWise fee stays constant.
+ */
+function pointsRange(cardId: string, label: string, totalRewardInr: number, effectivePct: number, amt: number):
+  { worstPct: number; typicalPct: number; bestPct: number; currency: string } | null {
+  const r = findRedemption(cardId);
+  if (!r || amt <= 0 || totalRewardInr <= 0) return null;
+  if (r.worst === r.best) return null; // fixed-value currency → no range
+  const feeInr = /shopwise/i.test(label) ? amt * 0.0177 : 0; // 1.5% + GST, not scaled by point value
+  const gross = totalRewardInr + feeInr; // reward value at typical, before fee
+  const netAt = (v: number) => Math.max(0, gross * (v / r.typical) - feeInr);
+  return {
+    worstPct: (netAt(r.worst) / amt) * 100,
+    typicalPct: effectivePct,
+    bestPct: (netAt(r.best) / amt) * 100,
+    currency: r.currency,
+  };
+}
 
 /** Build a complete RouteOption from a partial, filling sensible defaults. */
 function mkOption(amt: number, o: Partial<RouteOption> & { cardId: string; label: string; effectivePct: number; rationale: string }): RouteOption {
@@ -655,30 +676,29 @@ export function recommend(input: RecommendInput): RecommendationResult {
     return finalize(options, input, amt, isForeign, ck);
   }
 
-  // ============ MOVIES ============
-  if (merchant.includes("bookmyshow") || merchant.includes("district") || cat.includes("movie")) {
+  // ============ MOVIES / EVENTS ============
+  if (merchant.includes("bookmyshow") || merchant.includes("bms") || merchant.includes("district") || merchant.includes("pvr") || merchant.includes("inox") || cat.includes("movie") || cat.includes("event")) {
     const bogoAvailable = input.bobBogoUsedThisMonth !== true;
     if (bogoAvailable) {
-      // Buy-1-Get-1: 2nd ticket 100% off up to ₹250, once per calendar month (via District app).
-      // Assume a 2-ticket booking → second ticket ≈ half the total; saving capped at ₹250.
+      // Buy-1-Get-1: 2nd ticket 100% off up to ₹250, once per calendar month — DISTRICT app only.
       const savings = Math.min(amt / 2, 250);
       add({
         cardId: "bob_eterna",
-        label: "BOB Eterna BOGO on District (2nd ticket free, up to ₹250)",
+        label: "BOB Eterna BOGO — book via District app (2nd ticket free, up to ₹250)",
         effectivePct: (savings / amt) * 100,
         baseRewardInr: savings,
         worstCasePct: 0,
         bestCasePct: (250 / Math.max(amt, 1)) * 100,
         pros: [
           `Buy-1-Get-1: 2nd ticket 100% off up to ₹250 — ≈ ${inr(savings)} off this booking`,
-          "Once per calendar month, booked via the District app",
+          "Once per calendar month",
         ],
-        cons: ["Once per calendar month only", "Needs 2+ tickets to use BOGO", "Free-ticket value capped at ₹250"],
-        rationale: `BOB Eterna's monthly BOGO on District makes the 2nd ticket free (up to ₹250) — about ${inr(savings)} off a 2-ticket booking.`,
+        cons: ["Works on the District app ONLY — not BookMyShow", "Once per calendar month", "Needs 2+ tickets; free-ticket value capped at ₹250"],
+        rationale: `BOB Eterna's monthly BOGO is a District-app benefit (not BookMyShow). Book the same show on District to get the 2nd ticket free (up to ₹250) — about ${inr(savings)} off a 2-ticket booking.`,
         steps: [
-          "Open the District app (PVR/INOX etc.)",
+          "Open the District app (NOT BookMyShow) — the BOGO only works there",
           "Select 2 tickets for the same show",
-          "Pay with BOB Eterna → BOGO applies (2nd ticket free, up to ₹250)",
+          "Pay with BOB Eterna → 2nd ticket free, up to ₹250",
         ],
       });
     }
@@ -1034,6 +1054,8 @@ function finalize(
     }
   }
 
+  const effectiveRange = pointsRange(best.cardId, best.label, best.totalRewardInr, best.effectivePct, amt) ?? undefined;
+
   return {
     card,
     path: best.label,
@@ -1046,6 +1068,7 @@ function finalize(
     cashkaroSuggested: best.cashkaroSuggested,
     best,
     alternatives,
+    effectiveRange,
     milestoneTip,
   };
 }

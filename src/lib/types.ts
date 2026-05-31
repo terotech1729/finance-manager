@@ -122,6 +122,8 @@ export type RecommendationResult = {
   cashkaroSuggested: boolean;
   best?: RouteOption;
   alternatives?: RouteOption[];
+  // Redemption-value range for points-based routes (Amex MR / BluChips / SBI RP).
+  effectiveRange?: { worstPct: number; typicalPct: number; bestPct: number; currency: string };
   milestoneTip?: {
     cardId: string;
     label: string;

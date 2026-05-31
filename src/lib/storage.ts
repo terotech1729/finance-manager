@@ -34,6 +34,8 @@ export type AppState = {
   amazonWelcomeClaimed: string[];
   // Live gift-card discount overrides, keyed by "STORE:Merchant" → % off (you enter from CRED/CheQ app)
   giftCardRateOverrides: Record<string, number>;
+  // Credit-card bill / repayment tracker, keyed by "cardId:YYYY-MM"
+  bills: Record<string, { billAmount: number; paid: boolean }>;
   // Monthly counters (legacy, kept for compat)
   monthlyTxns: {
     [yearMonth: string]: {
@@ -86,6 +88,7 @@ export const DEFAULT_STATE: AppState = {
   amazonPayBalance: 3338,
   amazonWelcomeClaimed: [],
   giftCardRateOverrides: {},
+  bills: {},
   monthlyTxns: {},
   amexMrPooled: 127710,
   indigoBluChips: 14172,
