@@ -33,6 +33,7 @@ export type RecommendInput = {
   mrccThisCycleTxnsAt1500?: number;
   mrccThisCycleAmount?: number;
   goldShopwiseUsedThisMonth?: number;
+  bobBogoUsedThisMonth?: boolean;
   scapiaMonthlySpend?: number;
   kiwiNeonCycleSpend?: number;
   swiggyBlckIssued?: boolean;
@@ -655,12 +656,45 @@ export function recommend(input: RecommendInput): RecommendationResult {
   }
 
   // ============ MOVIES ============
-  if (merchant.includes("bookmyshow") || cat.includes("movie")) {
-    add({ cardId: "bob_eterna", label: "District BOGO first, then Cashkaro+Amex Gold", effectivePct: 5.78,
-      worstCasePct: 0.78, bestCasePct: 10.78, cashkaroSuggested: true,
-      pros: ["District BOGO up to ₹250/mo"], cons: ["BOGO cap ₹250/mo"],
-      rationale: "District BOGO then Cashkaro+Amex Gold for extra tickets.",
-      steps: ["District app BOGO (₹250/mo cap)", "Beyond: Cashkaro → BMS → Amex Gold"] });
+  if (merchant.includes("bookmyshow") || merchant.includes("district") || cat.includes("movie")) {
+    const bogoAvailable = input.bobBogoUsedThisMonth !== true;
+    if (bogoAvailable) {
+      // Buy-1-Get-1: 2nd ticket 100% off up to ₹250, once per calendar month (via District app).
+      // Assume a 2-ticket booking → second ticket ≈ half the total; saving capped at ₹250.
+      const savings = Math.min(amt / 2, 250);
+      add({
+        cardId: "bob_eterna",
+        label: "BOB Eterna BOGO on District (2nd ticket free, up to ₹250)",
+        effectivePct: (savings / amt) * 100,
+        baseRewardInr: savings,
+        worstCasePct: 0,
+        bestCasePct: (250 / Math.max(amt, 1)) * 100,
+        pros: [
+          `Buy-1-Get-1: 2nd ticket 100% off up to ₹250 — ≈ ${inr(savings)} off this booking`,
+          "Once per calendar month, booked via the District app",
+        ],
+        cons: ["Once per calendar month only", "Needs 2+ tickets to use BOGO", "Free-ticket value capped at ₹250"],
+        rationale: `BOB Eterna's monthly BOGO on District makes the 2nd ticket free (up to ₹250) — about ${inr(savings)} off a 2-ticket booking.`,
+        steps: [
+          "Open the District app (PVR/INOX etc.)",
+          "Select 2 tickets for the same show",
+          "Pay with BOB Eterna → BOGO applies (2nd ticket free, up to ₹250)",
+        ],
+      });
+    }
+    // Additional tickets / when BOGO is used up: Cashkaro → BookMyShow → Amex Gold
+    add({
+      cardId: "amex_gold",
+      label: bogoAvailable ? "Extra tickets: Cashkaro → BookMyShow → Amex Gold" : "BOGO used this month — Cashkaro → BookMyShow → Amex Gold",
+      effectivePct: 1.0 + (ck ? ck.mid * 0.85 : 0),
+      worstCasePct: 1.0,
+      bestCasePct: 1.0 + (ck ? ck.max : 0),
+      cashkaroSuggested: !!ck && ck.zone !== "na",
+      pros: ["Cashkaro on BookMyShow (5–10%) + Amex Gold 1%"],
+      cons: ["Use only after the monthly BOB BOGO is exhausted"],
+      rationale: "For tickets beyond the monthly BOGO, stack Cashkaro on BookMyShow and pay with Amex Gold.",
+      steps: ["Open Cashkaro → BookMyShow", "Book tickets", "Pay with Amex Gold"],
+    });
     return finalize(options, input, amt, isForeign, ck);
   }
 

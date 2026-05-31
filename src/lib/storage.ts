@@ -22,6 +22,7 @@ export type AppState = {
   mrccThisCycleTxnsAt1500: number;
   mrccThisCycleAmount: number;
   goldShopwiseUsedThisMonth: number;
+  bobBogoUsedThisMonth: boolean; // BOB Eterna District BOGO movie used this calendar month
   // Welcome windows
   bobEternaIssueDate: string;
   bobWelcomeUnlocked: boolean;
@@ -77,6 +78,7 @@ export const DEFAULT_STATE: AppState = {
   mrccThisCycleTxnsAt1500: 4,
   mrccThisCycleAmount: 9600,
   goldShopwiseUsedThisMonth: 0,
+  bobBogoUsedThisMonth: false,
   bobEternaIssueDate: "2026-05-27",
   bobWelcomeUnlocked: false,
   amazonPayIciciIssueDate: "2026-05-25",

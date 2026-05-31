@@ -72,6 +72,7 @@ export function RecommendationWidget({ onLogged }: Props) {
       goldShopwiseUsedThisMonth: state.goldShopwiseUsedThisMonth,
       scapiaMonthlySpend: state.scapiaMonthlySpend,
       kiwiNeonCycleSpend: state.kiwiNeonCycleSpend,
+      bobBogoUsedThisMonth: state.bobBogoUsedThisMonth,
       swiggyBlckIssued: state.swiggyBlckIssued,
       amazonPayIciciIssued: state.amazonPayIciciIssued,
       primeMember: state.primeMember,
@@ -128,6 +129,9 @@ export function RecommendationWidget({ onLogged }: Props) {
     if (best.cardId === "amex_gold") {
       if (amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);
       if (best.label.toLowerCase().includes("shopwise")) next.goldShopwiseUsedThisMonth += amt;
+    }
+    if (best.cardId === "bob_eterna" && best.label.toLowerCase().includes("bogo")) {
+      next.bobBogoUsedThisMonth = true;
     }
     if (best.cardId === "amazon_pay_icici" && best.label.toLowerCase().includes("balance")) {
       next.amazonPayBalance = Math.max(0, next.amazonPayBalance - Math.min(next.amazonPayBalance, amt));

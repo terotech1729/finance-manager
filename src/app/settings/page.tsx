@@ -42,6 +42,7 @@ const TOGGLES: { key: keyof AppState; label: string }[] = [
   { key: "amazonPayIciciIssued", label: "Amazon Pay ICICI issued (received)" },
   { key: "primeMember", label: "Amazon Prime member" },
   { key: "bobWelcomeUnlocked", label: "BOB Eterna ₹50K welcome bonus already credited" },
+  { key: "bobBogoUsedThisMonth", label: "BOB Eterna BOGO movie used this calendar month (reset on 1st)" },
 ];
 
 export default function SettingsPage() {
