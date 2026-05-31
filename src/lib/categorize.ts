@@ -66,9 +66,22 @@ const RULES: Rule[] = [
   { match: /\bmeesho\b/i, category: "meesho", prettyLabel: "Meesho", channel: "online", confidence: "high" },
   { match: /\bjiomart\b|reliance\s*digital/i, category: "online (general)", prettyLabel: "Reliance / JioMart", channel: "online", confidence: "high" },
 
-  // ---- MOVIES / EVENTS ----
-  { match: /\bdistrict\b/i, category: "movies / events (District)", prettyLabel: "District (movies/events)", channel: "merchant_app", confidence: "high" },
-  { match: /\bbookmyshow\b|\bbms\b|movie\s*ticket|movie|\bpvr\b|\binox\b|cinema/i, category: "movies / events", prettyLabel: "Movie tickets", channel: "online", confidence: "high" },
+  // ---- MOVIES / EVENTS ----  (booked in-app → UPI-payable → merchant_app channel)
+  {
+    match: /\bdistrict\b|\bbookmyshow\b|\bbms\b|movie\s*ticket|movie|\bpvr\b|\binox\b|cinema/i,
+    category: "movies / events",
+    prettyLabel: "Movie / event tickets",
+    channel: "merchant_app",
+    confidence: "medium",
+    clarification: {
+      id: "movie_tickets",
+      question: "How many tickets?",
+      options: [
+        { value: "one", label: "Just 1 ticket", category: "movies / events · 1 ticket", channel: "merchant_app" },
+        { value: "multi", label: "2 or more (BOGO applies)", category: "movies / events · 2+ tickets", channel: "merchant_app" },
+      ],
+    },
+  },
 
   // ---- FOOD DELIVERY ----
   { match: /\bswiggy\s*instamart\b|\binstamart\b/i, category: "groceries", prettyLabel: "Swiggy Instamart", channel: "merchant_app", confidence: "high" },

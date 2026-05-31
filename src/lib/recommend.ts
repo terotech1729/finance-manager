@@ -722,7 +722,21 @@ export function recommend(input: RecommendInput): RecommendationResult {
 
   // ============ MOVIES / EVENTS ============
   if (merchant.includes("bookmyshow") || merchant.includes("bms") || merchant.includes("district") || merchant.includes("pvr") || merchant.includes("inox") || cat.includes("movie") || cat.includes("event")) {
-    const bogoAvailable = input.bobBogoUsedThisMonth !== true;
+    const oneTicket = cat.includes("1 ticket");
+    // BOGO needs a 2nd ticket; not used yet this month; District-app only.
+    const bogoAvailable = input.bobBogoUsedThisMonth !== true && !oneTicket;
+    if (oneTicket) {
+      add({
+        cardId: "bob_eterna",
+        label: "Single ticket — BOGO doesn't apply (needs 2 tickets)",
+        effectivePct: 0,
+        baseRewardInr: 0,
+        pros: ["The BOB Eterna BOGO frees the 2nd ticket — with 1 ticket there's nothing to discount"],
+        cons: ["Book 2+ tickets (even gifting one) to unlock ~₹250 off via the District BOGO"],
+        rationale: "You're booking a single ticket, so the buy-1-get-1 can't trigger. If you'll ever book 2, do it together on District for the free 2nd ticket. Otherwise the routes below are your best for one ticket.",
+        steps: ["For 1 ticket, pick the best route below (UPI/Kiwi, Amazon Pay, etc.)"],
+      });
+    }
     if (bogoAvailable) {
       // Buy-1-Get-1: 2nd ticket 100% off up to ₹250, once per calendar month — DISTRICT app only.
       // Paying via BOB on District ALSO counts toward the ₹50K welcome window, so add that marginal.
