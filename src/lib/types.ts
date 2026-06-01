@@ -81,6 +81,30 @@ export type Investment = {
   notes?: string;
 };
 
+export type PaymentMethod = "upi" | "neft" | "net_banking" | "card";
+
+// A single money-in event (SIP, lump sum, opening balance) attached to a holding.
+export type Contribution = {
+  id: string;
+  date: string; // ISO
+  amount: number;
+  paymentMethod?: PaymentMethod;
+  note?: string;
+};
+
+// A position you hold in one asset. Periodic SIPs / top-ups accumulate as contributions,
+// so the same smallcase/fund/stock stays a single line that grows over time.
+export type Holding = {
+  id: string;
+  name: string; // e.g. "Large and Midcap Tracker", "Reliance Industries"
+  type: InvestmentType;
+  platform?: string; // e.g. "Smallcase", "Zerodha", "Groww"
+  contributions: Contribution[]; // cost basis = sum of these
+  currentValue?: number; // latest market value (manually updated) for P/L
+  currentValueDate?: string; // ISO of last value update
+  notes?: string;
+};
+
 export type CashkaroRate = {
   merchant: string;
   category?: string;

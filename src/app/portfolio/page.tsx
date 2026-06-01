@@ -1,74 +1,101 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 import Link from "next/link";
-import { loadInvestments } from "@/lib/storage";
+import { loadHoldings, holdingInvested } from "@/lib/storage";
 import { colorFor } from "@/lib/chartColors";
 import { monthLabel } from "@/lib/history";
 import { inr, inrExact } from "@/lib/utils";
-import type { Investment } from "@/lib/types";
+import { typeLabel, typeIcon } from "@/lib/investmentTypes";
+import type { Holding } from "@/lib/types";
 import { Icon } from "@/components/Icons";
-
-const TYPE_LABELS: Record<string, string> = {
-  smallcase: "Smallcase", stocks: "Stocks", mutual_fund: "Mutual Fund", bonds: "Bonds",
-  crypto: "Crypto", fd: "Fixed Deposit", rd: "Recurring Deposit", gold: "Gold", real_estate: "Real Estate", other: "Other",
-};
 
 export default function InvestmentAnalyzerPage() {
   const [mounted, setMounted] = useState(false);
-  const [items, setItems] = useState<Investment[]>([]);
-  useEffect(() => { setMounted(true); setItems(loadInvestments()); }, []);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  useEffect(() => { setMounted(true); setHoldings(loadHoldings()); }, []);
 
-  const total = items.reduce((a, i) => a + i.amount, 0);
+  const data = useMemo(() => {
+    const rows = holdings.map((h) => {
+      const invested = holdingInvested(h);
+      const value = h.currentValue ?? invested;
+      return { h, invested, value, abs: value - invested, hasValue: h.currentValue != null };
+    });
+    const totalInvested = rows.reduce((a, r) => a + r.invested, 0);
+    const totalValue = rows.reduce((a, r) => a + r.value, 0);
 
-  const byType: Record<string, number> = {};
-  items.forEach((i) => { byType[i.type] = (byType[i.type] ?? 0) + i.amount; });
-  const typeData = Object.entries(byType).map(([k, v]) => ({ key: k, name: TYPE_LABELS[k] ?? k, value: v })).sort((a, b) => b.value - a.value);
+    const byTypeMap: Record<string, { invested: number; value: number }> = {};
+    rows.forEach((r) => {
+      const k = r.h.type;
+      byTypeMap[k] = byTypeMap[k] ?? { invested: 0, value: 0 };
+      byTypeMap[k].invested += r.invested;
+      byTypeMap[k].value += r.value;
+    });
+    const typeData = Object.entries(byTypeMap)
+      .map(([k, v]) => ({ key: k, name: typeLabel(k), value: v.value, invested: v.invested }))
+      .sort((a, b) => b.value - a.value);
 
-  const byPlatform: Record<string, number> = {};
-  items.forEach((i) => { const p = i.platform || "Unspecified"; byPlatform[p] = (byPlatform[p] ?? 0) + i.amount; });
-  const platformData = Object.entries(byPlatform).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    const byPlatform: Record<string, number> = {};
+    rows.forEach((r) => { const p = r.h.platform || "Unspecified"; byPlatform[p] = (byPlatform[p] ?? 0) + r.value; });
+    const platformData = Object.entries(byPlatform).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
-  const byMonth: Record<string, number> = {};
-  items.forEach((i) => { const ym = i.date.slice(0, 7); byMonth[ym] = (byMonth[ym] ?? 0) + i.amount; });
-  const monthData = Object.entries(byMonth).sort().map(([ym, value]) => ({ month: monthLabel(ym), value }));
+    const byMonth: Record<string, number> = {};
+    holdings.forEach((h) => (h.contributions ?? []).forEach((c) => {
+      const ym = c.date.slice(0, 7); byMonth[ym] = (byMonth[ym] ?? 0) + c.amount;
+    }));
+    const monthData = Object.entries(byMonth).sort().map(([ym, value]) => ({ month: monthLabel(ym), value }));
 
-  if (items.length === 0) {
+    const topHoldings = [...rows].sort((a, b) => b.value - a.value);
+
+    return {
+      rows, totalInvested, totalValue, abs: totalValue - totalInvested,
+      pct: totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0,
+      typeData, platformData, monthData, topHoldings,
+    };
+  }, [holdings]);
+
+  if (holdings.length === 0) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Investment Analyzer</h1>
-          <p className="text-fg-muted mt-1">Charts of your asset allocation, deployment over time, and platforms.</p>
+          <p className="text-fg-muted mt-1">Allocation, deployment over time, and gains across your holdings.</p>
         </div>
         <div className="card-shell p-8 text-center text-fg-muted">
           <Icon.Trophy className="mx-auto mb-2 opacity-50" size={32} />
-          <div>No investments logged yet.</div>
-          <Link href="/investments" className="btn-primary inline-flex mt-4"><Icon.Plus size={16} /> Log an investment</Link>
+          <div>No holdings yet.</div>
+          <Link href="/investments" className="btn-primary inline-flex mt-4"><Icon.Plus size={16} /> Add a holding</Link>
         </div>
       </div>
     );
   }
 
-  const topType = typeData[0];
+  const top = data.typeData[0];
 
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Investment Analyzer</h1>
-          <p className="text-fg-muted mt-1">Asset allocation, deployment over time, and platform split.</p>
+          <p className="text-fg-muted mt-1">Allocation, gains, deployment over time, and platform split.</p>
         </div>
-        <Link href="/investments" className="btn-secondary"><Icon.Plus size={16} /> Log investment</Link>
+        <Link href="/investments" className="btn-secondary"><Icon.Plus size={16} /> Manage holdings</Link>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <div className="stat-tile"><div className="label">Total invested</div><div className="text-2xl font-semibold mt-1 text-info">{inr(total)}</div><div className="text-xs text-fg-muted mt-1">{items.length} entries</div></div>
-        <div className="stat-tile"><div className="label">Largest allocation</div><div className="text-2xl font-semibold mt-1">{topType?.name ?? "—"}</div><div className="text-xs text-fg-muted mt-1">{topType ? `${((topType.value / total) * 100).toFixed(1)}%` : ""}</div></div>
-        <div className="stat-tile col-span-2 md:col-span-1"><div className="label">Asset types</div><div className="text-2xl font-semibold mt-1">{typeData.length}</div></div>
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="stat-tile"><div className="label">Invested (cost)</div><div className="text-2xl font-semibold mt-1">{inr(data.totalInvested)}</div><div className="text-xs text-fg-muted mt-1">{holdings.length} holdings</div></div>
+        <div className="stat-tile"><div className="label">Current value</div><div className="text-2xl font-semibold mt-1 text-info">{inr(data.totalValue)}</div></div>
+        <div className="stat-tile">
+          <div className="label">Unrealized P/L</div>
+          <div className={`text-2xl font-semibold mt-1 ${data.abs >= 0 ? "text-success" : "text-danger"}`}>{data.abs >= 0 ? "+" : "−"}{inr(Math.abs(data.abs))}</div>
+          <div className={`text-xs mt-1 ${data.abs >= 0 ? "text-success" : "text-danger"}`}>{data.abs >= 0 ? "+" : "−"}{Math.abs(data.pct).toFixed(2)}%</div>
+        </div>
+        <div className="stat-tile"><div className="label">Largest sleeve</div><div className="text-2xl font-semibold mt-1">{top?.name ?? "—"}</div><div className="text-xs text-fg-muted mt-1">{top ? `${((top.value / Math.max(data.totalValue, 1)) * 100).toFixed(1)}%` : ""}</div></div>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -77,8 +104,8 @@ export default function InvestmentAnalyzerPage() {
           {mounted && (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
-                <Pie data={typeData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={110} paddingAngle={2}>
-                  {typeData.map((d, i) => <Cell key={d.key} fill={colorFor("", i)} />)}
+                <Pie data={data.typeData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={110} paddingAngle={2}>
+                  {data.typeData.map((d, i) => <Cell key={d.key} fill={colorFor("", i)} />)}
                 </Pie>
                 <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }} formatter={(v) => inrExact(Number(v))} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -88,15 +115,17 @@ export default function InvestmentAnalyzerPage() {
         </section>
 
         <section className="card-shell p-5">
-          <h2 className="font-semibold mb-4">Invested per month</h2>
+          <h2 className="font-semibold mb-4">Invested vs current value, by type</h2>
           {mounted && (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={monthData} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+              <BarChart data={data.typeData} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} interval={0} angle={-12} textAnchor="end" height={50} />
                 <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `₹${v / 1000}k`} />
                 <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }} formatter={(v) => inrExact(Number(v))} />
-                <Bar dataKey="value" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="invested" name="Invested" fill="#64748b" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" name="Current value" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -104,19 +133,59 @@ export default function InvestmentAnalyzerPage() {
       </div>
 
       <section className="card-shell p-5">
-        <h2 className="font-semibold mb-4">By platform</h2>
-        {mounted && (
-          <ResponsiveContainer width="100%" height={Math.max(160, platformData.length * 44)}>
-            <BarChart data={platformData} layout="vertical" margin={{ top: 4, right: 16, left: 80, bottom: 4 }}>
+        <h2 className="font-semibold mb-4">Contributions per month</h2>
+        {mounted && data.monthData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={data.monthData} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `₹${v / 1000}k`} />
-              <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} width={110} />
+              <XAxis dataKey="month" tick={{ fill: "#94a3b8", fontSize: 12 }} />
+              <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `₹${v / 1000}k`} />
               <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }} formatter={(v) => inrExact(Number(v))} />
-              <Bar dataKey="value" fill="#84cc16" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="value" name="Contributed" fill="#22c55e" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        )}
+        ) : <div className="text-xs text-fg-muted">No dated contributions yet.</div>}
       </section>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        <section className="card-shell p-5">
+          <h2 className="font-semibold mb-4">By platform</h2>
+          {mounted && (
+            <ResponsiveContainer width="100%" height={Math.max(160, data.platformData.length * 44)}>
+              <BarChart data={data.platformData} layout="vertical" margin={{ top: 4, right: 16, left: 80, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `₹${v / 1000}k`} />
+                <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} width={110} />
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }} formatter={(v) => inrExact(Number(v))} />
+                <Bar dataKey="value" fill="#84cc16" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </section>
+
+        <section className="card-shell p-5">
+          <h2 className="font-semibold mb-4">Top holdings</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-fg-muted text-[10px] uppercase tracking-wide">
+                <tr><th className="text-left py-1">Holding</th><th className="text-right">Invested</th><th className="text-right">Value</th><th className="text-right">P/L</th></tr>
+              </thead>
+              <tbody>
+                {data.topHoldings.map((r) => (
+                  <tr key={r.h.id} className="border-t border-border/60">
+                    <td className="py-2 pr-2"><span className="mr-1">{typeIcon(r.h.type)}</span>{r.h.name}</td>
+                    <td className="text-right text-fg-muted">{inrExact(r.invested)}</td>
+                    <td className="text-right font-medium">{inrExact(r.value)}</td>
+                    <td className={`text-right ${r.abs >= 0 ? "text-success" : "text-danger"}`}>
+                      {r.hasValue ? `${r.abs >= 0 ? "+" : "−"}${(r.invested > 0 ? Math.abs(r.abs / r.invested * 100) : 0).toFixed(1)}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

@@ -1,235 +1,336 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { addInvestment, deleteInvestment, loadInvestments } from "@/lib/storage";
-import type { Investment, InvestmentType } from "@/lib/types";
+import { useEffect, useMemo, useState } from "react";
+import {
+  loadHoldings, addHolding, deleteHolding, addContribution, deleteContribution,
+  updateHolding, holdingInvested,
+} from "@/lib/storage";
+import type { Holding, InvestmentType, PaymentMethod } from "@/lib/types";
+import { INVESTMENT_TYPES, PAYMENT_METHODS, typeIcon, typeLabel } from "@/lib/investmentTypes";
 import { inr, inrExact, newId, todayLocal, localDateToISO } from "@/lib/utils";
 import { Icon } from "@/components/Icons";
 import { Callout } from "@/components/Callout";
 
-const TYPES: { v: InvestmentType; l: string; icon: string }[] = [
-  { v: "smallcase", l: "Smallcase", icon: "📊" },
-  { v: "stocks", l: "Stocks (direct)", icon: "📈" },
-  { v: "mutual_fund", l: "Mutual Fund", icon: "📑" },
-  { v: "bonds", l: "Bonds / G-Sec", icon: "🏦" },
-  { v: "crypto", l: "Crypto", icon: "₿" },
-  { v: "fd", l: "Fixed Deposit", icon: "🔒" },
-  { v: "rd", l: "Recurring Deposit", icon: "🔁" },
-  { v: "gold", l: "Gold (digital / physical)", icon: "🪙" },
-  { v: "real_estate", l: "Real Estate", icon: "🏠" },
-  { v: "other", l: "Other", icon: "•" },
-];
-
-const PAYMENT_METHODS = [
-  { v: "upi", l: "UPI" },
-  { v: "neft", l: "NEFT / Bank transfer" },
-  { v: "net_banking", l: "Net banking" },
-  { v: "card", l: "Card (rare for investments)" },
-];
+function pnl(h: Holding) {
+  const invested = holdingInvested(h);
+  const value = h.currentValue ?? invested;
+  const abs = value - invested;
+  const pct = invested > 0 ? (abs / invested) * 100 : 0;
+  return { invested, value, abs, pct, hasValue: h.currentValue != null };
+}
 
 export default function InvestmentsPage() {
-  const [items, setItems] = useState<Investment[]>([]);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [showAdd, setShowAdd] = useState(false);
+
+  // Add-holding form
+  const [name, setName] = useState("");
   const [type, setType] = useState<InvestmentType>("stocks");
-  const [amount, setAmount] = useState("");
-  const [asset, setAsset] = useState("");
   const [platform, setPlatform] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"upi" | "neft" | "net_banking" | "card">("upi");
-  const [notes, setNotes] = useState("");
+  const [opening, setOpening] = useState("");
+  const [curVal, setCurVal] = useState("");
   const [date, setDate] = useState(() => todayLocal());
+  const [method, setMethod] = useState<PaymentMethod>("upi");
+  const [notes, setNotes] = useState("");
 
-  useEffect(() => { setItems(loadInvestments()); }, []);
+  // Per-holding inline editors
+  const [addMoneyFor, setAddMoneyFor] = useState<string | null>(null);
+  const [valueFor, setValueFor] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  const amt = Number((amount || "0").replace(/[^0-9.]/g, "")) || 0;
+  useEffect(() => { setHoldings(loadHoldings()); }, []);
 
-  const onLog = () => {
-    if (!amt) return;
-    const inv: Investment = {
+  const totals = useMemo(() => {
+    let invested = 0, value = 0;
+    holdings.forEach((h) => { const p = pnl(h); invested += p.invested; value += p.value; });
+    return { invested, value, abs: value - invested, pct: invested > 0 ? ((value - invested) / invested) * 100 : 0 };
+  }, [holdings]);
+
+  const sorted = useMemo(
+    () => [...holdings].sort((a, b) => pnl(b).value - pnl(a).value),
+    [holdings]
+  );
+
+  const onAddHolding = () => {
+    if (!name.trim()) return;
+    const opAmt = Number((opening || "0").replace(/[^0-9.]/g, "")) || 0;
+    const cv = Number((curVal || "").replace(/[^0-9.]/g, ""));
+    const h: Holding = {
       id: newId(),
-      date: localDateToISO(date),
+      name: name.trim(),
       type,
-      amount: amt,
-      asset: asset || undefined,
-      platform: platform || undefined,
-      paymentMethod,
-      notes: notes || undefined,
+      platform: platform.trim() || undefined,
+      contributions: opAmt > 0
+        ? [{ id: newId(), date: localDateToISO(date), amount: opAmt, paymentMethod: method, note: "Opening balance" }]
+        : [],
+      currentValue: curVal ? cv : undefined,
+      currentValueDate: curVal ? localDateToISO(date) : undefined,
+      notes: notes.trim() || undefined,
     };
-    setItems(addInvestment(inv));
-    setAmount("");
-    setAsset("");
-    setPlatform("");
-    setNotes("");
-    setDate(todayLocal());
+    setHoldings(addHolding(h));
+    setName(""); setPlatform(""); setOpening(""); setCurVal(""); setNotes(""); setDate(todayLocal());
+    setShowAdd(false);
   };
-
-  const onDelete = (id: string) => setItems(deleteInvestment(id));
-
-  // Aggregations
-  const totalInvested = items.reduce((acc, i) => acc + i.amount, 0);
-  const byType: Record<string, number> = {};
-  items.forEach((i) => {
-    byType[i.type] = (byType[i.type] ?? 0) + i.amount;
-  });
-  const sortedByType = Object.entries(byType).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Investments</h1>
-          <p className="text-fg-muted mt-1">Log every investment to track total deployed capital and asset allocation over time.</p>
+          <p className="text-fg-muted mt-1">Track each holding as one position. SIPs &amp; top-ups add to the same holding so it grows over time.</p>
         </div>
+        <button className="btn-primary" onClick={() => setShowAdd((v) => !v)}>
+          <Icon.Plus size={16} /> {showAdd ? "Close" : "Add holding"}
+        </button>
       </div>
 
-      {/* Summary stats */}
+      {/* Portfolio KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="stat-tile">
-          <div className="label">Total invested (logged)</div>
-          <div className="text-2xl font-semibold mt-1 text-info">{inr(totalInvested)}</div>
-          <div className="text-xs text-fg-muted mt-1">{items.length} entries</div>
+          <div className="label">Invested (cost)</div>
+          <div className="text-2xl font-semibold mt-1">{inr(totals.invested)}</div>
+          <div className="text-xs text-fg-muted mt-1">{holdings.length} holdings</div>
         </div>
-        {sortedByType.slice(0, 3).map(([t, amt]) => {
-          const cfg = TYPES.find((x) => x.v === t);
-          return (
-            <div key={t} className="stat-tile">
-              <div className="label">{cfg?.l ?? t}</div>
-              <div className="text-2xl font-semibold mt-1">{inr(amt)}</div>
-              <div className="text-xs text-fg-muted mt-1">{((amt / Math.max(totalInvested, 1)) * 100).toFixed(1)}% of portfolio</div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Log new investment */}
-      <div className="card-shell bg-gradient-to-br from-info/5 via-bg-elevated to-bg-elevated border-info/30">
-        <div className="card-header">
-          <div className="flex items-center gap-2">
-            <Icon.Sparkles className="text-info" />
-            <div>
-              <div className="font-semibold">Log a new investment</div>
-              <div className="text-xs text-fg-muted">Track deployed capital separately from credit-card spends</div>
-            </div>
+        <div className="stat-tile">
+          <div className="label">Current value</div>
+          <div className="text-2xl font-semibold mt-1 text-info">{inr(totals.value)}</div>
+          <div className="text-xs text-fg-muted mt-1">where market value set</div>
+        </div>
+        <div className="stat-tile">
+          <div className="label">Unrealized P/L</div>
+          <div className={`text-2xl font-semibold mt-1 ${totals.abs >= 0 ? "text-success" : "text-danger"}`}>
+            {totals.abs >= 0 ? "+" : "−"}{inr(Math.abs(totals.abs))}
+          </div>
+          <div className={`text-xs mt-1 ${totals.abs >= 0 ? "text-success" : "text-danger"}`}>
+            {totals.abs >= 0 ? "+" : "−"}{Math.abs(totals.pct).toFixed(2)}%
           </div>
         </div>
-        <div className="card-body space-y-4">
-          <div className="grid sm:grid-cols-3 gap-3">
-            <div>
-              <div className="label mb-1">1. Type <span className="text-danger">*</span></div>
-              <select className="input" value={type} onChange={(e) => setType(e.target.value as InvestmentType)}>
-                {TYPES.map((t) => <option key={t.v} value={t.v}>{t.icon} {t.l}</option>)}
-              </select>
-            </div>
-            <div>
-              <div className="label mb-1">2. Amount (₹) <span className="text-danger">*</span></div>
-              <input className="input" placeholder="e.g. 25000" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" />
-            </div>
-            <div>
-              <div className="label mb-1">3. Payment method</div>
-              <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}>
-                {PAYMENT_METHODS.map((p) => <option key={p.v} value={p.v}>{p.l}</option>)}
-              </select>
-            </div>
-            <div>
-              <div className="label mb-1">Date</div>
-              <input type="date" className="input" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} />
-            </div>
-            <div>
-              <div className="label mb-1">Asset name <span className="text-fg-muted text-[10px] normal-case">(optional)</span></div>
-              <input className="input" placeholder="e.g. Reliance Industries / Smallcase: All Weather" value={asset} onChange={(e) => setAsset(e.target.value)} />
-            </div>
-            <div>
-              <div className="label mb-1">Platform <span className="text-fg-muted text-[10px] normal-case">(optional)</span></div>
-              <input className="input" placeholder="e.g. Zerodha, Groww, Coin DCX" value={platform} onChange={(e) => setPlatform(e.target.value)} />
-            </div>
-            <div>
-              <div className="label mb-1">Notes</div>
-              <input className="input" placeholder="Free text" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <button className="btn-secondary" onClick={() => { setAmount(""); setAsset(""); setPlatform(""); setNotes(""); }}>Clear</button>
-            <button className="btn-primary" onClick={onLog} disabled={!amt}>
-              <Icon.Plus size={16} /> Log investment
-            </button>
-          </div>
+        <div className="stat-tile">
+          <div className="label">Asset types</div>
+          <div className="text-2xl font-semibold mt-1">{new Set(holdings.map((h) => h.type)).size}</div>
+          <div className="text-xs text-fg-muted mt-1"><a href="/portfolio" className="underline">open analyzer →</a></div>
         </div>
       </div>
 
-      <Callout tone="info" title="Note on credit-card payments for investments">
-        SEBI prohibits credit-card payment for direct stock / mutual fund investments. UPI from your bank account is the standard route. Some brokers may allow CC for wallet top-up but charge a 1% fee that wipes any reward. <b>Always pay investments via UPI or NEFT.</b>
-      </Callout>
-
-      {/* Allocation table */}
-      {sortedByType.length > 0 && (
-        <section>
-          <h2 className="text-lg font-bold mb-3">Asset allocation</h2>
-          <div className="card-shell">
-            <table className="w-full text-sm">
-              <thead className="text-fg-muted text-xs uppercase tracking-wide">
-                <tr>
-                  <th className="text-left p-3">Type</th>
-                  <th className="text-right">Amount</th>
-                  <th className="text-right p-3">% of portfolio</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedByType.map(([t, amt]) => {
-                  const cfg = TYPES.find((x) => x.v === t);
-                  return (
-                    <tr key={t} className="table-row">
-                      <td className="p-3 font-medium">{cfg?.icon} {cfg?.l ?? t}</td>
-                      <td className="text-right">{inrExact(amt)}</td>
-                      <td className="text-right p-3">{((amt / Math.max(totalInvested, 1)) * 100).toFixed(1)}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {/* Add holding */}
+      {showAdd && (
+        <div className="card-shell bg-gradient-to-br from-info/5 via-bg-elevated to-bg-elevated border-info/30">
+          <div className="card-header">
+            <div className="flex items-center gap-2">
+              <Icon.Sparkles className="text-info" />
+              <div>
+                <div className="font-semibold">Add a holding</div>
+                <div className="text-xs text-fg-muted">Enter what you already hold — set the invested-so-far as the opening balance, and the current market value if you know it.</div>
+              </div>
+            </div>
           </div>
-        </section>
+          <div className="card-body space-y-4">
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <div className="label mb-1">Holding name <span className="text-danger">*</span></div>
+                <input className="input" placeholder="e.g. Large and Midcap Tracker / Reliance Industries" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+              </div>
+              <div>
+                <div className="label mb-1">Type <span className="text-danger">*</span></div>
+                <select className="input" value={type} onChange={(e) => setType(e.target.value as InvestmentType)}>
+                  {INVESTMENT_TYPES.map((t) => <option key={t.v} value={t.v}>{t.icon} {t.l}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="label mb-1">Invested so far (₹)</div>
+                <input className="input" placeholder="e.g. 50000" value={opening} onChange={(e) => setOpening(e.target.value)} inputMode="numeric" />
+              </div>
+              <div>
+                <div className="label mb-1">Current value (₹) <span className="text-fg-muted text-[10px] normal-case">(optional)</span></div>
+                <input className="input" placeholder="e.g. 58200" value={curVal} onChange={(e) => setCurVal(e.target.value)} inputMode="numeric" />
+              </div>
+              <div>
+                <div className="label mb-1">As of date</div>
+                <input type="date" className="input" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} />
+              </div>
+              <div>
+                <div className="label mb-1">Platform <span className="text-fg-muted text-[10px] normal-case">(optional)</span></div>
+                <input className="input" placeholder="e.g. Smallcase, Zerodha, Groww" value={platform} onChange={(e) => setPlatform(e.target.value)} />
+              </div>
+              <div>
+                <div className="label mb-1">Method (opening)</div>
+                <select className="input" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
+                  {PAYMENT_METHODS.map((p) => <option key={p.v} value={p.v}>{p.l}</option>)}
+                </select>
+              </div>
+              <div className="sm:col-span-3">
+                <div className="label mb-1">Notes</div>
+                <input className="input" placeholder="Free text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button className="btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
+              <button className="btn-primary" onClick={onAddHolding} disabled={!name.trim()}>
+                <Icon.Plus size={16} /> Add holding
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Investment log */}
+      <Callout tone="info" title="Note on credit-card payments for investments">
+        SEBI prohibits credit-card payment for direct stock / mutual fund investments. Pay via UPI or NEFT from your bank — some brokers allow CC for wallet top-up but charge ~1% that wipes any reward. <b>Always pay investments via UPI or NEFT.</b>
+      </Callout>
+
+      {/* Holdings */}
       <section>
-        <h2 className="text-lg font-bold mb-3">Investment log ({items.length})</h2>
-        {items.length === 0 ? (
+        <h2 className="text-lg font-bold mb-3">Your holdings ({holdings.length})</h2>
+        {holdings.length === 0 ? (
           <div className="card-shell p-8 text-center text-fg-muted">
             <Icon.Trophy className="mx-auto mb-2 opacity-50" size={32} />
-            No investments logged yet. Use the form above to start tracking.
+            No holdings yet. Click <b>Add holding</b> to enter your existing portfolio.
           </div>
         ) : (
-          <div className="card-shell">
-            <table className="w-full text-sm">
-              <thead className="text-fg-muted text-xs uppercase tracking-wide">
-                <tr>
-                  <th className="text-left p-3">Date</th>
-                  <th className="text-left">Type</th>
-                  <th className="text-left">Asset</th>
-                  <th className="text-left">Platform</th>
-                  <th className="text-left">Method</th>
-                  <th className="text-right">Amount</th>
-                  <th className="p-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((i) => {
-                  const cfg = TYPES.find((x) => x.v === i.type);
-                  return (
-                    <tr key={i.id} className="table-row">
-                      <td className="p-3 text-fg-muted">{new Date(i.date).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "2-digit" })}</td>
-                      <td>{cfg?.icon} {cfg?.l ?? i.type}</td>
-                      <td className="text-fg-muted">{i.asset ?? "—"}</td>
-                      <td className="text-fg-muted">{i.platform ?? "—"}</td>
-                      <td className="text-fg-muted text-xs uppercase">{i.paymentMethod ?? "—"}</td>
-                      <td className="text-right font-medium">{inrExact(i.amount)}</td>
-                      <td className="p-3"><button className="btn-ghost text-xs" onClick={() => onDelete(i.id)}>Delete</button></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {sorted.map((h) => {
+              const p = pnl(h);
+              const isOpen = expanded === h.id;
+              const contribs = [...(h.contributions ?? [])].sort((a, b) => b.date.localeCompare(a.date));
+              return (
+                <div key={h.id} className="card-shell">
+                  <div className="p-4 flex items-center justify-between gap-4 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-lg">{typeIcon(h.type)}</span>
+                        <span className="font-semibold truncate">{h.name}</span>
+                        <span className="pill-neutral text-[10px] uppercase">{typeLabel(h.type)}</span>
+                        {h.platform && <span className="text-xs text-fg-muted">· {h.platform}</span>}
+                      </div>
+                      <div className="text-xs text-fg-muted mt-1">
+                        Invested {inrExact(p.invested)} · {(h.contributions ?? []).length} contribution{(h.contributions ?? []).length === 1 ? "" : "s"}
+                        {p.hasValue && h.currentValueDate && <> · value as of {new Date(h.currentValueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })}</>}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-xl font-bold">{inrExact(p.value)}</div>
+                      {p.hasValue ? (
+                        <div className={`text-xs font-medium ${p.abs >= 0 ? "text-success" : "text-danger"}`}>
+                          {p.abs >= 0 ? "+" : "−"}{inrExact(Math.abs(p.abs))} ({p.abs >= 0 ? "+" : "−"}{Math.abs(p.pct).toFixed(2)}%)
+                        </div>
+                      ) : (
+                        <div className="text-xs text-fg-muted">no market value set</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="px-4 pb-3 flex items-center gap-2 flex-wrap border-t border-border pt-3">
+                    <button className="btn-secondary text-xs" onClick={() => { setAddMoneyFor(addMoneyFor === h.id ? null : h.id); setValueFor(null); }}>
+                      <Icon.Plus size={14} /> Add money
+                    </button>
+                    <button className="btn-secondary text-xs" onClick={() => { setValueFor(valueFor === h.id ? null : h.id); setAddMoneyFor(null); }}>
+                      Update value
+                    </button>
+                    <button className="btn-ghost text-xs" onClick={() => setExpanded(isOpen ? null : h.id)}>
+                      {isOpen ? "Hide" : "Contributions"} {((h.contributions ?? []).length)}
+                    </button>
+                    <button className="btn-ghost text-xs text-danger ml-auto" onClick={() => { if (confirm(`Delete "${h.name}" and all its contributions?`)) setHoldings(deleteHolding(h.id)); }}>
+                      Delete holding
+                    </button>
+                  </div>
+
+                  {addMoneyFor === h.id && (
+                    <AddMoneyRow
+                      onCancel={() => setAddMoneyFor(null)}
+                      onSubmit={(amount, d, m, note) => {
+                        setHoldings(addContribution(h.id, { id: newId(), date: localDateToISO(d), amount, paymentMethod: m, note }));
+                        setAddMoneyFor(null);
+                      }}
+                    />
+                  )}
+
+                  {valueFor === h.id && (
+                    <UpdateValueRow
+                      current={h.currentValue}
+                      onCancel={() => setValueFor(null)}
+                      onSubmit={(val, d) => {
+                        setHoldings(updateHolding(h.id, { currentValue: val, currentValueDate: localDateToISO(d) }));
+                        setValueFor(null);
+                      }}
+                    />
+                  )}
+
+                  {isOpen && (
+                    <div className="px-4 pb-4">
+                      {contribs.length === 0 ? (
+                        <div className="text-xs text-fg-muted py-2">No contributions logged. Use “Add money”.</div>
+                      ) : (
+                        <table className="w-full text-sm">
+                          <thead className="text-fg-muted text-[10px] uppercase tracking-wide">
+                            <tr><th className="text-left py-1">Date</th><th className="text-left">Method</th><th className="text-left">Note</th><th className="text-right">Amount</th><th></th></tr>
+                          </thead>
+                          <tbody>
+                            {contribs.map((c) => (
+                              <tr key={c.id} className="border-t border-border/60">
+                                <td className="py-1.5 text-fg-muted">{new Date(c.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })}</td>
+                                <td className="text-fg-muted text-xs uppercase">{c.paymentMethod ?? "—"}</td>
+                                <td className="text-fg-muted">{c.note ?? "—"}</td>
+                                <td className="text-right font-medium">{inrExact(c.amount)}</td>
+                                <td className="text-right"><button className="btn-ghost text-[11px] text-danger" onClick={() => setHoldings(deleteContribution(h.id, c.id))}>Remove</button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function AddMoneyRow({ onSubmit, onCancel }: { onSubmit: (amount: number, date: string, method: PaymentMethod, note?: string) => void; onCancel: () => void; }) {
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(() => todayLocal());
+  const [method, setMethod] = useState<PaymentMethod>("upi");
+  const [note, setNote] = useState("");
+  const amt = Number((amount || "0").replace(/[^0-9.]/g, "")) || 0;
+  return (
+    <div className="px-4 pb-4 pt-1 bg-bg-chrome/40">
+      <div className="text-xs text-fg-muted mb-2">Add a SIP / top-up to this holding:</div>
+      <div className="grid sm:grid-cols-[1fr_1fr_1fr_1.4fr_auto] gap-2 items-end">
+        <div><div className="label mb-1">Amount (₹)</div><input className="input" inputMode="numeric" placeholder="e.g. 5000" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <div><div className="label mb-1">Date</div><input type="date" className="input" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} /></div>
+        <div>
+          <div className="label mb-1">Method</div>
+          <select className="input" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
+            {PAYMENT_METHODS.map((p) => <option key={p.v} value={p.v}>{p.l}</option>)}
+          </select>
+        </div>
+        <div><div className="label mb-1">Note</div><input className="input" placeholder="optional" value={note} onChange={(e) => setNote(e.target.value)} /></div>
+        <div className="flex gap-2">
+          <button className="btn-primary" disabled={!amt} onClick={() => onSubmit(amt, date, method, note.trim() || undefined)}>Add</button>
+          <button className="btn-secondary" onClick={onCancel}>×</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UpdateValueRow({ current, onSubmit, onCancel }: { current?: number; onSubmit: (value: number, date: string) => void; onCancel: () => void; }) {
+  const [val, setVal] = useState(current != null ? String(current) : "");
+  const [date, setDate] = useState(() => todayLocal());
+  const v = Number((val || "0").replace(/[^0-9.]/g, "")) || 0;
+  return (
+    <div className="px-4 pb-4 pt-1 bg-bg-chrome/40">
+      <div className="text-xs text-fg-muted mb-2">Enter the latest market value of this holding (for P/L):</div>
+      <div className="grid sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+        <div><div className="label mb-1">Current value (₹)</div><input className="input" inputMode="numeric" placeholder="e.g. 58200" value={val} onChange={(e) => setVal(e.target.value)} /></div>
+        <div><div className="label mb-1">As of date</div><input type="date" className="input" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} /></div>
+        <div className="flex gap-2">
+          <button className="btn-primary" disabled={!v} onClick={() => onSubmit(v, date)}>Save</button>
+          <button className="btn-secondary" onClick={onCancel}>×</button>
+        </div>
+      </div>
     </div>
   );
 }

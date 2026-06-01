@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { loadState, loadTransactions, loadInvestments, type AppState } from "@/lib/storage";
+import { loadState, loadTransactions, loadHoldings, holdingInvested, type AppState } from "@/lib/storage";
 import { CARDS } from "@/lib/cards";
 import { inr, inrExact, nfmt } from "@/lib/utils";
-import type { Transaction, Investment } from "@/lib/types";
+import type { Transaction, Holding } from "@/lib/types";
 import { CardVisual } from "@/components/CardVisual";
 import { Icon } from "@/components/Icons";
 
@@ -21,11 +21,11 @@ type CurrencyTile = {
 export default function DashboardPage() {
   const [state, setState] = useState<AppState | null>(null);
   const [txns, setTxns] = useState<Transaction[]>([]);
-  const [invs, setInvs] = useState<Investment[]>([]);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
   useEffect(() => {
     setState(loadState());
     setTxns(loadTransactions());
-    setInvs(loadInvestments());
+    setHoldings(loadHoldings());
   }, []);
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 
@@ -42,7 +42,8 @@ export default function DashboardPage() {
 
   const totalLifetimeSavings = currencies.reduce((acc, c) => acc + c.inrValue, 0);
   const totalRewardsThisYear = txns.reduce((acc, t) => acc + t.rewardInr, 0);
-  const totalInvested = invs.reduce((acc, i) => acc + i.amount, 0);
+  const totalInvested = holdings.reduce((acc, h) => acc + holdingInvested(h), 0);
+  const totalPortfolioValue = holdings.reduce((acc, h) => acc + (h.currentValue ?? holdingInvested(h)), 0);
   const totalSpentThisYear = txns.reduce((acc, t) => acc + t.amount, 0);
 
   return (
@@ -87,9 +88,9 @@ export default function DashboardPage() {
           <div className="text-xs text-fg-muted mt-1">{txns.length} txns · {inr(totalRewardsThisYear)} earned in rewards</div>
         </div>
         <div className="card-shell p-5 bg-gradient-to-br from-info/10 via-bg-elevated to-bg-elevated border-info/30">
-          <div className="label">Total invested</div>
-          <div className="text-3xl font-bold mt-1 text-info">{inr(totalInvested)}</div>
-          <div className="text-xs text-fg-muted mt-1">{invs.length} investments logged · <Link href="/investments" className="underline">log new</Link></div>
+          <div className="label">Portfolio value</div>
+          <div className="text-3xl font-bold mt-1 text-info">{inr(totalPortfolioValue)}</div>
+          <div className="text-xs text-fg-muted mt-1">{inr(totalInvested)} invested across {holdings.length} holding{holdings.length === 1 ? "" : "s"} · <Link href="/investments" className="underline">manage</Link></div>
         </div>
       </section>
 

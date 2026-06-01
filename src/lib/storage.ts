@@ -1,10 +1,11 @@
-import type { Transaction, Investment } from "./types";
-import { thisMonthKey } from "./utils";
+import type { Transaction, Investment, Holding, Contribution } from "./types";
+import { thisMonthKey, newId } from "./utils";
 
 const KEYS = {
   TXNS: "ccm.transactions.v1",
   STATE: "ccm.state.v1",
   INVESTMENTS: "ccm.investments.v1",
+  HOLDINGS: "ccm.holdings.v1",
 } as const;
 
 export type AppState = {
@@ -221,11 +222,92 @@ export function deleteInvestment(id: string): Investment[] {
   return all;
 }
 
+// ---------------- Holdings (positions) ----------------
+// Each holding is one asset; SIPs / top-ups accumulate as contributions so the
+// same smallcase/fund/stock remains a single line that grows over time.
+
+export function holdingInvested(h: Holding): number {
+  return (h.contributions ?? []).reduce((a, c) => a + (c.amount || 0), 0);
+}
+
+function migrateInvestmentsToHoldings(legacy: Investment[]): Holding[] {
+  const map = new Map<string, Holding>();
+  // Oldest first so contribution order reads naturally.
+  const ordered = [...legacy].sort((a, b) => a.date.localeCompare(b.date));
+  for (const inv of ordered) {
+    const name = (inv.asset || "").trim() || `${inv.type} (unnamed)`;
+    const key = `${inv.type}::${name.toLowerCase()}::${(inv.platform || "").toLowerCase()}`;
+    let h = map.get(key);
+    if (!h) {
+      h = { id: newId(), name, type: inv.type, platform: inv.platform, contributions: [], notes: inv.notes };
+      map.set(key, h);
+    }
+    h.contributions.push({ id: inv.id || newId(), date: inv.date, amount: inv.amount, paymentMethod: inv.paymentMethod, note: inv.notes });
+  }
+  return [...map.values()];
+}
+
+export function loadHoldings(): Holding[] {
+  if (!isClient()) return [];
+  const raw = localStorage.getItem(KEYS.HOLDINGS);
+  if (raw) {
+    try { return JSON.parse(raw); } catch { return []; }
+  }
+  // One-time migration of legacy flat investments into grouped holdings.
+  const legacy = loadInvestments();
+  if (legacy.length === 0) return [];
+  const migrated = migrateInvestmentsToHoldings(legacy);
+  saveHoldings(migrated);
+  return migrated;
+}
+
+export function saveHoldings(arr: Holding[]): void {
+  if (!isClient()) return;
+  localStorage.setItem(KEYS.HOLDINGS, JSON.stringify(arr));
+  fireChange();
+}
+
+export function addHolding(h: Holding): Holding[] {
+  const all = loadHoldings();
+  all.unshift(h);
+  saveHoldings(all);
+  return all;
+}
+
+export function updateHolding(id: string, patch: Partial<Holding>): Holding[] {
+  const all = loadHoldings().map((h) => (h.id === id ? { ...h, ...patch } : h));
+  saveHoldings(all);
+  return all;
+}
+
+export function deleteHolding(id: string): Holding[] {
+  const all = loadHoldings().filter((h) => h.id !== id);
+  saveHoldings(all);
+  return all;
+}
+
+export function addContribution(holdingId: string, c: Contribution): Holding[] {
+  const all = loadHoldings().map((h) =>
+    h.id === holdingId ? { ...h, contributions: [...(h.contributions ?? []), c] } : h
+  );
+  saveHoldings(all);
+  return all;
+}
+
+export function deleteContribution(holdingId: string, contribId: string): Holding[] {
+  const all = loadHoldings().map((h) =>
+    h.id === holdingId ? { ...h, contributions: (h.contributions ?? []).filter((c) => c.id !== contribId) } : h
+  );
+  saveHoldings(all);
+  return all;
+}
+
 export function exportAll(): string {
   return JSON.stringify({
     state: loadState(),
     transactions: loadTransactions(),
     investments: loadInvestments(),
+    holdings: loadHoldings(),
   }, null, 2);
 }
 
@@ -237,6 +319,12 @@ export function importAll(json: string, silent = false): boolean {
       if (parsed.state) saveState({ ...DEFAULT_STATE, ...parsed.state });
       if (Array.isArray(parsed.transactions)) saveTransactions(parsed.transactions);
       if (Array.isArray(parsed.investments)) saveInvestments(parsed.investments);
+      if (Array.isArray(parsed.holdings)) {
+        saveHoldings(parsed.holdings);
+      } else if (Array.isArray(parsed.investments) && parsed.investments.length > 0) {
+        // Older payload without holdings: build them from the flat investments.
+        saveHoldings(migrateInvestmentsToHoldings(parsed.investments));
+      }
     } finally {
       if (silent) suppressChange = false;
     }
@@ -251,4 +339,5 @@ export function clearAll(): void {
   localStorage.removeItem(KEYS.STATE);
   localStorage.removeItem(KEYS.TXNS);
   localStorage.removeItem(KEYS.INVESTMENTS);
+  localStorage.removeItem(KEYS.HOLDINGS);
 }
