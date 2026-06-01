@@ -36,6 +36,7 @@ export function RecommendationWidget({ onLogged }: Props) {
   const [overrideCategory, setOverrideCategory] = useState<string>("");
   const [overrideChannel, setOverrideChannel] = useState<ChannelType | "">("");
   const [cashkaroOverride, setCashkaroOverride] = useState<string>("");
+  const [amazonOrderCashback, setAmazonOrderCashback] = useState<string>("");
   const [showAlts, setShowAlts] = useState(false);
 
   useEffect(() => { setStateLocal(loadState()); }, []);
@@ -91,12 +92,15 @@ export function RecommendationWidget({ onLogged }: Props) {
       amazonWelcomeClaimed: state.amazonWelcomeClaimed,
       giftCardRateOverrides: state.giftCardRateOverrides,
       cashkaroPctOverride: Number((cashkaroOverride || "").replace(/[^0-9.]/g, "")) || undefined,
+      amazonOrderCashbackInr: Number((amazonOrderCashback || "").replace(/[^0-9.]/g, "")) || undefined,
       bobEternaIssueDate: state.bobEternaIssueDate,
       bobWelcomeUnlocked: state.bobWelcomeUnlocked,
       today: localDateToISO(date),
     };
     return recommend(input);
-  }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride]);
+  }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride, amazonOrderCashback]);
+
+  const isAmazon = /amazon/i.test(merchant) || /amazon/i.test(finalCategory);
 
   const best = rec?.best;
   const alts = rec?.alternatives ?? [];
@@ -235,6 +239,28 @@ export function RecommendationWidget({ onLogged }: Props) {
             <span className="text-fg-muted">·</span>
             <span className="pill-neutral text-xs">{ALL_CHANNELS.find((c) => c.value === finalChannel)?.label ?? finalChannel}</span>
             {detection.confidence === "low" && <span className="text-xs text-warning">(low confidence — using "general"; use Advanced to override)</span>}
+          </div>
+        )}
+
+        {isAmazon && !merchantTooShort && (
+          <div className="bg-amber-50 dark:bg-amber-950/20 rounded-lg p-3 border border-amber-300/60 dark:border-amber-700/40 space-y-2">
+            <div className="text-sm font-semibold flex items-center gap-1.5">
+              <Icon.Sparkles size={14} className="text-amber-600" />
+              Amazon order — any extra offer at checkout?
+            </div>
+            <div className="text-xs text-fg-muted">
+              Amazon shows order-level offers we can&apos;t see (e.g. <em>&quot;Cashback on orders above ₹1,398 → ₹200 to Amazon Pay Wallet&quot;</em>). The standard <b>5% Amazon Pay ICICI</b> cashback is already counted — only enter the <b>extra order cashback ₹</b> shown on the order/payment page. MRP discounts &amp; Prime delivery savings are the same on every card, so leave those out.
+            </div>
+            <div className="grid sm:grid-cols-[200px_1fr] gap-2 items-center">
+              <input
+                className="input"
+                inputMode="numeric"
+                placeholder="Extra cashback ₹ (e.g. 200)"
+                value={amazonOrderCashback}
+                onChange={(e) => setAmazonOrderCashback(e.target.value)}
+              />
+              <span className="text-xs text-fg-muted">Added to the Amazon Pay ICICI route (you bank it by paying via Amazon Pay).</span>
+            </div>
           </div>
         )}
 

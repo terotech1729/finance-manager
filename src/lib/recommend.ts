@@ -87,6 +87,7 @@ export type RecommendInput = {
   amazonWelcomeClaimed?: string[];
   giftCardRateOverrides?: Record<string, number>;
   cashkaroPctOverride?: number; // live Cashkaro % you see (e.g. a limited-time sale) — overrides defaults
+  amazonOrderCashbackInr?: number; // order-level Amazon offer cashback you see at checkout (e.g. ₹200 on orders > ₹1398)
   bobEternaIssueDate?: string;
   bobWelcomeUnlocked?: boolean;
   today?: string; // ISO; used for calendar-month milestone feasibility
@@ -1273,6 +1274,24 @@ function finalize(
       steps: [],
       rationale: g.reason,
     });
+  }
+
+  // ---- Amazon order-level offer (entered by the user at checkout) ----
+  // e.g. "Cashback on orders above ₹1398 → ₹200 to Amazon Pay Wallet". These promos are
+  // captured by paying via Amazon Pay, so we attach them to the Amazon Pay ICICI routes
+  // (which is how you also bank the extra 5%). We can't know them, so the user inputs them.
+  const amazonOrderCb = input.amazonOrderCashbackInr ?? 0;
+  const isAmazonExpense = /amazon/.test(`${input.category} ${input.merchant}`.toLowerCase());
+  if (amazonOrderCb > 0 && isAmazonExpense) {
+    for (const o of options) {
+      if (o.cardId !== "amazon_pay_icici") continue;
+      o.bonusRewardInr += amazonOrderCb;
+      o.totalRewardInr += amazonOrderCb;
+      o.effectivePct = (o.totalRewardInr / amt) * 100;
+      o.worstCasePct = o.effectivePct;
+      o.bestCasePct = o.effectivePct;
+      o.pros = [...o.pros, `+ ${inr(amazonOrderCb)} Amazon order offer (you entered)`];
+    }
   }
 
   // Tag each option with liquidity + a redemption range, then rank by a LIQUIDITY-WEIGHTED

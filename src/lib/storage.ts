@@ -1,4 +1,5 @@
 import type { Transaction, Investment } from "./types";
+import { thisMonthKey } from "./utils";
 
 const KEYS = {
   TXNS: "ccm.transactions.v1",
@@ -36,6 +37,8 @@ export type AppState = {
   giftCardRateOverrides: Record<string, number>;
   // Credit-card bill / repayment tracker, keyed by "cardId:YYYY-MM"
   bills: Record<string, { billAmount: number; paid: boolean }>;
+  // Calendar month the monthly counters belong to (auto-resets when the month rolls over).
+  monthKey: string;
   // Monthly counters (legacy, kept for compat)
   monthlyTxns: {
     [yearMonth: string]: {
@@ -89,6 +92,7 @@ export const DEFAULT_STATE: AppState = {
   amazonWelcomeClaimed: [],
   giftCardRateOverrides: {},
   bills: {},
+  monthKey: "2026-05",
   monthlyTxns: {},
   amexMrPooled: 127710,
   indigoBluChips: 14172,
@@ -126,11 +130,33 @@ export function loadState(): AppState {
   if (!isClient()) return DEFAULT_STATE;
   const raw = localStorage.getItem(KEYS.STATE);
   if (!raw) return DEFAULT_STATE;
+  let st: AppState;
   try {
-    return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+    st = { ...DEFAULT_STATE, ...JSON.parse(raw) };
   } catch {
     return DEFAULT_STATE;
   }
+  // Auto-reset MONTHLY counters when the calendar month rolls over, so Amex/Scapia
+  // monthly milestones aren't perpetually treated as "done" (the root cause of starvation).
+  const mk = thisMonthKey();
+  if (!st.monthKey) {
+    // Migrating older state: adopt current month without wiping this month's progress.
+    st = { ...st, monthKey: mk };
+    localStorage.setItem(KEYS.STATE, JSON.stringify(st));
+  } else if (st.monthKey !== mk) {
+    st = {
+      ...st,
+      monthKey: mk,
+      goldThisMonthTxnsAt1k: 0,
+      mrccThisCycleTxnsAt1500: 0,
+      mrccThisCycleAmount: 0,
+      goldShopwiseUsedThisMonth: 0,
+      scapiaMonthlySpend: 0,
+      bobCycleSpend5x: 0,
+    };
+    localStorage.setItem(KEYS.STATE, JSON.stringify(st));
+  }
+  return st;
 }
 
 export function saveState(s: AppState): void {
