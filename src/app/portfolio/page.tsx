@@ -50,11 +50,12 @@ export default function InvestmentAnalyzerPage() {
     const monthData = Object.entries(byMonth).sort().map(([ym, value]) => ({ month: monthLabel(ym), value }));
 
     const topHoldings = [...rows].sort((a, b) => b.value - a.value);
+    const anyValues = rows.some((r) => r.hasValue);
 
     return {
       rows, totalInvested, totalValue, abs: totalValue - totalInvested,
       pct: totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0,
-      typeData, platformData, monthData, topHoldings,
+      typeData, platformData, monthData, topHoldings, anyValues,
     };
   }, [holdings]);
 
@@ -88,14 +89,23 @@ export default function InvestmentAnalyzerPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="stat-tile"><div className="label">Invested (cost)</div><div className="text-2xl font-semibold mt-1">{inr(data.totalInvested)}</div><div className="text-xs text-fg-muted mt-1">{holdings.length} holdings</div></div>
-        <div className="stat-tile"><div className="label">Current value</div><div className="text-2xl font-semibold mt-1 text-info">{inr(data.totalValue)}</div></div>
-        <div className="stat-tile">
-          <div className="label">Unrealized P/L</div>
-          <div className={`text-2xl font-semibold mt-1 ${data.abs >= 0 ? "text-success" : "text-danger"}`}>{data.abs >= 0 ? "+" : "−"}{inr(Math.abs(data.abs))}</div>
-          <div className={`text-xs mt-1 ${data.abs >= 0 ? "text-success" : "text-danger"}`}>{data.abs >= 0 ? "+" : "−"}{Math.abs(data.pct).toFixed(2)}%</div>
-        </div>
+        <div className="stat-tile"><div className="label">Invested (deployed)</div><div className="text-2xl font-semibold mt-1 text-info">{inr(data.totalInvested)}</div><div className="text-xs text-fg-muted mt-1">{holdings.length} holdings</div></div>
         <div className="stat-tile"><div className="label">Largest sleeve</div><div className="text-2xl font-semibold mt-1">{top?.name ?? "—"}</div><div className="text-xs text-fg-muted mt-1">{top ? `${((top.value / Math.max(data.totalValue, 1)) * 100).toFixed(1)}%` : ""}</div></div>
+        {data.anyValues ? (
+          <>
+            <div className="stat-tile"><div className="label">Current value</div><div className="text-2xl font-semibold mt-1">{inr(data.totalValue)}</div></div>
+            <div className="stat-tile">
+              <div className="label">Unrealized P/L</div>
+              <div className={`text-2xl font-semibold mt-1 ${data.abs >= 0 ? "text-success" : "text-danger"}`}>{data.abs >= 0 ? "+" : "−"}{inr(Math.abs(data.abs))}</div>
+              <div className={`text-xs mt-1 ${data.abs >= 0 ? "text-success" : "text-danger"}`}>{data.abs >= 0 ? "+" : "−"}{Math.abs(data.pct).toFixed(2)}%</div>
+            </div>
+          </>
+        ) : (
+          <div className="stat-tile col-span-2">
+            <div className="label">Gains (optional)</div>
+            <div className="text-sm text-fg-muted mt-2 leading-snug">P/L appears once you enter current values on the <Link href="/investments" className="underline text-info">Investments</Link> page (“Update values”). No platform integration needed.</div>
+          </div>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -115,7 +125,7 @@ export default function InvestmentAnalyzerPage() {
         </section>
 
         <section className="card-shell p-5">
-          <h2 className="font-semibold mb-4">Invested vs current value, by type</h2>
+          <h2 className="font-semibold mb-4">{data.anyValues ? "Invested vs current value, by type" : "Invested by type"}</h2>
           {mounted && (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={data.typeData} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
@@ -123,9 +133,9 @@ export default function InvestmentAnalyzerPage() {
                 <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} interval={0} angle={-12} textAnchor="end" height={50} />
                 <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `₹${v / 1000}k`} />
                 <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }} formatter={(v) => inrExact(Number(v))} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="invested" name="Invested" fill="#64748b" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="value" name="Current value" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                {data.anyValues && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                <Bar dataKey="invested" name="Invested" fill={data.anyValues ? "#64748b" : "#0ea5e9"} radius={[4, 4, 0, 0]} />
+                {data.anyValues && <Bar dataKey="value" name="Current value" fill="#0ea5e9" radius={[4, 4, 0, 0]} />}
               </BarChart>
             </ResponsiveContainer>
           )}

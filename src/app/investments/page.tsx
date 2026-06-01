@@ -38,12 +38,18 @@ export default function InvestmentsPage() {
   const [valueFor, setValueFor] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  const [showBulkValues, setShowBulkValues] = useState(false);
+
   useEffect(() => { setHoldings(loadHoldings()); }, []);
 
+  const anyValues = useMemo(() => holdings.some((h) => h.currentValue != null), [holdings]);
   const totals = useMemo(() => {
     let invested = 0, value = 0;
     holdings.forEach((h) => { const p = pnl(h); invested += p.invested; value += p.value; });
-    return { invested, value, abs: value - invested, pct: invested > 0 ? ((value - invested) / invested) * 100 : 0 };
+    const thisMonth = holdings.reduce((a, h) => a + (h.contributions ?? [])
+      .filter((c) => c.date.slice(0, 7) === todayLocal().slice(0, 7))
+      .reduce((s, c) => s + c.amount, 0), 0);
+    return { invested, value, abs: value - invested, pct: invested > 0 ? ((value - invested) / invested) * 100 : 0, thisMonth };
   }, [holdings]);
 
   const sorted = useMemo(
@@ -79,38 +85,75 @@ export default function InvestmentsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Investments</h1>
           <p className="text-fg-muted mt-1">Track each holding as one position. SIPs &amp; top-ups add to the same holding so it grows over time.</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowAdd((v) => !v)}>
-          <Icon.Plus size={16} /> {showAdd ? "Close" : "Add holding"}
-        </button>
+        <div className="flex gap-2">
+          {holdings.length > 0 && (
+            <button className="btn-secondary" onClick={() => setShowBulkValues((v) => !v)}>
+              {showBulkValues ? "Close" : "Update values"}
+            </button>
+          )}
+          <button className="btn-primary" onClick={() => setShowAdd((v) => !v)}>
+            <Icon.Plus size={16} /> {showAdd ? "Close" : "Add holding"}
+          </button>
+        </div>
       </div>
 
-      {/* Portfolio KPIs */}
+      {/* Portfolio KPIs — gains shown only once you've entered current values (fully optional) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="stat-tile">
-          <div className="label">Invested (cost)</div>
-          <div className="text-2xl font-semibold mt-1">{inr(totals.invested)}</div>
-          <div className="text-xs text-fg-muted mt-1">{holdings.length} holdings</div>
+          <div className="label">Invested (deployed)</div>
+          <div className="text-2xl font-semibold mt-1 text-info">{inr(totals.invested)}</div>
+          <div className="text-xs text-fg-muted mt-1">{holdings.length} holding{holdings.length === 1 ? "" : "s"}</div>
         </div>
         <div className="stat-tile">
-          <div className="label">Current value</div>
-          <div className="text-2xl font-semibold mt-1 text-info">{inr(totals.value)}</div>
-          <div className="text-xs text-fg-muted mt-1">where market value set</div>
+          <div className="label">Added this month</div>
+          <div className="text-2xl font-semibold mt-1">{inr(totals.thisMonth)}</div>
+          <div className="text-xs text-fg-muted mt-1">contributions in {todayLocal().slice(0, 7)}</div>
         </div>
-        <div className="stat-tile">
-          <div className="label">Unrealized P/L</div>
-          <div className={`text-2xl font-semibold mt-1 ${totals.abs >= 0 ? "text-success" : "text-danger"}`}>
-            {totals.abs >= 0 ? "+" : "−"}{inr(Math.abs(totals.abs))}
-          </div>
-          <div className={`text-xs mt-1 ${totals.abs >= 0 ? "text-success" : "text-danger"}`}>
-            {totals.abs >= 0 ? "+" : "−"}{Math.abs(totals.pct).toFixed(2)}%
-          </div>
-        </div>
-        <div className="stat-tile">
-          <div className="label">Asset types</div>
-          <div className="text-2xl font-semibold mt-1">{new Set(holdings.map((h) => h.type)).size}</div>
-          <div className="text-xs text-fg-muted mt-1"><a href="/portfolio" className="underline">open analyzer →</a></div>
-        </div>
+        {anyValues ? (
+          <>
+            <div className="stat-tile">
+              <div className="label">Current value</div>
+              <div className="text-2xl font-semibold mt-1">{inr(totals.value)}</div>
+              <div className="text-xs text-fg-muted mt-1">as last updated by you</div>
+            </div>
+            <div className="stat-tile">
+              <div className="label">Unrealized P/L</div>
+              <div className={`text-2xl font-semibold mt-1 ${totals.abs >= 0 ? "text-success" : "text-danger"}`}>
+                {totals.abs >= 0 ? "+" : "−"}{inr(Math.abs(totals.abs))}
+              </div>
+              <div className={`text-xs mt-1 ${totals.abs >= 0 ? "text-success" : "text-danger"}`}>
+                {totals.abs >= 0 ? "+" : "−"}{Math.abs(totals.pct).toFixed(2)}%
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="stat-tile">
+              <div className="label">Asset types</div>
+              <div className="text-2xl font-semibold mt-1">{new Set(holdings.map((h) => h.type)).size}</div>
+            </div>
+            <div className="stat-tile">
+              <div className="label">Gains (optional)</div>
+              <div className="text-sm font-medium mt-2 text-fg-muted leading-snug">Add current values anytime to see P/L — totally optional.</div>
+            </div>
+          </>
+        )}
       </div>
+
+      {showBulkValues && (
+        <BulkValueEditor
+          holdings={holdings}
+          onCancel={() => setShowBulkValues(false)}
+          onSave={(map, d) => {
+            let next = holdings;
+            Object.entries(map).forEach(([id, val]) => {
+              if (val != null) next = updateHolding(id, { currentValue: val, currentValueDate: localDateToISO(d) });
+            });
+            setHoldings(next);
+            setShowBulkValues(false);
+          }}
+        />
+      )}
 
       {/* Add holding */}
       {showAdd && (
@@ -213,7 +256,7 @@ export default function InvestmentsPage() {
                           {p.abs >= 0 ? "+" : "−"}{inrExact(Math.abs(p.abs))} ({p.abs >= 0 ? "+" : "−"}{Math.abs(p.pct).toFixed(2)}%)
                         </div>
                       ) : (
-                        <div className="text-xs text-fg-muted">no market value set</div>
+                        <div className="text-[11px] text-fg-muted uppercase tracking-wide">invested</div>
                       )}
                     </div>
                   </div>
@@ -310,6 +353,56 @@ function AddMoneyRow({ onSubmit, onCancel }: { onSubmit: (amount: number, date: 
         <div className="flex gap-2">
           <button className="btn-primary" disabled={!amt} onClick={() => onSubmit(amt, date, method, note.trim() || undefined)}>Add</button>
           <button className="btn-secondary" onClick={onCancel}>×</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkValueEditor({ holdings, onSave, onCancel }: { holdings: Holding[]; onSave: (map: Record<string, number | null>, date: string) => void; onCancel: () => void; }) {
+  const [vals, setVals] = useState<Record<string, string>>(
+    () => Object.fromEntries(holdings.map((h) => [h.id, h.currentValue != null ? String(h.currentValue) : ""]))
+  );
+  const [date, setDate] = useState(() => todayLocal());
+  const parse = (s: string) => { const n = Number((s || "").replace(/[^0-9.]/g, "")); return s.trim() && !Number.isNaN(n) ? n : null; };
+  return (
+    <div className="card-shell bg-bg-chrome/30">
+      <div className="card-header">
+        <div>
+          <div className="font-semibold">Update current values</div>
+          <div className="text-xs text-fg-muted">Optional — glance at your broker apps and type the latest value for each holding. Leave blank to skip. Used only for P/L.</div>
+        </div>
+      </div>
+      <div className="card-body space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="label">As of</span>
+          <input type="date" className="input max-w-[180px]" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          {holdings.map((h) => {
+            const invested = holdingInvested(h);
+            return (
+              <div key={h.id} className="grid grid-cols-[1fr_auto] items-center gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">{typeIcon(h.type)} {h.name}</div>
+                  <div className="text-[11px] text-fg-muted">invested {inrExact(invested)}{h.platform ? ` · ${h.platform}` : ""}</div>
+                </div>
+                <input
+                  className="input w-40"
+                  inputMode="numeric"
+                  placeholder="current ₹"
+                  value={vals[h.id] ?? ""}
+                  onChange={(e) => setVals((m) => ({ ...m, [h.id]: e.target.value }))}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+          <button className="btn-primary" onClick={() => onSave(Object.fromEntries(holdings.map((h) => [h.id, parse(vals[h.id] ?? "")])), date)}>
+            Save values
+          </button>
         </div>
       </div>
     </div>
