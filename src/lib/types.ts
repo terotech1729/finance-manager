@@ -92,6 +92,17 @@ export type Contribution = {
   note?: string;
 };
 
+// Real-estate specific loan/equity details (only used when type === "real_estate").
+export type RealEstateDetails = {
+  propertyValue?: number; // market value as of currentValueDate
+  downPayment?: number; // equity you put in upfront
+  loanAmount?: number; // outstanding loan principal (liability)
+  lender?: string; // bank / NBFC
+  interestRate?: number; // % p.a.
+  emi?: number; // monthly EMI
+  tenureMonths?: number; // remaining/total tenure in months
+};
+
 // A position you hold in one asset. Periodic SIPs / top-ups accumulate as contributions,
 // so the same smallcase/fund/stock stays a single line that grows over time.
 export type Holding = {
@@ -99,9 +110,10 @@ export type Holding = {
   name: string; // e.g. "Large and Midcap Tracker", "Reliance Industries"
   type: InvestmentType;
   platform?: string; // e.g. "Smallcase", "Zerodha", "Groww"
-  contributions: Contribution[]; // cost basis = sum of these
-  currentValue?: number; // latest market value (manually updated) for P/L
+  contributions: Contribution[]; // cost basis = sum of these (for RE: down payment + principal you've paid)
+  currentValue?: number; // latest market value (manually updated) for P/L (non-real-estate)
   currentValueDate?: string; // ISO of last value update
+  realEstate?: RealEstateDetails; // populated for type === "real_estate"
   notes?: string;
 };
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { loadState, loadTransactions, loadHoldings, holdingInvested, type AppState } from "@/lib/storage";
+import { loadState, loadTransactions, loadHoldings, holdingInvested, holdingValue, type AppState } from "@/lib/storage";
 import { CARDS } from "@/lib/cards";
 import { inr, inrExact, nfmt } from "@/lib/utils";
 import type { Transaction, Holding } from "@/lib/types";
@@ -43,7 +43,7 @@ export default function DashboardPage() {
   const totalLifetimeSavings = currencies.reduce((acc, c) => acc + c.inrValue, 0);
   const totalRewardsThisYear = txns.reduce((acc, t) => acc + t.rewardInr, 0);
   const totalInvested = holdings.reduce((acc, h) => acc + holdingInvested(h), 0);
-  const totalPortfolioValue = holdings.reduce((acc, h) => acc + (h.currentValue ?? holdingInvested(h)), 0);
+  const totalPortfolioValue = holdings.reduce((acc, h) => acc + holdingValue(h), 0);
   const totalSpentThisYear = txns.reduce((acc, t) => acc + t.amount, 0);
 
   return (

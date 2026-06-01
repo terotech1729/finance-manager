@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 import Link from "next/link";
-import { loadHoldings, holdingInvested } from "@/lib/storage";
+import { loadHoldings, holdingInvested, holdingValue, holdingHasValue } from "@/lib/storage";
 import { colorFor } from "@/lib/chartColors";
 import { monthLabel } from "@/lib/history";
 import { inr, inrExact } from "@/lib/utils";
@@ -20,10 +20,25 @@ export default function InvestmentAnalyzerPage() {
   useEffect(() => { setMounted(true); setHoldings(loadHoldings()); }, []);
 
   const data = useMemo(() => {
-    const rows = holdings.map((h) => {
+    // Real estate is leveraged + illiquid, so we report it in its own section.
+    const liquid = holdings.filter((h) => h.type !== "real_estate");
+    const reList = holdings.filter((h) => h.type === "real_estate");
+
+    const reRows = reList.map((h) => {
+      const down = holdingInvested(h);
+      const propertyValue = h.realEstate?.propertyValue ?? down;
+      const loan = h.realEstate?.loanAmount ?? 0;
+      return { h, down, propertyValue, loan, equity: propertyValue - loan, emi: h.realEstate?.emi ?? 0 };
+    });
+    const reTotals = reRows.reduce(
+      (a, r) => ({ value: a.value + r.propertyValue, loan: a.loan + r.loan, equity: a.equity + r.equity, down: a.down + r.down, emi: a.emi + r.emi }),
+      { value: 0, loan: 0, equity: 0, down: 0, emi: 0 }
+    );
+
+    const rows = liquid.map((h) => {
       const invested = holdingInvested(h);
-      const value = h.currentValue ?? invested;
-      return { h, invested, value, abs: value - invested, hasValue: h.currentValue != null };
+      const value = holdingValue(h);
+      return { h, invested, value, abs: value - invested, hasValue: holdingHasValue(h) };
     });
     const totalInvested = rows.reduce((a, r) => a + r.invested, 0);
     const totalValue = rows.reduce((a, r) => a + r.value, 0);
@@ -44,7 +59,7 @@ export default function InvestmentAnalyzerPage() {
     const platformData = Object.entries(byPlatform).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
     const byMonth: Record<string, number> = {};
-    holdings.forEach((h) => (h.contributions ?? []).forEach((c) => {
+    liquid.forEach((h) => (h.contributions ?? []).forEach((c) => {
       const ym = c.date.slice(0, 7); byMonth[ym] = (byMonth[ym] ?? 0) + c.amount;
     }));
     const monthData = Object.entries(byMonth).sort().map(([ym, value]) => ({ month: monthLabel(ym), value }));
@@ -53,9 +68,11 @@ export default function InvestmentAnalyzerPage() {
     const anyValues = rows.some((r) => r.hasValue);
 
     return {
+      liquidCount: liquid.length,
       rows, totalInvested, totalValue, abs: totalValue - totalInvested,
       pct: totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0,
       typeData, platformData, monthData, topHoldings, anyValues,
+      reRows, reTotals,
     };
   }, [holdings]);
 
@@ -87,9 +104,12 @@ export default function InvestmentAnalyzerPage() {
         <Link href="/investments" className="btn-secondary"><Icon.Plus size={16} /> Manage holdings</Link>
       </div>
 
+      {/* ===== Investments (excludes real estate) ===== */}
+      {data.liquidCount > 0 && (
+      <>
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="stat-tile"><div className="label">Invested (deployed)</div><div className="text-2xl font-semibold mt-1 text-info">{inr(data.totalInvested)}</div><div className="text-xs text-fg-muted mt-1">{holdings.length} holdings</div></div>
+        <div className="stat-tile"><div className="label">Invested (deployed)</div><div className="text-2xl font-semibold mt-1 text-info">{inr(data.totalInvested)}</div><div className="text-xs text-fg-muted mt-1">{data.liquidCount} holding{data.liquidCount === 1 ? "" : "s"}</div></div>
         <div className="stat-tile"><div className="label">Largest sleeve</div><div className="text-2xl font-semibold mt-1">{top?.name ?? "—"}</div><div className="text-xs text-fg-muted mt-1">{top ? `${((top.value / Math.max(data.totalValue, 1)) * 100).toFixed(1)}%` : ""}</div></div>
         {data.anyValues ? (
           <>
@@ -196,6 +216,57 @@ export default function InvestmentAnalyzerPage() {
           </div>
         </section>
       </div>
+      </>
+      )}
+
+      {/* ===== Real estate (own section: leveraged + illiquid) ===== */}
+      {data.reRows.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🏠</span>
+            <h2 className="text-lg font-bold">Real estate</h2>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="stat-tile"><div className="label">Property value</div><div className="text-2xl font-semibold mt-1">{inr(data.reTotals.value)}</div></div>
+            <div className="stat-tile"><div className="label">Outstanding loan</div><div className="text-2xl font-semibold mt-1 text-danger">{inr(data.reTotals.loan)}</div></div>
+            <div className="stat-tile"><div className="label">Net equity</div><div className="text-2xl font-semibold mt-1 text-success">{inr(data.reTotals.equity)}</div><div className="text-xs text-fg-muted mt-1">value − loan</div></div>
+            <div className="stat-tile"><div className="label">EMI / month</div><div className="text-2xl font-semibold mt-1">{inr(data.reTotals.emi)}</div></div>
+          </div>
+
+          <div className="card-shell overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-fg-muted text-[10px] uppercase tracking-wide">
+                <tr>
+                  <th className="text-left p-3">Property</th>
+                  <th className="text-right">Value</th>
+                  <th className="text-right">Down pmt</th>
+                  <th className="text-right">Loan</th>
+                  <th className="text-right">Equity</th>
+                  <th className="text-right">EMI</th>
+                  <th className="text-right">Rate</th>
+                  <th className="text-right p-3">Tenure</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.reRows.map((r) => (
+                  <tr key={r.h.id} className="table-row">
+                    <td className="p-3 font-medium">{r.h.name}{r.h.realEstate?.lender ? <span className="text-fg-muted font-normal"> · {r.h.realEstate.lender}</span> : ""}</td>
+                    <td className="text-right">{inrExact(r.propertyValue)}</td>
+                    <td className="text-right text-fg-muted">{inrExact(r.down)}</td>
+                    <td className="text-right text-danger">{inrExact(r.loan)}</td>
+                    <td className="text-right font-medium text-success">{inrExact(r.equity)}</td>
+                    <td className="text-right">{r.emi ? inrExact(r.emi) : "—"}</td>
+                    <td className="text-right text-fg-muted">{r.h.realEstate?.interestRate != null ? `${r.h.realEstate.interestRate}%` : "—"}</td>
+                    <td className="text-right p-3 text-fg-muted">{r.h.realEstate?.tenureMonths != null ? `${Math.round(r.h.realEstate.tenureMonths / 12)}y` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-fg-muted">Net equity = current property value − outstanding loan. Update property value anytime via “Update values” on the Investments page.</p>
+        </section>
+      )}
     </div>
   );
 }

@@ -230,6 +230,22 @@ export function holdingInvested(h: Holding): number {
   return (h.contributions ?? []).reduce((a, c) => a + (c.amount || 0), 0);
 }
 
+// Current "value" of a holding. For real estate this is NET EQUITY (property value − outstanding loan),
+// which keeps gains sensible (right after purchase, equity ≈ down payment ≈ ~0% gain).
+export function holdingValue(h: Holding): number {
+  if (h.type === "real_estate" && h.realEstate) {
+    const pv = h.realEstate.propertyValue ?? holdingInvested(h);
+    return pv - (h.realEstate.loanAmount ?? 0);
+  }
+  return h.currentValue ?? holdingInvested(h);
+}
+
+// Whether the user has supplied a market value (so we can show P/L instead of just cost).
+export function holdingHasValue(h: Holding): boolean {
+  if (h.type === "real_estate") return h.realEstate?.propertyValue != null;
+  return h.currentValue != null;
+}
+
 function migrateInvestmentsToHoldings(legacy: Investment[]): Holding[] {
   const map = new Map<string, Holding>();
   // Oldest first so contribution order reads naturally.
