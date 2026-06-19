@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DEFAULT_STATE, exportAll, importAll, loadState, saveState, clearAll, type AppState } from "@/lib/storage";
+import { DEFAULT_STATE, exportAll, importAll, loadState, saveState, clearAll, recomputeCounters, type AppState } from "@/lib/storage";
 import { Callout } from "@/components/Callout";
+import { toast } from "@/components/Toast";
 import { uniqueGiftCardDeals, AMAZON_WELCOME_OFFERS } from "@/lib/stacking";
 import { isSupabaseConfigured, getSupabase } from "@/lib/supabase";
 import { onSyncStatus, pullFromCloud, pushToCloud, type SyncStatus } from "@/lib/cloudSync";
@@ -68,6 +69,25 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold mb-1">Settings</h1>
         <p className="text-fg-muted text-sm">Update card balances, milestone progress, and card-issuance status. Stored locally.</p>
       </div>
+
+      <section className="card-shell border-accent/30 bg-gradient-to-br from-accent/5 to-bg-elevated">
+        <div className="card-body flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="font-semibold">Rebuild counters from log</div>
+            <div className="text-xs text-fg-muted mt-0.5 max-w-xl">
+              Recomputes every milestone &amp; cycle spend counter from your logged transactions (scoped to each card&apos;s current period). Loyalty-point balances and issuance dates are kept. Use this if counters ever look out of sync after edits or imports.
+            </div>
+          </div>
+          <button
+            className="btn-primary whitespace-nowrap"
+            onClick={() => {
+              if (!confirm("Rebuild all spend/milestone counters from your logged transactions? Loyalty balances are preserved.")) return;
+              setState(recomputeCounters());
+              toast("Counters rebuilt from your transaction log", "success");
+            }}
+          >Recompute counters</button>
+        </div>
+      </section>
 
       {groups.map((g) => (
         <section key={g} className="card-shell">
@@ -194,8 +214,10 @@ export default function SettingsPage() {
                   if (importAll(importText)) {
                     setState(loadState());
                     setImportMsg("Imported successfully.");
+                    toast("Data imported successfully", "success");
                   } else {
                     setImportMsg("Import failed — invalid JSON.");
+                    toast("Import failed — invalid JSON", "error");
                   }
                 }}
               >Import</button>

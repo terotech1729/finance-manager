@@ -40,6 +40,12 @@ export type AppState = {
   bills: Record<string, { billAmount: number; paid: boolean }>;
   // Calendar month the monthly counters belong to (auto-resets when the month rolls over).
   monthKey: string;
+  // Calendar year for annual milestone spend counters (SBI / IDFC / Swiggy BLCK).
+  yearKey?: string;
+  // Amex Plat Travel membership year (boundary 3 Dec) for eligible-spend reset.
+  ptccYearKey?: string;
+  // Kiwi Neon membership year (boundary 1 Apr) for cycle-spend reset.
+  kiwiYearKey?: string;
   // Monthly counters (legacy, kept for compat)
   monthlyTxns: {
     [yearMonth: string]: {
@@ -94,6 +100,9 @@ export const DEFAULT_STATE: AppState = {
   giftCardRateOverrides: {},
   bills: {},
   monthKey: "2026-05",
+  yearKey: "2026",
+  ptccYearKey: "2025",
+  kiwiYearKey: "2026",
   monthlyTxns: {},
   amexMrPooled: 127710,
   indigoBluChips: 14172,
@@ -127,6 +136,19 @@ function fireChange(): void {
   try { onChangeCb?.(); } catch { /* ignore */ }
 }
 
+// ----- Membership-period keys (drive automatic counter resets) -----
+function calYearKey(d = new Date()): string { return String(d.getFullYear()); }
+function ptYearKey(d = new Date()): string {
+  // Amex Plat Travel membership year boundary: 3 Dec.
+  const y = d.getFullYear();
+  return String(d >= new Date(y, 11, 3) ? y : y - 1);
+}
+function kiwiNeonYearKey(d = new Date()): string {
+  // Kiwi Neon membership year boundary: 1 Apr.
+  const y = d.getFullYear();
+  return String(d >= new Date(y, 3, 1) ? y : y - 1);
+}
+
 export function loadState(): AppState {
   if (!isClient()) return DEFAULT_STATE;
   const raw = localStorage.getItem(KEYS.STATE);
@@ -137,27 +159,123 @@ export function loadState(): AppState {
   } catch {
     return DEFAULT_STATE;
   }
-  // Auto-reset MONTHLY counters when the calendar month rolls over, so Amex/Scapia
-  // monthly milestones aren't perpetually treated as "done" (the root cause of starvation).
+
+  // Auto-reset period counters when their period rolls over, so milestones aren't
+  // perpetually treated as "done" (the root cause of Amex monthly starvation).
   const mk = thisMonthKey();
-  if (!st.monthKey) {
-    // Migrating older state: adopt current month without wiping this month's progress.
-    st = { ...st, monthKey: mk };
-    localStorage.setItem(KEYS.STATE, JSON.stringify(st));
-  } else if (st.monthKey !== mk) {
-    st = {
-      ...st,
-      monthKey: mk,
-      goldThisMonthTxnsAt1k: 0,
-      mrccThisCycleTxnsAt1500: 0,
-      mrccThisCycleAmount: 0,
-      goldShopwiseUsedThisMonth: 0,
-      scapiaMonthlySpend: 0,
-      bobCycleSpend5x: 0,
-    };
-    localStorage.setItem(KEYS.STATE, JSON.stringify(st));
+  const yk = calYearKey();
+  const pk = ptYearKey();
+  const kk = kiwiNeonYearKey();
+  let changed = false;
+
+  // MONTHLY (calendar month)
+  if (!st.monthKey) { st.monthKey = mk; changed = true; }
+  else if (st.monthKey !== mk) {
+    st.monthKey = mk;
+    st.goldThisMonthTxnsAt1k = 0;
+    st.mrccThisCycleTxnsAt1500 = 0;
+    st.mrccThisCycleAmount = 0;
+    st.mrccCycleSpend = 0;
+    st.goldShopwiseUsedThisMonth = 0;
+    st.scapiaMonthlySpend = 0;
+    st.bobCycleSpend5x = 0;
+    changed = true;
   }
+  // ANNUAL — calendar year (SBI / IDFC / Swiggy BLCK)
+  if (!st.yearKey) { st.yearKey = yk; changed = true; }
+  else if (st.yearKey !== yk) {
+    st.yearKey = yk;
+    st.sbiYtdSpend = 0;
+    st.idfcYtdSpend = 0;
+    st.blckYtdSpend = 0;
+    changed = true;
+  }
+  // Amex Plat Travel membership year (3 Dec)
+  if (!st.ptccYearKey) { st.ptccYearKey = pk; changed = true; }
+  else if (st.ptccYearKey !== pk) {
+    st.ptccYearKey = pk;
+    st.ptccEligibleSpend = 0;
+    st.ptccLoungesUsed = 0;
+    st.ptccLoungesUsedThisQuarter = 0;
+    changed = true;
+  }
+  // Kiwi Neon membership year (1 Apr)
+  if (!st.kiwiYearKey) { st.kiwiYearKey = kk; changed = true; }
+  else if (st.kiwiYearKey !== kk) {
+    st.kiwiYearKey = kk;
+    st.kiwiNeonCycleSpend = 0;
+    changed = true;
+  }
+
+  if (changed) localStorage.setItem(KEYS.STATE, JSON.stringify(st));
   return st;
+}
+
+/**
+ * Rebuild all log-derived spend / milestone counters from the transaction log,
+ * scoped to each card's current period. Loyalty-point balances, issuance flags and
+ * manually-tracked figures are preserved. Use when counters look out of sync.
+ * NOTE: only reflects spend logged in the app (not pre-app seeded statement history).
+ */
+export function recomputeCounters(): AppState {
+  const st = loadState();
+  const txns = loadTransactions();
+  const mk = thisMonthKey();
+  const yk = calYearKey();
+  const pk = ptYearKey();
+  const kk = kiwiNeonYearKey();
+
+  const next: AppState = {
+    ...st,
+    ptccEligibleSpend: 0,
+    mrccCycleSpend: 0,
+    mrccThisCycleAmount: 0,
+    mrccThisCycleTxnsAt1500: 0,
+    bobYtdSpend: 0,
+    bobCycleSpend5x: 0,
+    sbiYtdSpend: 0,
+    idfcYtdSpend: 0,
+    blckYtdSpend: 0,
+    scapiaMonthlySpend: 0,
+    goldThisMonthTxnsAt1k: 0,
+    goldShopwiseUsedThisMonth: 0,
+    kiwiNeonCycleSpend: 0,
+  };
+
+  for (const t of txns) {
+    if (!t.cardId || !t.amount) continue;
+    const d = new Date(t.date);
+    const inMonth = t.date.slice(0, 7) === mk;
+    const inYear = t.date.slice(0, 4) === yk;
+    const inPt = ptYearKey(d) === pk;
+    const inKiwi = kiwiNeonYearKey(d) === kk;
+    const amt = t.amount;
+    switch (t.cardId) {
+      case "amex_plat_travel": if (inPt) next.ptccEligibleSpend += amt; break;
+      case "amex_mrcc":
+        if (inMonth) {
+          next.mrccCycleSpend += amt;
+          next.mrccThisCycleAmount += amt;
+          if (amt >= 1500) next.mrccThisCycleTxnsAt1500 = Math.min(4, next.mrccThisCycleTxnsAt1500 + 1);
+        }
+        break;
+      case "bob_eterna":
+        next.bobYtdSpend += amt;
+        if (inMonth) next.bobCycleSpend5x += amt;
+        break;
+      case "sbi_simplyclick": if (inYear) next.sbiYtdSpend += amt; break;
+      case "idfc_indigo": if (inYear) next.idfcYtdSpend += amt; break;
+      case "swiggy_blck": if (inYear) next.blckYtdSpend += amt; break;
+      case "scapia": if (inMonth) next.scapiaMonthlySpend += amt; break;
+      case "amex_gold":
+        if (inMonth && amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);
+        if (inMonth && t.path === "shopwise") next.goldShopwiseUsedThisMonth += amt;
+        break;
+      case "yes_kiwi": if (inKiwi) next.kiwiNeonCycleSpend += amt; break;
+    }
+  }
+  saveState(next);
+  return next;
 }
 
 export function saveState(s: AppState): void {
@@ -186,6 +304,12 @@ export function saveTransactions(t: Transaction[]): void {
 export function addTransaction(t: Transaction): Transaction[] {
   const all = loadTransactions();
   all.unshift(t);
+  saveTransactions(all);
+  return all;
+}
+
+export function updateTransaction(id: string, patch: Partial<Transaction>): Transaction[] {
+  const all = loadTransactions().map((t) => (t.id === id ? { ...t, ...patch, id: t.id } : t));
   saveTransactions(all);
   return all;
 }

@@ -27,3 +27,34 @@ export function applyCardSpend(next: AppState, cardId: string, amt: number, rewa
     next.kiwiLifetimeEarned += rewardInr;
   }
 }
+
+const clamp0 = (n: number) => (n < 0 ? 0 : n);
+
+/**
+ * Undo the milestone/cycle effect of a previously-applied card spend.
+ * Used when a logged card transaction is edited or deleted so counters stay accurate.
+ * Counters are clamped at 0 (the txn-count milestones can't perfectly invert across a
+ * month reset, but clamping keeps them sane and never negative).
+ */
+export function reverseCardSpend(next: AppState, cardId: string, amt: number, rewardInr: number): void {
+  if (cardId === "amex_plat_travel") next.ptccEligibleSpend = clamp0(next.ptccEligibleSpend - amt);
+  if (cardId === "amex_mrcc") {
+    next.mrccCycleSpend = clamp0(next.mrccCycleSpend - amt);
+    next.mrccThisCycleAmount = clamp0(next.mrccThisCycleAmount - amt);
+    if (amt >= 1500) next.mrccThisCycleTxnsAt1500 = clamp0(next.mrccThisCycleTxnsAt1500 - 1);
+  }
+  if (cardId === "bob_eterna") {
+    next.bobYtdSpend = clamp0(next.bobYtdSpend - amt);
+    next.bobWelcomeUnlocked = next.bobYtdSpend >= 50000;
+  }
+  if (cardId === "sbi_simplyclick") next.sbiYtdSpend = clamp0(next.sbiYtdSpend - amt);
+  if (cardId === "idfc_indigo") next.idfcYtdSpend = clamp0(next.idfcYtdSpend - amt);
+  if (cardId === "swiggy_blck") next.blckYtdSpend = clamp0(next.blckYtdSpend - amt);
+  if (cardId === "scapia") next.scapiaMonthlySpend = clamp0(next.scapiaMonthlySpend - amt);
+  if (cardId === "amex_gold" && amt >= 1000) next.goldThisMonthTxnsAt1k = clamp0(next.goldThisMonthTxnsAt1k - 1);
+  if (cardId === "yes_kiwi") {
+    next.kiwiNeonCycleSpend = clamp0(next.kiwiNeonCycleSpend - amt);
+    next.kiwiCashback = clamp0(next.kiwiCashback - rewardInr / 0.25);
+    next.kiwiLifetimeEarned = clamp0(next.kiwiLifetimeEarned - rewardInr);
+  }
+}

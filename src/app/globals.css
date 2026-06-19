@@ -8,14 +8,24 @@
 
 html, body {
   height: 100%;
-  background: #0b0d10;
   color: #e6e8eb;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  /* Subtle depth: soft accent glows over the dark base. */
+  background:
+    radial-gradient(1100px 600px at 100% -10%, rgba(59, 130, 246, 0.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(16, 185, 129, 0.07), transparent 55%),
+    #0b0d10;
+  background-attachment: fixed;
 }
 
 * {
   box-sizing: border-box;
 }
+
+::selection { background: rgba(59, 130, 246, 0.35); }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #0b0d10; }
@@ -23,24 +33,34 @@ html, body {
 ::-webkit-scrollbar-thumb:hover { background: #3a4047; }
 
 @layer components {
-  .card-shell { @apply bg-bg-elevated border border-border rounded-lg; }
+  .card-shell { @apply bg-bg-elevated border border-border rounded-xl shadow-sm; }
   .card-header { @apply px-4 py-3 border-b border-border flex items-center justify-between; }
   .card-body { @apply p-4; }
-  .stat-tile { @apply bg-bg-elevated border border-border rounded-lg p-4; }
+  .stat-tile { @apply relative bg-bg-elevated border border-border rounded-xl p-4 overflow-hidden transition-colors hover:border-border-strong; }
+  /* thin accent strip across the top of every KPI tile */
+  .stat-tile::before { content: ""; @apply absolute inset-x-0 top-0 h-px; background: linear-gradient(90deg, rgba(59,130,246,0.6), rgba(16,185,129,0.35), transparent); }
   .pill { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border; }
   .pill-success { @apply pill bg-success-muted border-success/40 text-success; }
   .pill-warning { @apply pill bg-warning-muted border-warning/40 text-warning; }
   .pill-danger { @apply pill bg-danger-muted border-danger/40 text-danger; }
   .pill-info { @apply pill bg-info-muted border-info/40 text-info; }
   .pill-neutral { @apply pill bg-bg-chrome border-border text-fg-muted; }
-  .input { @apply w-full bg-bg-chrome border border-border rounded-md px-3 py-2 text-sm text-fg outline-none focus:border-accent transition-colors; }
-  .btn { @apply inline-flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors gap-2; }
-  .btn-primary { @apply btn bg-accent text-white hover:bg-accent-hover; }
-  .btn-secondary { @apply btn bg-bg-elevated border border-border text-fg hover:bg-bg-chrome; }
+  .input { @apply w-full bg-bg-chrome border border-border rounded-md px-3 py-2 text-sm text-fg outline-none transition-all; }
+  .input:focus { @apply border-accent; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18); }
+  .btn { @apply inline-flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-all gap-2 active:scale-[0.98]; }
+  .btn-primary { @apply btn bg-accent text-white hover:bg-accent-hover shadow-sm; box-shadow: 0 2px 10px rgba(59, 130, 246, 0.25); }
+  .btn-secondary { @apply btn bg-bg-elevated border border-border text-fg hover:bg-bg-chrome hover:border-border-strong; }
   .btn-ghost { @apply btn text-fg-muted hover:text-fg hover:bg-bg-chrome; }
   .label { @apply text-xs uppercase tracking-wide text-fg-muted; }
   .table-row { @apply border-b border-border last:border-0; }
 }
+
+/* Toast slide/fade-in */
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.toast-in { animation: toastIn 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
 
 .bar { display: flex; align-items: stretch; height: 8px; border-radius: 4px; overflow: hidden; background: #1a1d22; }
 .bar-fill { height: 100%; background: #3b82f6; transition: width 0.3s ease; }

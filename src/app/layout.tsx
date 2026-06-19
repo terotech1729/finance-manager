@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar, MobileNav } from "@/components/Sidebar";
 import { AuthGate } from "@/components/AuthGate";
+import { Toaster } from "@/components/Toast";
 
 export const metadata: Metadata = {
   title: "Personal Finance Manager",
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <main className="max-w-6xl mx-auto px-4 sm:px-8 py-6">{children}</main>
             </div>
           </div>
+          <Toaster />
         </AuthGate>
       </body>
     </html>

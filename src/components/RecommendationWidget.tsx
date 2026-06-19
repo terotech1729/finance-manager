@@ -6,6 +6,8 @@ import { recommend, type RecommendInput } from "@/lib/recommend";
 import { detectCategory, ALL_CATEGORIES, ALL_CHANNELS, type ChannelType } from "@/lib/categorize";
 import { findWelcomeOffer } from "@/lib/stacking";
 import { addTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
+import { applyCardSpend } from "@/lib/spendTracking";
+import { toast } from "./Toast";
 import { getCardById } from "@/lib/cards";
 
 function routeName(cardId: string): string {
@@ -128,33 +130,17 @@ export function RecommendationWidget({ onLogged }: Props) {
     };
     addTransaction(t);
     const next: AppState = { ...state };
-    if (best.cardId === "amex_plat_travel") next.ptccEligibleSpend += amt;
-    if (best.cardId === "amex_mrcc") {
-      next.mrccCycleSpend += amt;
-      next.mrccThisCycleAmount += amt;
-      if (amt >= 1500) next.mrccThisCycleTxnsAt1500 = Math.min(4, next.mrccThisCycleTxnsAt1500 + 1);
-    }
-    if (best.cardId === "bob_eterna") {
-      next.bobYtdSpend += amt;
-      if (next.bobYtdSpend >= 50000) next.bobWelcomeUnlocked = true;
-    }
-    if (best.cardId === "sbi_simplyclick") next.sbiYtdSpend += amt;
-    if (best.cardId === "idfc_indigo") next.idfcYtdSpend += amt;
-    if (best.cardId === "swiggy_blck") next.blckYtdSpend += amt;
-    if (best.cardId === "scapia") next.scapiaMonthlySpend += amt;
-    if (best.cardId === "amex_gold") {
-      if (amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);
-      if (best.label.toLowerCase().includes("shopwise")) next.goldShopwiseUsedThisMonth += amt;
+    // Shared spend → milestone/cycle counters (single source of truth across the app).
+    applyCardSpend(next, best.cardId, amt, best.totalRewardInr);
+    if (best.cardId === "bob_eterna" && next.bobYtdSpend >= 50000) next.bobWelcomeUnlocked = true;
+    // Route-specific extras the shared helper doesn't cover:
+    if (best.cardId === "amex_gold" && best.label.toLowerCase().includes("shopwise")) {
+      next.goldShopwiseUsedThisMonth += amt;
     }
     // BOGO "used" is derived from the logged District transaction (path "district"),
     // so deleting that transaction automatically frees it up again — no sticky flag.
     if (best.cardId === "amazon_pay_icici" && best.label.toLowerCase().includes("balance")) {
       next.amazonPayBalance = Math.max(0, next.amazonPayBalance - Math.min(next.amazonPayBalance, amt));
-    }
-    if (best.cardId === "yes_kiwi") {
-      next.kiwiNeonCycleSpend += amt;
-      next.kiwiCashback += best.totalRewardInr / 0.25;
-      next.kiwiLifetimeEarned += best.totalRewardInr;
     }
     // Mark a one-time Amazon welcome coupon as used (only when the chosen route is the
     // Amazon Pay ICICI welcome — NOT when BOB's "welcome push" was picked).
@@ -164,6 +150,7 @@ export function RecommendationWidget({ onLogged }: Props) {
     }
     setStateLocal(next);
     saveState(next);
+    toast(`Logged ${inr(amt)} on ${routeName(best.cardId)} · ${inr(best.totalRewardInr)} reward`, "success");
     setAmount("");
     setMerchant("");
     setDate(todayLocal());
