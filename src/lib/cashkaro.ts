@@ -38,8 +38,52 @@ export const CASHKARO_RATES: readonly CashkaroRate[] = [
   { merchant: "Swiggy", rate: "n/a (not on Cashkaro)", minRate: 0, maxRate: 0, zone: "na" },
 ];
 
+/** Common nicknames / typos → canonical Cashkaro merchant name. */
+const MERCHANT_ALIASES: { pattern: RegExp; canonical: string }[] = [
+  { pattern: /\bbook\s*my\s*show\b|\bbms\b/i, canonical: "BookMyShow" },
+  { pattern: /\bflipkart\b|\bfk\b/i, canonical: "Flipkart" },
+  { pattern: /\bmyntra\b/i, canonical: "Myntra" },
+  { pattern: /\bajio\b/i, canonical: "Ajio" },
+  { pattern: /\bnykaa\b/i, canonical: "Nykaa" },
+  { pattern: /\btata\s*cliq\b|\btatacliq\b/i, canonical: "Tata CLiQ" },
+  { pattern: /\bzomato\b/i, canonical: "Zomato" },
+  { pattern: /\bcleartrip\b/i, canonical: "Cleartrip" },
+  { pattern: /\bmakemytrip\b|\bmmt\b/i, canonical: "MakeMyTrip" },
+  { pattern: /\beasemytrip\b/i, canonical: "EaseMyTrip" },
+  { pattern: /\bbooking\.com\b/i, canonical: "Booking.com" },
+  { pattern: /\bagoda\b/i, canonical: "Agoda" },
+  { pattern: /\byatra\b/i, canonical: "Yatra" },
+  { pattern: /\blenskart\b/i, canonical: "Lenskart" },
+  { pattern: /\bboat\b/i, canonical: "boAt" },
+  { pattern: /\bmamaearth\b/i, canonical: "Mamaearth" },
+  { pattern: /\bmeesho\b/i, canonical: "Meesho" },
+  { pattern: /\bamazon\b/i, canonical: "Amazon" },
+  { pattern: /\bindigo\b/i, canonical: "IndiGo" },
+  { pattern: /\bswiggy\b/i, canonical: "Swiggy" },
+];
+
+/** Resolve free-text merchant ("bms tickets") to a Cashkaro table name. */
+export function resolveCashkaroMerchant(merchant: string): string {
+  const raw = (merchant || "").trim();
+  if (!raw) return raw;
+  const lower = raw.toLowerCase();
+  // Exact table hit first
+  const exact = CASHKARO_RATES.find((r) => r.merchant.toLowerCase() === lower);
+  if (exact) return exact.merchant;
+  for (const a of MERCHANT_ALIASES) {
+    if (a.pattern.test(raw)) return a.canonical;
+  }
+  // Substring against known merchants (longest first)
+  const names = [...new Set(CASHKARO_RATES.map((r) => r.merchant))].sort((a, b) => b.length - a.length);
+  for (const name of names) {
+    if (lower.includes(name.toLowerCase())) return name;
+  }
+  return raw;
+}
+
 export function findCashkaro(merchant: string, category?: string): CashkaroRate | undefined {
-  const lower = merchant.toLowerCase();
+  const resolved = resolveCashkaroMerchant(merchant);
+  const lower = resolved.toLowerCase();
   const matches = CASHKARO_RATES.filter((r) => r.merchant.toLowerCase() === lower);
   if (matches.length === 0) return undefined;
   if (category) {

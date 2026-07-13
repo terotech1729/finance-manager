@@ -68,7 +68,7 @@ const RULES: Rule[] = [
 
   // ---- MOVIES / EVENTS ----  (booked in-app → UPI-payable → merchant_app channel)
   {
-    match: /\bdistrict\b|\bbookmyshow\b|\bbms\b|movie\s*ticket|movie|\bpvr\b|\binox\b|cinema/i,
+    match: /\bdistrict\b|\bbookmyshow\b|\bbms\b|movie\s*ticket|movie|\bpvr\b|\binox\b|\bcinepolis\b|cinema/i,
     category: "movies / events",
     prettyLabel: "Movie / event tickets",
     channel: "merchant_app",
@@ -78,7 +78,8 @@ const RULES: Rule[] = [
       question: "How many tickets?",
       options: [
         { value: "one", label: "Just 1 ticket", category: "movies / events · 1 ticket", channel: "merchant_app" },
-        { value: "multi", label: "2 or more (BOGO applies)", category: "movies / events · 2+ tickets", channel: "merchant_app" },
+        { value: "two", label: "Exactly 2 tickets", category: "movies / events · 2 tickets", channel: "merchant_app" },
+        { value: "multi", label: "3 or more tickets", category: "movies / events · 3+ tickets", channel: "merchant_app" },
       ],
     },
   },
@@ -227,6 +228,10 @@ export const ALL_CATEGORIES = [
   "meesho",
   "movies / events (District)",
   "movies / events",
+  "movies / events · 1 ticket",
+  "movies / events · 2 tickets",
+  "movies / events · 2+ tickets",
+  "movies / events · 3+ tickets",
   "swiggy",
   "zomato",
   "groceries",

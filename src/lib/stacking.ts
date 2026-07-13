@@ -8,6 +8,12 @@
  * NOTE: CRED/CheQ gift-card rates are app-dynamic and login-gated, so the values
  * below are typical/representative defaults. Verify the live rate in-app before
  * relying on a specific number. Update these as offers change.
+ *
+ * Rate precedence:
+ *  1. Recommend widget live CRED % (credGiftCardPctOverride) — scoped to the
+ *     selected theatre / matching merchant deal only
+ *  2. Settings giftCardRateOverrides keyed by "STORE:Merchant"
+ *  3. Defaults in GIFT_CARD_DEALS below
  */
 
 export type GiftCardStore = "CRED" | "CheQ" | "ShopWise" | "Brand";
@@ -38,7 +44,10 @@ export const GIFT_CARD_DEALS: GiftCardDeal[] = [
   { store: "CRED", match: /cleartrip/i, merchantLabel: "Cleartrip", discountPct: 3, coinFunded: true, notes: "Travel GC on CRED, occasional." },
   { store: "CRED", match: /\bswiggy\b/i, merchantLabel: "Swiggy", discountPct: 3, coinFunded: true, notes: "Swiggy money/GC on CRED." },
   { store: "CRED", match: /\bzomato\b/i, merchantLabel: "Zomato", discountPct: 3, coinFunded: true, notes: "" },
-  { store: "CRED", match: /bookmyshow|\bbms\b/i, merchantLabel: "BookMyShow", discountPct: 3, coinFunded: true, notes: "" },
+  { store: "CRED", match: /bookmyshow|\bbms\b/i, merchantLabel: "BookMyShow", discountPct: 3, coinFunded: true, notes: "BMS GC is usually mild; prefer theatre-chain GCs (PVR / Cinepolis) when booking movies." },
+  { store: "CRED", match: /\bpvr\b/i, merchantLabel: "PVR", discountPct: 21, coinFunded: true, notes: "CRED Store PVR GC — often ~15–25%; verify live %. Can beat BOB BOGO (₹250 cap) on larger bookings." },
+  { store: "CRED", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 28, coinFunded: true, notes: "CRED Store Cinepolis GC — often ~20–30%; verify live %. Frequently beats District BOGO on multi-ticket bookings." },
+  { store: "CRED", match: /\binox\b/i, merchantLabel: "INOX", discountPct: 21, coinFunded: true, notes: "INOX / PVR INOX GC on CRED — rates similar to PVR; verify live %." },
   { store: "CRED", match: /reliance\s*digital|croma|vijay\s*sales/i, merchantLabel: "Electronics store", discountPct: 2, coinFunded: true, notes: "Electronics GC ~2%." },
   { store: "CheQ", match: /amazon/i, merchantLabel: "Amazon", discountPct: 2, coinFunded: true, notes: "CheQ chips can add a small boost." },
   { store: "CheQ", match: /flipkart/i, merchantLabel: "Flipkart", discountPct: 3, coinFunded: true, notes: "" },
