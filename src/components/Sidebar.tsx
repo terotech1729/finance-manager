@@ -59,7 +59,7 @@ function Brand() {
   );
 }
 
-function NavLinks({ path, onNavigate }: { path: string; onNavigate?: () => void }) {
+function NavLinks({ path, onNavigate, compact }: { path: string; onNavigate?: () => void; compact?: boolean }) {
   return (
     <>
       {groups.map((g) => (
@@ -74,7 +74,9 @@ function NavLinks({ path, onNavigate }: { path: string; onNavigate?: () => void 
                   key={it.href}
                   href={it.href}
                   onClick={onNavigate}
-                  className={`relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  className={`relative flex items-center gap-3 px-3 rounded-lg text-sm transition-colors ${
+                    compact ? "py-2.5 min-h-[44px]" : "py-2"
+                  } ${
                     active ? "bg-accent/15 text-fg font-medium" : "text-fg-muted hover:text-fg hover:bg-bg-elevated"
                   }`}
                 >
@@ -91,19 +93,43 @@ function NavLinks({ path, onNavigate }: { path: string; onNavigate?: () => void 
   );
 }
 
+/** Shared chrome — desktop permanent rail + mobile slide-over use the same structure. */
+function SidebarChrome({
+  path,
+  onNavigate,
+  footer,
+  headerRight,
+  className,
+}: {
+  path: string;
+  onNavigate?: () => void;
+  footer?: boolean;
+  headerRight?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col bg-bg-chrome/95 backdrop-blur border-r border-border ${className ?? ""}`}>
+      <div className="px-4 sm:px-5 py-4 border-b border-border flex items-center justify-between gap-2">
+        <Brand />
+        {headerRight}
+      </div>
+      <nav className="flex-1 p-3 overflow-y-auto overscroll-contain">
+        <NavLinks path={path} onNavigate={onNavigate} compact={!!onNavigate} />
+      </nav>
+      {footer !== false && (
+        <div className="p-4 border-t border-border" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+          <div className="text-xs text-fg-subtle">v1.6 · Personal finance manager</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const path = usePathname();
   return (
-    <aside className="hidden md:flex md:flex-col w-60 shrink-0 border-r border-border bg-bg-chrome/80 backdrop-blur min-h-screen sticky top-0">
-      <div className="px-5 py-4 border-b border-border">
-        <Brand />
-      </div>
-      <nav className="flex-1 p-3 overflow-y-auto">
-        <NavLinks path={path} />
-      </nav>
-      <div className="p-4 border-t border-border">
-        <div className="text-xs text-fg-subtle">v1.6 · Personal finance manager</div>
-      </div>
+    <aside className="hidden md:flex md:flex-col w-60 shrink-0 min-h-screen sticky top-0 self-start h-[100dvh]">
+      <SidebarChrome path={path} className="h-full w-full" />
     </aside>
   );
 }
@@ -111,7 +137,9 @@ export function Sidebar() {
 export function MobileNav() {
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
+  useEffect(() => { setMounted(true); }, []);
   // Close the drawer whenever the route changes.
   useEffect(() => { setOpen(false); }, [path]);
   // Lock body scroll while the drawer is open.
@@ -121,41 +149,70 @@ export function MobileNav() {
     return () => { document.body.style.overflow = ""; };
   }, [open]);
 
-  return (
-    <header
-      className="md:hidden sticky top-0 z-30 bg-bg-chrome/90 backdrop-blur-sm border-b border-border"
-      style={{ paddingTop: "env(safe-area-inset-top)" }}
-    >
-      <div className="px-3 sm:px-4 h-14 flex items-center justify-between gap-2 min-w-0">
-        <div className="min-w-0 shrink">
-          <Brand />
-        </div>
-        <button
-          aria-label="Menu"
-          className="btn-ghost px-2 py-2 shrink-0 min-h-[44px] min-w-[44px]"
-          onClick={() => setOpen(true)}
-        >
-          <Icon.Menu size={22} />
-        </button>
-      </div>
+  // Current section label for the top bar (mirrors desktop context).
+  const current =
+    groups.flatMap((g) => g.items).find((it) => isActive(path, it.href))?.label ?? "Menu";
 
-      {open && (
-        <div className="fixed inset-0 z-40" style={{ paddingTop: "env(safe-area-inset-top)" }}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
-          <div
-            className="absolute right-0 top-0 h-full w-72 max-w-[min(85vw,20rem)] bg-bg-chrome border-l border-border shadow-2xl flex flex-col toast-in"
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+  return (
+    <>
+      <header
+        className="md:hidden sticky top-0 z-30 bg-bg-chrome/90 backdrop-blur-sm border-b border-border"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
+        <div className="px-2 h-14 flex items-center gap-1 min-w-0">
+          <button
+            aria-label="Open navigation"
+            aria-expanded={open}
+            className="btn-ghost px-2 py-2 shrink-0 min-h-[44px] min-w-[44px]"
+            onClick={() => setOpen(true)}
           >
-            <div className="px-4 py-4 border-b border-border flex items-center justify-between gap-2">
-              <Brand />
-              <button aria-label="Close" className="btn-ghost px-2 py-2 min-h-[44px] min-w-[44px]" onClick={() => setOpen(false)}><Icon.Close size={20} /></button>
-            </div>
-            <nav className="flex-1 p-3 overflow-y-auto overscroll-contain">
-              <NavLinks path={path} onNavigate={() => setOpen(false)} />
-            </nav>
+            <Icon.Menu size={22} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <Brand />
           </div>
+          <div className="shrink-0 pr-2 text-xs text-fg-muted truncate max-w-[35%]">{current}</div>
+        </div>
+      </header>
+
+      {/* Left slide-over — same pane as desktop sidebar */}
+      {mounted && (
+        <div
+          className={`md:hidden fixed inset-0 z-40 ${open ? "visible" : "invisible pointer-events-none"}`}
+          aria-hidden={!open}
+        >
+          <div
+            className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-200 ${
+              open ? "opacity-100" : "opacity-0"
+            }`}
+            onClick={() => setOpen(false)}
+          />
+          <aside
+            className={`absolute left-0 top-0 h-full w-[min(16.5rem,86vw)] shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
+              open ? "translate-x-0" : "-translate-x-full"
+            }`}
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+          >
+            <SidebarChrome
+              path={path}
+              onNavigate={() => setOpen(false)}
+              className="h-full w-full"
+              headerRight={
+                <button
+                  aria-label="Close navigation"
+                  className="btn-ghost px-2 py-2 min-h-[44px] min-w-[44px] shrink-0"
+                  onClick={() => setOpen(false)}
+                >
+                  <Icon.Close size={20} />
+                </button>
+              }
+            />
+          </aside>
         </div>
       )}
-    </header>
+    </>
   );
 }
