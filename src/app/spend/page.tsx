@@ -12,7 +12,7 @@ import { colorFor } from "@/lib/chartColors";
 import { inr, inrExact } from "@/lib/utils";
 import type { Transaction } from "@/lib/types";
 
-const CARD_IDS = ["amex_gold", "amex_plat_travel", "amex_mrcc", "scapia", "idfc_indigo", "bob_eterna", "yes_kiwi", "sbi_simplyclick"];
+const CARD_IDS = ["amex_gold", "amex_plat_travel", "amex_mrcc", "scapia", "idfc_indigo", "bob_eterna", "yes_kiwi", "sbi_simplyclick", "amazon_pay_icici", "hsbc_live_plus"];
 
 export default function SpendAnalyzerPage() {
   const [mounted, setMounted] = useState(false);
@@ -66,7 +66,7 @@ export default function SpendAnalyzerPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Spend Analyzer</h1>
+        <h1 className="page-title">Spend Analyzer</h1>
         <p className="text-fg-muted mt-1">How much went on each card per month, where it went, and rewards earned.</p>
       </div>
 

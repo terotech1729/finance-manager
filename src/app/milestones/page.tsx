@@ -25,7 +25,7 @@ export default function MilestonesPage() {
     id === "sbi_simplyclick" ? state.sbiYtdSpend :
     id === "idfc_indigo" ? state.idfcYtdSpend :
     id === "bob_eterna" ? state.bobYtdSpend :
-    id === "swiggy_blck" ? state.blckYtdSpend :
+    id === "hsbc_live_plus" ? state.hsbcLivePlusYtdSpend :
     0;
 
   const grouped: Record<string, (typeof ANNUAL_MILESTONES)[number][]> = {};
@@ -39,7 +39,7 @@ export default function MilestonesPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="page-title flex items-center gap-2">
           <Icon.Trophy /> Milestones
         </h1>
         <p className="text-fg-muted mt-1">Annual + monthly milestones across the portfolio. Update spend on Settings.</p>

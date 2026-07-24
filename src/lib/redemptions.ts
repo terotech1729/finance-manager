@@ -79,11 +79,11 @@ export const REDEMPTIONS: Redemption[] = [
     ],
   },
   {
-    currency: "Swiggy HDFC BLCK cashback",
-    cardIds: ["swiggy_blck"],
+    currency: "HSBC Live+ cashback",
+    cardIds: ["hsbc_live_plus"],
     worst: 1.00, typical: 1.00, best: 1.00,
     how: [
-      { label: "BLCK cashback (statement)", value: 1.00, note: "Cashback, not points — fixed ₹1 = ₹1. No range. (Card not yet issued.)" },
+      { label: "Statement credit (cashback)", value: 1.00, note: "Auto-credited within ~45 days of statement. ₹1 cashback = ₹1. 10% accel categories share ₹1,200/mo cap; else 1.5% base." },
     ],
   },
   {

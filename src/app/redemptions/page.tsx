@@ -11,7 +11,7 @@ export default function RedemptionsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Redemption values</h1>
+        <h1 className="page-title">Redemption values</h1>
         <p className="text-fg-muted mt-1">Points aren&apos;t worth a fixed amount — value depends on how you redeem. These ranges drive the &ldquo;worst → best&rdquo; return shown in recommendations.</p>
       </div>
 

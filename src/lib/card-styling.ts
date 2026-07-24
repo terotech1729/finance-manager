@@ -95,6 +95,14 @@ export const CARD_STYLES: Record<string, CardStyle> = {
     topLabel: "BLCK",
     patternClass: "card-pattern-glow",
   },
+  hsbc_live_plus: {
+    bgClass: "bg-gradient-to-br from-red-800 via-rose-700 to-red-950",
+    fgClass: "text-white",
+    network: "visa",
+    issuerLabel: "HSBC",
+    topLabel: "LIVE+",
+    patternClass: "card-pattern-platinum",
+  },
   amazon_pay_icici: {
     bgClass: "bg-gradient-to-br from-orange-500 via-amber-600 to-slate-800",
     fgClass: "text-white",

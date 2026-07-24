@@ -6,23 +6,38 @@
   color-scheme: dark;
 }
 
-html, body {
+html {
   height: 100%;
-  color: #e6e8eb;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Prevent iOS Safari from horizontal rubber-banding on wide children */
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
-  /* Subtle depth: soft accent glows over the dark base. */
+  min-height: 100%;
+  min-height: 100dvh;
+  color: #e6e8eb;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  /* iOS Safari breaks background-attachment: fixed — use scroll */
   background:
     radial-gradient(1100px 600px at 100% -10%, rgba(59, 130, 246, 0.10), transparent 60%),
     radial-gradient(900px 500px at -10% 110%, rgba(16, 185, 129, 0.07), transparent 55%),
     #0b0d10;
-  background-attachment: fixed;
+  background-attachment: scroll;
+  /* Safe areas for notched iPhones */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 * {
   box-sizing: border-box;
+}
+
+img, svg, video, canvas {
+  max-width: 100%;
+  height: auto;
 }
 
 ::selection { background: rgba(59, 130, 246, 0.35); }
@@ -34,9 +49,9 @@ body {
 
 @layer components {
   .card-shell { @apply bg-bg-elevated border border-border rounded-xl shadow-sm; }
-  .card-header { @apply px-4 py-3 border-b border-border flex items-center justify-between; }
-  .card-body { @apply p-4; }
-  .stat-tile { @apply relative bg-bg-elevated border border-border rounded-xl p-4 overflow-hidden transition-colors hover:border-border-strong; }
+  .card-header { @apply px-3 sm:px-4 py-3 border-b border-border flex items-center justify-between gap-2 flex-wrap; }
+  .card-body { @apply p-3 sm:p-4; }
+  .stat-tile { @apply relative bg-bg-elevated border border-border rounded-xl p-3 sm:p-4 overflow-hidden transition-colors hover:border-border-strong; }
   /* thin accent strip across the top of every KPI tile */
   .stat-tile::before { content: ""; @apply absolute inset-x-0 top-0 h-px; background: linear-gradient(90deg, rgba(59,130,246,0.6), rgba(16,185,129,0.35), transparent); }
   .pill { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border; }
@@ -45,14 +60,19 @@ body {
   .pill-danger { @apply pill bg-danger-muted border-danger/40 text-danger; }
   .pill-info { @apply pill bg-info-muted border-info/40 text-info; }
   .pill-neutral { @apply pill bg-bg-chrome border-border text-fg-muted; }
-  .input { @apply w-full bg-bg-chrome border border-border rounded-md px-3 py-2 text-sm text-fg outline-none transition-all; }
+  .input { @apply w-full bg-bg-chrome border border-border rounded-md px-3 py-2.5 sm:py-2 text-base sm:text-sm text-fg outline-none transition-all; }
   .input:focus { @apply border-accent; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18); }
-  .btn { @apply inline-flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-all gap-2 active:scale-[0.98]; }
+  .btn { @apply inline-flex items-center justify-center px-4 py-2.5 sm:py-2 rounded-md text-sm font-medium transition-all gap-2 active:scale-[0.98] min-h-[44px] sm:min-h-0; }
   .btn-primary { @apply btn bg-accent text-white hover:bg-accent-hover shadow-sm; box-shadow: 0 2px 10px rgba(59, 130, 246, 0.25); }
   .btn-secondary { @apply btn bg-bg-elevated border border-border text-fg hover:bg-bg-chrome hover:border-border-strong; }
   .btn-ghost { @apply btn text-fg-muted hover:text-fg hover:bg-bg-chrome; }
   .label { @apply text-xs uppercase tracking-wide text-fg-muted; }
   .table-row { @apply border-b border-border last:border-0; }
+  /* Mobile-friendly page titles */
+  .page-title { @apply text-2xl sm:text-3xl font-bold tracking-tight; }
+  .page-sub { @apply text-sm sm:text-base text-fg-muted mt-1; }
+  /* Horizontal scroll wrapper for tables / wide charts */
+  .scroll-x { @apply -mx-3 sm:mx-0 px-3 sm:px-0 overflow-x-auto overscroll-x-contain; }
 }
 
 /* Toast slide/fade-in */
@@ -116,11 +136,20 @@ body {
   pointer-events: none;
 }
 
-/* Card hover lift */
-.card-hover {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+/* Card hover lift — disable on touch to avoid sticky hover */
+@media (hover: hover) and (pointer: fine) {
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  }
 }
-.card-hover:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+
+/* Prevent iOS auto-zoom on focused inputs (needs ≥16px) — already set via .input text-base */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea {
+    font-size: 16px;
+  }
 }

@@ -5,7 +5,7 @@ import type { AppState } from "./storage";
  * Shared by the manual transaction logger and the bill-reconciliation tool.
  * UPI / cash / gift-card / "other" are independent and pass through with no effect.
  */
-export function applyCardSpend(next: AppState, cardId: string, amt: number, rewardInr: number): void {
+export function applyCardSpend(next: AppState, cardId: string, amt: number, rewardInr: number, effectivePct?: number): void {
   if (cardId === "amex_plat_travel") next.ptccEligibleSpend += amt;
   if (cardId === "amex_mrcc") {
     next.mrccCycleSpend += amt;
@@ -18,7 +18,13 @@ export function applyCardSpend(next: AppState, cardId: string, amt: number, rewa
   }
   if (cardId === "sbi_simplyclick") next.sbiYtdSpend += amt;
   if (cardId === "idfc_indigo") next.idfcYtdSpend += amt;
-  if (cardId === "swiggy_blck") next.blckYtdSpend += amt;
+  if (cardId === "hsbc_live_plus") {
+    next.hsbcLivePlusYtdSpend += amt;
+    if ((effectivePct ?? 0) >= 9 || rewardInr >= amt * 0.09) {
+      next.livePlusAccelCashbackUsedThisMonth += Math.min(rewardInr || amt * 0.1, amt * 0.1);
+    }
+    if (next.hsbcLivePlusYtdSpend >= 20000) next.hsbcWelcomeClaimed = next.hsbcWelcomeClaimed; // set manually after bank credits
+  }
   if (cardId === "scapia") next.scapiaMonthlySpend += amt;
   if (cardId === "amex_gold" && amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);
   if (cardId === "yes_kiwi") {
@@ -36,7 +42,7 @@ const clamp0 = (n: number) => (n < 0 ? 0 : n);
  * Counters are clamped at 0 (the txn-count milestones can't perfectly invert across a
  * month reset, but clamping keeps them sane and never negative).
  */
-export function reverseCardSpend(next: AppState, cardId: string, amt: number, rewardInr: number): void {
+export function reverseCardSpend(next: AppState, cardId: string, amt: number, rewardInr: number, effectivePct?: number): void {
   if (cardId === "amex_plat_travel") next.ptccEligibleSpend = clamp0(next.ptccEligibleSpend - amt);
   if (cardId === "amex_mrcc") {
     next.mrccCycleSpend = clamp0(next.mrccCycleSpend - amt);
@@ -49,7 +55,14 @@ export function reverseCardSpend(next: AppState, cardId: string, amt: number, re
   }
   if (cardId === "sbi_simplyclick") next.sbiYtdSpend = clamp0(next.sbiYtdSpend - amt);
   if (cardId === "idfc_indigo") next.idfcYtdSpend = clamp0(next.idfcYtdSpend - amt);
-  if (cardId === "swiggy_blck") next.blckYtdSpend = clamp0(next.blckYtdSpend - amt);
+  if (cardId === "hsbc_live_plus") {
+    next.hsbcLivePlusYtdSpend = clamp0(next.hsbcLivePlusYtdSpend - amt);
+    if ((effectivePct ?? 0) >= 9 || rewardInr >= amt * 0.09) {
+      next.livePlusAccelCashbackUsedThisMonth = clamp0(
+        next.livePlusAccelCashbackUsedThisMonth - Math.min(rewardInr || amt * 0.1, amt * 0.1)
+      );
+    }
+  }
   if (cardId === "scapia") next.scapiaMonthlySpend = clamp0(next.scapiaMonthlySpend - amt);
   if (cardId === "amex_gold" && amt >= 1000) next.goldThisMonthTxnsAt1k = clamp0(next.goldThisMonthTxnsAt1k - 1);
   if (cardId === "yes_kiwi") {

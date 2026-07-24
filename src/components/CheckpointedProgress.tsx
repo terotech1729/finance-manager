@@ -28,8 +28,8 @@ export function CheckpointedProgress({ current, total, checkpoints = [], tone = 
   const currentPct = pct(fillValue, total);
 
   return (
-    <div className="space-y-2">
-      <div className="relative h-2.5 rounded-full bg-bg-chrome overflow-visible">
+    <div className="space-y-2 overflow-x-auto overscroll-x-contain pb-1">
+      <div className="relative h-2.5 rounded-full bg-bg-chrome overflow-visible min-w-[240px]">
         {/* Filled portion */}
         <div
           className={`absolute top-0 left-0 h-full rounded-full ${fillClass} transition-all duration-500`}
@@ -66,7 +66,7 @@ export function CheckpointedProgress({ current, total, checkpoints = [], tone = 
 
       {/* Checkpoint labels under bar */}
       {showLabels && checkpoints.length > 0 && (
-        <div className="relative h-5 text-[10px] text-fg-muted">
+        <div className="relative h-5 text-[10px] text-fg-muted min-w-[240px]">
           {checkpoints.map((cp, i) => {
             const cpPct = pct(cp.value, total);
             const hit = cp.hit ?? current >= cp.value;

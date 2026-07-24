@@ -11,7 +11,7 @@ export const CASHKARO_RATES: readonly CashkaroRate[] = [
   { merchant: "Myntra", rate: "5–7%", minRate: 5, maxRate: 7, zone: "reliable" },
   { merchant: "Ajio", rate: "5–7%", minRate: 5, maxRate: 7, zone: "reliable" },
   { merchant: "Tata CLiQ", rate: "3–6%", minRate: 3, maxRate: 6, zone: "reliable" },
-  { merchant: "Nykaa", rate: "5–8%", minRate: 5, maxRate: 8, zone: "reliable", notes: "If using BLCK 5%-off coupon: try anyway, BLCK fallback = 10%" },
+  { merchant: "Nykaa", rate: "5–8%", minRate: 5, maxRate: 8, zone: "reliable", notes: "Cashkaro → BOB Eterna 5× (or Live+ 10% if shopping MCC and under accel cap)." },
   { merchant: "BookMyShow", rate: "5–10%", minRate: 5, maxRate: 10, zone: "reliable" },
   { merchant: "Lenskart", rate: "5–10%", minRate: 5, maxRate: 10, zone: "reliable" },
   { merchant: "boAt", rate: "5–10%", minRate: 5, maxRate: 10, zone: "reliable" },
@@ -29,8 +29,8 @@ export const CASHKARO_RATES: readonly CashkaroRate[] = [
   { merchant: "Amazon", category: "Kitchen / Home / Grocery", rate: "2.5%", minRate: 2.5, maxRate: 2.5, zone: "try" },
   { merchant: "Amazon", category: "Electronics", rate: "~1%", minRate: 1, maxRate: 1, zone: "shopwise" },
   { merchant: "Amazon", category: "Recharge / Bills", rate: "flat ₹1.5", minRate: 0, maxRate: 0, flatInr: 1.5, zone: "try", notes: "Amazon recharge/bills Cashkaro link pays a flat ₹1.5 — stacks on top of card + welcome." },
-  { merchant: "Cleartrip", category: "Hotels", rate: "3–5%", minRate: 3, maxRate: 5, zone: "try", notes: "Try Cashkaro even with BLCK HDFCCC coupon. Fallback to BLCK 24% if Cashkaro fails." },
-  { merchant: "Cleartrip", category: "Flights", rate: "1–3%", minRate: 1, maxRate: 3, zone: "try", notes: "Try Cashkaro even with BLCK HDFCCC coupon. Fallback to BLCK 11% if Cashkaro fails." },
+  { merchant: "Cleartrip", category: "Hotels", rate: "3–5%", minRate: 3, maxRate: 5, zone: "try", notes: "Try Cashkaro → pay BOB Eterna 5×." },
+  { merchant: "Cleartrip", category: "Flights", rate: "1–3%", minRate: 1, maxRate: 3, zone: "try", notes: "Try Cashkaro → pay BOB Eterna 5× (or SBI SimplyCLICK 10×)." },
   { merchant: "Yatra", rate: "1–3%", minRate: 1, maxRate: 3, zone: "reliable" },
 
   // Not on Cashkaro

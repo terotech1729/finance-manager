@@ -146,24 +146,6 @@ export const CARDS: readonly Card[] = [
     statementDay: 21,
   },
   {
-    id: "swiggy_blck",
-    name: "Swiggy BLCK HDFC",
-    short: "BLCK",
-    network: "Mastercard",
-    issuer: "HDFC Bank",
-    creditLimit: 0,
-    annualFee: 1180,
-    feeWaivable: true,
-    feeWaiverAt: 200000,
-    forexPct: 3.5,
-    loungeRule: "Mastercard golf",
-    status: "applied",
-    pointValue: 1.0,
-    baseRatePct: 1.0,
-    bestRatePct: 24.0,
-    notes: "Applied 2026-05-29 — pending issuance",
-  },
-  {
     id: "amazon_pay_icici",
     name: "Amazon Pay ICICI Bank",
     short: "Amazon Pay ICICI",
@@ -178,7 +160,62 @@ export const CARDS: readonly Card[] = [
     pointValue: 1.0,
     baseRatePct: 1.0,
     bestRatePct: 5.0,
-    notes: "Approved 2026-05-30 with ₹1.2L limit. Physical card en route (5 working days).",
+    notes: "LTF. 5% Prime / 3% non-Prime on Amazon.in; 2% bills/recharges via Amazon; 1% else. Cashback as Amazon Pay balance.",
+  },
+  {
+    id: "hsbc_live_plus",
+    name: "HSBC Live+",
+    short: "HSBC Live+",
+    network: "Visa Infinite",
+    issuer: "HSBC",
+    creditLimit: 0,
+    annualFee: 1179, // ₹999 + GST approx
+    feeWaivable: true,
+    feeWaiverAt: 200000,
+    forexPct: 3.5,
+    loungeRule: "4 domestic/yr (1/quarter) + 1 international/yr (from Sep 2026)",
+    status: "active",
+    pointValue: 1.0,
+    baseRatePct: 1.5,
+    bestRatePct: 10.0,
+    statementDay: 1,
+    notes: "ACTIVE — Visa Infinite. 10% statement cashback (auto within ~45 days of statement) on dining, food delivery, groceries, utilities & shopping; Amazon/Flipkart/Myntra = 1.5% only. Shared accel cap ₹1,200/mo (~₹12k spend). Welcome: ₹1k CB @ ₹20k/30d + app login. Perks: Times Prime, District BOGO/dining, 4 domestic lounges/yr, 1 intl lounge/yr (from Sep 2026), ~₹250/qtr contactless fuel CB (eligible >₹10k), Visa Infinite concierge. Fee ₹999+GST, waived at ₹2L/yr.",
+  },
+  {
+    id: "axis_ace",
+    name: "Axis Bank ACE",
+    short: "Axis Ace",
+    network: "Visa",
+    issuer: "Axis Bank",
+    creditLimit: 0,
+    annualFee: 589, // ₹499 + GST approx
+    feeWaivable: true,
+    feeWaiverAt: 200000,
+    forexPct: 3.5,
+    loungeRule: "—",
+    status: "future",
+    pointValue: 1.0,
+    baseRatePct: 1.5,
+    bestRatePct: 5.0,
+    notes: "SKIP for now — Live+ covers utilities at 10% (shared cap). Ace only if you blow past Live+ ₹1,200/mo accelerated and still need a bills specialist.",
+  },
+  {
+    id: "cheq_au",
+    name: "CheQ AU Bank Credit Card",
+    short: "CheQ AU",
+    network: "Visa / RuPay",
+    issuer: "AU Small Finance Bank",
+    creditLimit: 0,
+    annualFee: 499,
+    feeWaivable: true,
+    feeWaiverAt: 300000,
+    forexPct: 3.5,
+    loungeRule: "—",
+    status: "future",
+    pointValue: 0.5, // best-case 2 pts = ₹1
+    baseRatePct: 0.5,
+    bestRatePct: 6.0, // 12% face × 0.5 at travel/GC redemption
+    notes: "SKIP for this portfolio — not cashback. CheQ Points only; travel/GC redeem 2=₹1 (~6% effective); bill redeem 4=₹1 (~3%). Locks you into CheQ. Prefer Axis Ace for liquid bill cashback.",
   },
 ];
 
@@ -197,7 +234,8 @@ export const ANNUAL_MILESTONES: readonly AnnualMilestone[] = [
   { cardId: "idfc_indigo", threshold: 1200000, reward: "5,000 BluChips voucher", rewardValueInr: 650, hit: false },
   { cardId: "bob_eterna", threshold: 50000, reward: "10,000 RP (welcome, 60-day)", rewardValueInr: 2500, hit: false },
   { cardId: "bob_eterna", threshold: 500000, reward: "20,000 RP (annual)", rewardValueInr: 5000, hit: false },
-  { cardId: "swiggy_blck", threshold: 200000, reward: "Renewal fee waived", rewardValueInr: 1180, hit: false },
+  { cardId: "hsbc_live_plus", threshold: 20000, reward: "₹1,000 welcome cashback (30-day + app login)", rewardValueInr: 1000, hit: false },
+  { cardId: "hsbc_live_plus", threshold: 200000, reward: "Annual fee waived (₹999+GST)", rewardValueInr: 1179, hit: false },
 ];
 
 export const MONTHLY_MILESTONES: readonly MonthlyMilestone[] = [
@@ -206,6 +244,7 @@ export const MONTHLY_MILESTONES: readonly MonthlyMilestone[] = [
   { cardId: "amex_mrcc", rule: "₹20,000 total in calendar month (enrolled)", rewardMr: 1000, rewardInr: 580, minSpend: 20000 },
   { cardId: "scapia", rule: "≥₹20,000 combined V+R for lounge unlock", rewardMr: 0, rewardInr: 2500, minSpend: 20000 },
   { cardId: "bob_eterna", rule: "≥₹40,000 per quarter for lounge", rewardMr: 0, rewardInr: 2500, minSpend: 13333 },
+  { cardId: "hsbc_live_plus", rule: "Shared 10% accel cap ₹1,200/mo (~₹12k dining/food/grocery/utility/shopping)", rewardMr: 0, rewardInr: 1200, minSpend: 12000 },
 ];
 
 export function getCardById(id: string): Card | undefined {

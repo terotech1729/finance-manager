@@ -14,14 +14,14 @@ import { notFound } from "next/navigation";
 
 const CARD_TIPS: Record<string, { useFor: string[]; dontUseFor: string[]; primaryRole: string }> = {
   amex_gold: {
-    primaryRole: "Utility autopay + monthly 6-txn milestone churn + ShopWise (Reward Multiplier 5×)",
-    useFor: ["Utility bills (electricity, mobile, TV, broadband)", "ShopWise voucher purchases (Amazon Pay / Swiggy / Flipkart at 5.8%)", "Small recurring purchases ≥₹1K (fills 6-txn monthly milestone)"],
-    dontUseFor: ["Fuel (no MR since 12 Jun 2025)", "Insurance / cash advance (excluded)", "International (3.5% forex; use Scapia)"],
+    primaryRole: "Monthly 6-txn milestone churn + ShopWise (Reward Multiplier 5×) — utilities prefer Live+",
+    useFor: ["ShopWise Swiggy vouchers for ≥₹1K milestone txns", "ShopWise when you need Gold milestone volume", "Small recurring ≥₹1K fills if Live+ cap is full"],
+    dontUseFor: ["Primary utilities (use HSBC Live+ 10%)", "Fuel (no MR since 12 Jun 2025)", "Insurance / cash advance (excluded)", "International (3.5% forex; use Scapia)"],
   },
   amex_plat_travel: {
     primaryRole: "Big-ticket spend + push toward ₹4L / ₹7L milestone (+ Taj voucher)",
-    useFor: ["Hotels direct (Taj, Marriott, etc.)", "Other airline tickets (non-IndiGo, non-Cleartrip via BLCK)", "Generic large spends (>₹5K)", "Use 8 free domestic lounge visits aggressively"],
-    dontUseFor: ["Fuel / insurance / utilities / cash / merchant-EMI (excluded)", "International (3.5% forex)", "Cleartrip (use BLCK 19% off)"],
+    useFor: ["Hotels direct (Taj, Marriott, etc.)", "Other airline tickets (non-IndiGo)", "Generic large spends (>₹5K)", "Use 8 free domestic lounge visits aggressively"],
+    dontUseFor: ["Fuel / insurance / utilities / cash / merchant-EMI (excluded)", "International (3.5% forex)", "Cleartrip when Cashkaro + BOB wins"],
   },
   amex_mrcc: {
     primaryRole: "Monthly milestones (4×₹1.5K + ₹20K) + fee waiver via ₹1.5L annual",
@@ -39,29 +39,41 @@ const CARD_TIPS: Record<string, { useFor: string[]; dontUseFor: string[]; primar
     dontUseFor: ["UPI / insurance / utility / fuel / rent / wallet (only 0.5 BluChip/₹100 ≈ 0.23%)", "Cash / EMI (zero BluChips)", "Other spends earn 3 BluChips/₹100 ≈ 1.35% — better cards exist"],
   },
   bob_eterna: {
-    primaryRole: "5× categories backup (dining/online) + lounge backup (₹40K/qtr)",
-    useFor: ["Dining (offline) — 3.75% till 5K RP cycle cap", "Online merchants when Cashkaro applies", "Welcome ₹50K → 10K RP (₹2,500) within 60 days"],
-    dontUseFor: ["Beyond 5K RP/cycle cap (drops to 0.75%)", "Fuel (no rewards)", "Tax / govt MCC (excluded)"],
+    primaryRole: "5× categories backup (dining/online/travel) + Cashkaro stacks + lounge (₹40K/qtr)",
+    useFor: ["Cleartrip / Agoda / online when Cashkaro stacks", "Overflow after Live+ ₹1,200/mo 10% cap", "Welcome ₹50K → 10K RP within 60 days"],
+    dontUseFor: ["Beyond 5K RP/cycle cap (drops to 0.75%)", "Fuel (no rewards)", "Tax / govt MCC (excluded)", "Swiggy while Live+ 10% has room"],
   },
   yes_kiwi: {
     primaryRole: "UPI scan/pay (2% via Kiwi Neon) + milestone-based lounge unlocks",
-    useFor: ["In-person UPI QR (kirana, autos, restaurants taking UPI only)", "Push toward Kiwi Neon ₹50K/₹1L/₹1.5L milestones for retroactive bumps + lounges"],
-    dontUseFor: ["Online card-not-present transactions (low rate)", "International (3.5% forex)", "Categories where Kiwi isn't tracked"],
+    useFor: ["In-person UPI QR (Playo, Uber, Rapido, kirana)", "Push toward Kiwi Neon ₹50K/₹1L/₹1.5L milestones"],
+    dontUseFor: ["Online card-not-present (0.5% / rarely supported)", "International (3.5% forex)", "Fuel / utilities / rent (excluded)"],
   },
   sbi_simplyclick: {
     primaryRole: "10× partner brands (Myntra/BMS/Cleartrip/Yatra/Apollo/Netmeds/Dominos/Tata CLiQ)",
-    useFor: ["Online partner brands when not on Reward Multiplier or BLCK", "Already at ₹91K — push ₹8.4K more for ₹1L milestone (29.8% marginal)"],
-    dontUseFor: ["Offline POS (0.25% wasted)", "Outside the 10× partner list (5× other online beats other cards rarely)", "Anything beyond 10K RP/month per category cap"],
+    useFor: ["Online partner brands when not on Live+ / BOB / ShopWise", "Annual ₹1L / ₹2L voucher milestones"],
+    dontUseFor: ["Offline POS (0.25% wasted)", "Outside the 10× partner list", "Anything beyond 10K RP/month per category cap"],
   },
-  swiggy_blck: {
-    primaryRole: "Swiggy (10% direct) + Cleartrip (24% with HDFCCC) + 5% online merchants",
-    useFor: ["Swiggy app (10% capped ₹1.5K/mo)", "Cleartrip hotels with HDFCCC coupon (24% effective)", "Cleartrip flights (11%)", "Nykaa with BLCK 5%-off (10%)", "Online merchants in BLCK 5% list (Amazon, Flipkart, Myntra, Ajio etc.)"],
-    dontUseFor: ["Tax / govt / fuel / rent / wallet / EMI / forex (excluded)", "Beyond ₹1.5K/mo cap (drops to 1%)", "Min ₹249/txn for 10% Swiggy, ₹100 for 5% online"],
+  hsbc_live_plus: {
+    primaryRole: "Primary 10% cashback card — Swiggy/dining/grocery/utilities + non-marketplace shopping",
+    useFor: [
+      "Swiggy / Zomato / dining (10%, shared ₹1,200/mo cap)",
+      "Utilities via BBPS/GPay/biller (10% — not via Amazon)",
+      "Groceries (Instamart/Blinkit/Zepto)",
+      "Other shopping except Amazon/Flipkart/Myntra",
+      "Hit ₹20k in first 30 days + HSBC app login for ₹1k welcome",
+      "₹2L/yr for fee waiver; use 4 domestic lounges + Times Prime / District perks",
+    ],
+    dontUseFor: [
+      "Amazon / Flipkart / Myntra (only 1.5% — use Amazon Pay ICICI for Amazon)",
+      "Amazon bill-pay for utilities (codes as Amazon, not 10%)",
+      "International (0% cashback + forex — use Scapia)",
+      "Fuel as primary earn (only quarterly contactless fuel CB if eligible)",
+    ],
   },
   amazon_pay_icici: {
     primaryRole: "Amazon (5% Prime, uncapped) + low-forex backup (1.99%)",
-    useFor: ["All Amazon purchases (5% Prime, no cap)", "Above Amex Gold ShopWise ₹10K/mo voucher cap, switch here", "Amazon Pay partner merchants (2%)", "International if Scapia rejected"],
-    dontUseFor: ["Outside Amazon (only 1% other)", "Wallet load (1% fee post Jan 2026 if >₹5K)", "Try Cashkaro click-through anyway — worst case = 5% Prime"],
+    useFor: ["All Amazon purchases (5% Prime, no cap)", "Utility overflow after Live+ 10% cap (2% via Amazon bills)", "Amazon Pay partner merchants (2%)", "International if Scapia rejected"],
+    dontUseFor: ["Outside Amazon (only 1% other)", "Wallet load (fees may apply)", "Primary utilities while Live+ cap has room"],
   },
 };
 
@@ -87,7 +99,7 @@ export default function CardDetailPage({ params }: { params: { id: string } }) {
       id === "sbi_simplyclick" ? state.sbiYtdSpend :
       id === "idfc_indigo" ? state.idfcYtdSpend :
       id === "bob_eterna" ? state.bobYtdSpend :
-      id === "swiggy_blck" ? state.blckYtdSpend :
+      id === "hsbc_live_plus" ? state.hsbcLivePlusYtdSpend :
       id === "scapia" ? state.scapiaMonthlySpend :
       id === "yes_kiwi" ? state.kiwiNeonCycleSpend :
       0;
@@ -113,7 +125,7 @@ export default function CardDetailPage({ params }: { params: { id: string } }) {
         </div>
         <div className="space-y-4">
           <div>
-            <h1 className="text-3xl font-bold">{card.name}</h1>
+            <h1 className="page-title break-words">{card.name}</h1>
             <p className="text-fg-muted mt-1">{card.issuer} · {card.network}</p>
           </div>
           {card.notes && (

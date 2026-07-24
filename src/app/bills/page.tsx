@@ -93,7 +93,7 @@ export default function BillsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Bill tracker</h1>
+          <h1 className="page-title">Bill tracker</h1>
           <p className="text-fg-muted mt-1">Record each card&apos;s statement bill and tick it off when you repay. Reconcile any unlogged spend.</p>
         </div>
         <div>

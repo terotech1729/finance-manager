@@ -51,7 +51,7 @@ export default function VoucherStorePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Voucher Stores</h1>
+        <h1 className="page-title">Voucher Stores</h1>
         <p className="text-fg-muted mt-1">Daily-rotating gift card discounts that stack on top of card rewards. Check daily before any planned spend.</p>
       </div>
 
@@ -60,7 +60,7 @@ export default function VoucherStorePage() {
       </Callout>
 
       <Callout tone="info" title="🏆 Second best: CRED Dreamplug + best online card">
-        CRED's Dreamplug section sells discounted brand vouchers daily. Pay with your best online card (Amex Gold via ShopWise = 5.8%, BLCK = 5%, BOB Eterna = 3.75%). Net: Dreamplug discount + card cashback = 7-25%. Domino's at 15% off + 5% card = <b>20% effective</b>.
+        CRED's Dreamplug section sells discounted brand vouchers daily. Pay with your best online card (HSBC Live+ 10% when eligible, Amex Gold via ShopWise ≈ 4% net, BOB Eterna = 3.75%). Net: Dreamplug discount + card cashback.
       </Callout>
 
       {Object.entries(grouped).map(([source, offers]) => (

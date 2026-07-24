@@ -96,7 +96,7 @@ export default function TransactionsPage() {
     setTxns(addTransaction(t));
     if (modeIsCard(v.mode)) {
       const next = { ...loadState() };
-      applyCardSpend(next, v.mode, amt, rwd);
+      applyCardSpend(next, v.mode, amt, rwd, amt > 0 ? (rwd / amt) * 100 : 0);
       saveState(next);
     }
     setAdding(false);
@@ -113,8 +113,8 @@ export default function TransactionsPage() {
     const newIsCard = modeIsCard(v.mode);
     if (oldWasCard || newIsCard) {
       const next = { ...loadState() };
-      if (oldWasCard) reverseCardSpend(next, editing.cardId, editing.amount, editing.rewardInr);
-      if (newIsCard) applyCardSpend(next, v.mode, amt, rwd);
+      if (oldWasCard) reverseCardSpend(next, editing.cardId, editing.amount, editing.rewardInr, editing.effectivePct);
+      if (newIsCard) applyCardSpend(next, v.mode, amt, rwd, amt > 0 ? (rwd / amt) * 100 : 0);
       saveState(next);
     }
     const channel: Transaction["channel"] =
@@ -138,7 +138,7 @@ export default function TransactionsPage() {
     if (!confirm(`Delete this ${inrExact(t.amount)} transaction at ${t.merchant}?`)) return;
     if (modeIsCard(t.cardId)) {
       const next = { ...loadState() };
-      reverseCardSpend(next, t.cardId, t.amount, t.rewardInr);
+      reverseCardSpend(next, t.cardId, t.amount, t.rewardInr, t.effectivePct);
       saveState(next);
     }
     setTxns(deleteTransaction(t.id));
@@ -152,7 +152,7 @@ export default function TransactionsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
+          <h1 className="page-title">Transactions</h1>
           <p className="text-fg-muted mt-1">Your logged spend history — edit, filter and review.</p>
         </div>
         <div className="flex gap-2">

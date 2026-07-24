@@ -121,7 +121,7 @@ export default function InvestmentsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Investments</h1>
+          <h1 className="page-title">Investments</h1>
           <p className="text-fg-muted mt-1">Track each holding as one position. SIPs &amp; top-ups add to the same holding so it grows over time.</p>
         </div>
         <div className="flex gap-2">

@@ -72,7 +72,9 @@ export type RecommendInput = {
   bobCycleSpend5x?: number;
   sbiYtdSpend?: number;
   idfcYtdSpend?: number;
-  blckYtdSpend?: number;
+  blckYtdSpend?: number; // legacy unused
+  hsbcLivePlusYtdSpend?: number;
+  livePlusAccelCashbackUsedThisMonth?: number;
   goldThisMonthTxnsAt1k?: number;
   mrccThisCycleTxnsAt1500?: number;
   mrccThisCycleAmount?: number;
@@ -80,7 +82,7 @@ export type RecommendInput = {
   bobBogoUsedThisMonth?: boolean;
   scapiaMonthlySpend?: number;
   kiwiNeonCycleSpend?: number;
-  swiggyBlckIssued?: boolean;
+  swiggyBlckIssued?: boolean; // legacy — always treat as false (card not obtained)
   amazonPayIciciIssued?: boolean;
   primeMember?: boolean;
   amazonPayBalance?: number;
@@ -94,6 +96,8 @@ export type RecommendInput = {
   movieTheatre?: "pvr" | "cinepolis" | "inox" | "other";
   bobEternaIssueDate?: string;
   bobWelcomeUnlocked?: boolean;
+  hsbcLivePlusIssueDate?: string;
+  hsbcWelcomeClaimed?: boolean;
   today?: string; // ISO; used for calendar-month milestone feasibility
   // legacy aliases
   goldMonthlyTxnsDone?: number;
@@ -108,6 +112,147 @@ export type RecommendInput = {
 const SHOPWISE_GROSS_PCT = 5.8;
 const SHOPWISE_FEE_PCT = 1.5 * 1.18; // 1.77%
 const SHOPWISE_NET_PCT = +(SHOPWISE_GROSS_PCT - SHOPWISE_FEE_PCT).toFixed(2); // ≈ 4.03%
+
+/** HSBC Live+ Visa Infinite reval (26 Jul 2026): shared accelerated cashback cap. */
+const LIVE_PLUS_ACCEL_PCT = 10;
+const LIVE_PLUS_ACCEL_CAP_INR = 1200; // ≈ ₹12k eligible accelerated spend / month
+const LIVE_PLUS_BASE_PCT = 1.5;
+
+/** Amazon / Flipkart / Myntra never get Live+ 10% — base 1.5% only. */
+function isLivePlusMarketplaceExcluded(merchant: string, category: string): boolean {
+  const t = `${merchant} ${category}`.toLowerCase();
+  return /\bamazon\b|\bamzn\b|flipkart|\bfkrt\b|\bmyntra\b/.test(t);
+}
+
+/**
+ * Live+ 10% buckets (post-reval): dining, food delivery, groceries, utilities, shopping
+ * (shopping excludes Amazon/Flipkart/Myntra). Returns null if only base 1.5% applies.
+ */
+function livePlusAccelBucket(merchant: string, category: string):
+  "food" | "dining" | "grocery" | "utility" | "shopping" | null {
+  if (isLivePlusMarketplaceExcluded(merchant, category)) return null;
+  const c = category.toLowerCase();
+  const m = merchant.toLowerCase();
+  if (
+    m.includes("swiggy") || c === "swiggy" ||
+    m.includes("zomato") || c.includes("zomato") ||
+    c.includes("food delivery")
+  ) return "food";
+  if (c.includes("dining") || c.includes("restaurant")) return "dining";
+  if (
+    c.includes("grocery") || c.includes("instamart") ||
+    m.includes("instamart") || m.includes("blinkit") || m.includes("zepto") ||
+    m.includes("bigbasket") || m.includes("big basket")
+  ) return "grocery";
+  if (
+    c.includes("utility") || c.includes("electric") || c.includes("mobile") ||
+    c.includes("recharge") || c.includes("broadband") || c.includes("dth") ||
+    (c.includes("tv") && !c.includes("movie")) || c.includes("gas") || c.includes("water")
+  ) return "utility";
+  if (
+    c.includes("shopping") || c.includes("fashion") || c.includes("electronics") ||
+    c.includes("online") || c.includes("apparel")
+  ) return "shopping";
+  return null;
+}
+
+function buildLivePlusOption(
+  amt: number,
+  bucket: "food" | "dining" | "grocery" | "utility" | "shopping",
+  input: RecommendInput,
+  opts?: { cashkaroInr?: number; cashkaroNote?: string }
+): RouteOption {
+  const ckInr = opts?.cashkaroInr ?? 0;
+  const used = input.livePlusAccelCashbackUsedThisMonth ?? 0;
+  const headroom = Math.max(0, LIVE_PLUS_ACCEL_CAP_INR - used);
+  const uncappedBase = amt * (LIVE_PLUS_ACCEL_PCT / 100);
+  const cappedBase = Math.min(uncappedBase, headroom);
+  const overflow = Math.max(0, uncappedBase - cappedBase);
+  const overflowAtBase = overflow > 0 ? (overflow / LIVE_PLUS_ACCEL_PCT) * LIVE_PLUS_BASE_PCT : 0; // remainder earns 1.5%
+  const liveCash = cappedBase + overflowAtBase;
+  const welcome = livePlusWelcomeBonus(input, amt);
+  const welcomeInr = welcome?.inr ?? 0;
+  const bucketLabel: Record<typeof bucket, string> = {
+    food: "dining / food delivery",
+    dining: "dining",
+    grocery: "groceries",
+    utility: "utilities (pay biller direct — not via Amazon)",
+    shopping: "shopping (not Amazon / Flipkart / Myntra)",
+  };
+  const capFull = headroom < 1;
+  const effPct = ((liveCash + ckInr + welcomeInr) / amt) * 100;
+  return mkOption(amt, {
+    cardId: "hsbc_live_plus",
+    label: capFull
+      ? `HSBC Live+ (accel cap full → ~${LIVE_PLUS_BASE_PCT}% base on this txn)`
+      : ckInr > 0
+        ? `Cashkaro → HSBC Live+ 10% (${bucketLabel[bucket]})`
+        : `HSBC Live+ 10% on ${bucketLabel[bucket]}`,
+    effectivePct: effPct,
+    baseRewardInr: liveCash + ckInr,
+    bonusRewardInr: welcomeInr,
+    cashkaroSuggested: ckInr > 0,
+    worstCasePct: capFull ? LIVE_PLUS_BASE_PCT : LIVE_PLUS_ACCEL_PCT,
+    bestCasePct: effPct,
+    feasible: true,
+    feasibilityNote: capFull
+      ? `₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo 10% cap already used this month — this txn earns ${LIVE_PLUS_BASE_PCT}% base only`
+      : headroom < uncappedBase
+        ? `Only ~₹${Math.round(headroom)} of 10% headroom left this month; rest at ${LIVE_PLUS_BASE_PCT}%`
+        : undefined,
+    pros: [
+      capFull
+        ? `Accelerated cap already used — ${LIVE_PLUS_BASE_PCT}% statement cashback (auto ~45 days)`
+        : `10% statement cashback (Visa Infinite) — liquid, auto-credited`,
+      `Shared accel cap ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo (~₹${Math.round(used)} used this month)`,
+      "Also: Times Prime, District dining/BOGO, 4 domestic lounges/yr, 1 intl lounge/yr (from Sep 2026)",
+      welcome?.note ?? "",
+      opts?.cashkaroNote ?? "",
+    ],
+    cons: [
+      "Amazon / Flipkart / Myntra earn only 1.5% — use Amazon Pay ICICI for Amazon",
+      bucket === "utility" ? "Pay BBPS / GPay / biller app — not Amazon bill-pay (codes as Amazon 1.5%)" : "",
+      "International spends earn 0% cashback post-deval — use Scapia abroad",
+      "Fee ₹999+GST waived at ₹2L/yr",
+    ],
+    rationale: capFull
+      ? `Live+ 10% monthly cap is exhausted. This ${bucket} spend earns ${LIVE_PLUS_BASE_PCT}% base until next calendar month.${ckInr > 0 ? ` Cashkaro still adds ${inr(ckInr)}.` : ""}`
+      : `Live+ is your primary ${bucket} card at 10% (statement credit). Cap ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo across dining/food/grocery/utilities/shopping${ckInr > 0 ? `; Cashkaro adds ${inr(ckInr)}` : ""}.${welcome ? ` ${welcome.note}` : ""}`,
+    steps: [
+      ckInr > 0 ? "Open Cashkaro → click through to the merchant first" : "",
+      bucket === "utility"
+        ? "Open BBPS / Google Pay / the biller app (not Amazon Pay bills)"
+        : "Open the merchant app / site",
+      `Pay ${inr(amt)} with HSBC Live+`,
+      capFull
+        ? `Expect ~${LIVE_PLUS_BASE_PCT}% (${inr(liveCash)}) — 10% cap already used`
+        : `Expect ~${LIVE_PLUS_ACCEL_PCT}% on eligible portion (${inr(cappedBase)} toward ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo cap)`,
+    ].filter(Boolean),
+  });
+}
+
+/** Welcome: ₹1,000 cashback when HSBC app login + ₹20k spend within 30 days of issue. */
+function livePlusWelcomeBonus(input: RecommendInput, amt: number): { inr: number; note: string } | null {
+  if (input.hsbcWelcomeClaimed) return null;
+  const issue = input.hsbcLivePlusIssueDate;
+  if (!issue) return null;
+  const today = input.today ? new Date(input.today) : new Date();
+  const issued = new Date(issue);
+  const days = Math.floor((today.getTime() - issued.getTime()) / (1000 * 60 * 60 * 24));
+  if (days < 0 || days > 30) return null;
+  const ytd = input.hsbcLivePlusYtdSpend ?? 0;
+  if (ytd >= 20000) return null;
+  const remaining = 20000 - ytd;
+  const progress = Math.min(amt, remaining) / 20000;
+  const inrVal = 1000 * progress;
+  const completes = ytd + amt >= 20000;
+  return {
+    inr: inrVal,
+    note: completes
+      ? `Completes ₹20k/30-day welcome → unlocks ₹1,000 cashback (also need HSBC app login)`
+      : `Builds welcome ₹20k/30d (${inr(ytd + Math.min(amt, remaining))}/₹20k) → +${inr(inrVal)} marginal of ₹1k bonus`,
+  };
+}
 
 function pickCard(id: string): Card {
   return getCardById(id) ?? CARDS[0];
@@ -312,7 +457,7 @@ function ytdForCard(cardId: string, input: RecommendInput): number {
     case "sbi_simplyclick": return input.sbiYtdSpend ?? 0;
     case "idfc_indigo": return input.idfcYtdSpend ?? 0;
     case "bob_eterna": return input.bobYtdSpend ?? 0;
-    case "swiggy_blck": return input.blckYtdSpend ?? 0;
+    case "hsbc_live_plus": return input.hsbcLivePlusYtdSpend ?? 0;
     default: return 0;
   }
 }
@@ -603,31 +748,49 @@ export function recommend(input: RecommendInput): RecommendationResult {
 
   // ============ UTILITIES (electricity / mobile / broadband / TV / gas / water) ============
   if (cat.includes("utility") || cat.includes("electric") || cat.includes("mobile") || cat.includes("recharge") || cat.includes("broadband") || cat.includes("tv") || cat.includes("gas") || cat.includes("water") || cat.includes("dth")) {
-    // Option A: Amazon Pay ICICI via Amazon Pay bill-pay = 2% (regardless of Prime), + Cashkaro flat ₹1.5
+    // Live+ 10% on utilities (from 26 Jul 2026) — primary bills card; pay biller DIRECT (not Amazon).
+    options.push(buildLivePlusOption(amt, "utility", input));
+
+    // Overflow after Live+ cap: Amazon Pay ICICI via Amazon bill-pay = 2%
     {
       const ckAmz = amazonPlatformCashkaro(cat, amt, ckOverride);
       const ckInr = ckAmz?.inr ?? 0;
       const baseCash = amt * 0.02;
       add({
         cardId: "amazon_pay_icici",
-        label: ckInr > 0 ? "Cashkaro → Amazon Pay ICICI bill-pay (2% + Cashkaro)" : "Amazon Pay ICICI via Amazon bill-pay (2%)",
+        label: ckInr > 0 ? "Cashkaro → Amazon Pay ICICI bill-pay (2% + Cashkaro) — after Live+ cap" : "Amazon Pay ICICI via Amazon bill-pay (2%) — after Live+ cap",
         effectivePct: ((baseCash + ckInr) / amt) * 100,
         baseRewardInr: baseCash + ckInr,
         cashkaroSuggested: !!ckAmz,
         worstCasePct: 2.0,
-        pros: [`2% on bills/recharges via Amazon.in${ckInr > 0 ? ` + Cashkaro ${inr(ckInr)} (click Cashkaro Amazon link first)` : ""}`, "Cashback as Amazon Pay balance — recycles into more recharges"],
-        cons: ["1% fee if a single utility txn > ₹50K", "Pay with the CARD (not balance) so Cashkaro tracks"],
-        rationale: `Amazon Pay ICICI gives 2% on bills/recharges via Amazon.in${ckInr > 0 ? `, and the Cashkaro Amazon link adds ${inr(ckInr)} on top` : ""}.`,
+        pros: [`2% on bills/recharges via Amazon.in${ckInr > 0 ? ` + Cashkaro ${inr(ckInr)}` : ""}`, "Use when Live+ ₹1,200/mo accelerated cap is already full"],
+        cons: ["Only 2% vs Live+ 10%", "1% fee if a single utility txn > ₹50K", "Pay with the CARD (not balance) so Cashkaro tracks"],
+        rationale: `After Live+'s shared 10% cap is exhausted, Amazon Pay ICICI at 2% via Amazon bills is the held overflow route${ckInr > 0 ? ` (+ Cashkaro ${inr(ckInr)})` : ""}.`,
         steps: [
-          ckInr > 0 ? "Open Cashkaro → Amazon → tap the Recharge & Bills link first" : "Open Amazon.in → Amazon Pay → Recharges & Bills",
+          ckInr > 0 ? "Open Cashkaro → Amazon → Recharge & Bills link first" : "Open Amazon.in → Amazon Pay → Recharges & Bills",
           `Select the biller, enter ${inr(amt)}`,
-          "Pay with the Amazon Pay ICICI card (not balance, so Cashkaro tracks)",
+          "Pay with the Amazon Pay ICICI card (not balance)",
           `2% (${inr(baseCash)})${ckInr > 0 ? ` + Cashkaro ${inr(ckInr)}` : ""} credited`,
         ],
       });
     }
 
-    // Option B: Spend down Amazon Pay balance (sunk gift-card money) — counts as 0% reward but liquidates idle balance
+    // Optional Ace — not in portfolio plan (Live+ covers utilities)
+    add({
+      cardId: "axis_ace",
+      label: "Axis Ace via GPay (5%) — not in portfolio plan",
+      effectivePct: 5.0,
+      worstCasePct: 1.5,
+      bestCasePct: 5.0,
+      feasible: false,
+      feasibilityNote: "Skipped — Live+ is the bills card; Ace not being applied",
+      pros: ["Would be 5% via Google Pay if issued"],
+      cons: ["Not taking Ace — Live+ 10% covers utilities under the shared cap"],
+      rationale: "Portfolio plan is Live+ only for utilities. Ace stays listed only so you remember why it was skipped.",
+      steps: ["Skip"],
+    });
+
+    // Spend down Amazon Pay balance (sunk gift-card money)
     if (apBal >= 100) {
       const used = Math.min(apBal, amt);
       add({
@@ -635,22 +798,21 @@ export function recommend(input: RecommendInput): RecommendationResult {
         label: `Use idle Amazon Pay balance (${inr(used)})`,
         effectivePct: 0,
         baseRewardInr: 0,
-        // "bonus" = value of liquidating otherwise-idle gift-card balance is not a reward, keep 0
-        pros: [`Clears ${inr(used)} of idle Amazon Pay balance (gift-card money sitting unused)`, "No fee"],
-        cons: ["Earns 0% — only do this to drain leftover balance", apBal < amt ? `Covers only ${inr(used)}; pay rest with a card` : "Fully covers this bill"],
-        rationale: `Your ${inr(apBal)} Amazon Pay balance is sunk gift-card money earning nothing. Spending it on a recharge is effectively 'free' money you already paid for — but it earns no new reward.`,
+        pros: [`Clears ${inr(used)} of idle Amazon Pay balance`, "No fee"],
+        cons: ["Earns 0% — only to drain leftover balance", apBal < amt ? `Covers only ${inr(used)}; pay rest with Live+` : "Fully covers this bill"],
+        rationale: `Your ${inr(apBal)} Amazon Pay balance is sunk gift-card money earning nothing. Spending it on a recharge clears idle balance but earns no new reward.`,
         steps: [
           "Open Amazon.in → Recharges & Bills",
           `Apply Amazon Pay balance (${inr(used)})`,
-          apBal < amt ? `Pay remaining ${inr(amt - used)} with Amazon Pay ICICI (2%)` : "Done — fully covered by balance",
+          apBal < amt ? `Pay remaining ${inr(amt - used)} with HSBC Live+ (10%)` : "Done — fully covered by balance",
         ],
       });
     }
 
-    // Option C: BOB Eterna — telecom now earns base RP (1 Apr 2026) + WELCOME PUSH
-    if (input.swiggyBlckIssued !== undefined) {
+    // BOB — welcome push / base
+    {
       const bobWelcome = bobWelcomeBonus(input, amt);
-      const bobBase = amt * 0.0075; // base 3 RP/₹100 = 0.75% (telecom earns base RP from 1 Apr 2026)
+      const bobBase = amt * 0.0075;
       add({
         cardId: "bob_eterna",
         label: bobWelcome ? "BOB Eterna (welcome push to ₹50K)" : "BOB Eterna (base 0.75%)",
@@ -658,21 +820,16 @@ export function recommend(input: RecommendInput): RecommendationResult {
         baseRewardInr: bobBase,
         bonusRewardInr: bobWelcome?.inr ?? 0,
         pros: bobWelcome
-          ? [bobWelcome.note, "Every rupee counts toward ₹50K welcome (₹2,500) regardless of category"]
+          ? [bobWelcome.note, "Every rupee counts toward ₹50K welcome (₹2,500)"]
           : ["Telecom earns base RP from 1 Apr 2026"],
-        cons: ["Base rate only 0.75% on utilities (not a 5× category)", !bobWelcome ? "Welcome window already closed/met" : ""],
+        cons: ["Base rate only 0.75% on utilities", !bobWelcome ? "Welcome window already closed/met" : "", "Worse than Live+ 10%"],
         rationale: bobWelcome
-          ? `You're inside the BOB 60-day welcome window — ${bobWelcome.note} Every spend (even utilities at base 0.75%) drives the ₹50K → 10,000 RP (₹2,500) bonus, so the marginal value is huge right now.`
-          : "BOB base 0.75% on utilities — only worth it during the welcome window.",
-        steps: [
-          "Open biller app / BBPS",
-          `Pay ${inr(amt)} with BOB Eterna`,
-          bobWelcome ? "Drives ₹50K welcome milestone (₹2,500 bonus)" : "Earns base 0.75%",
-        ],
+          ? `Inside BOB 60-day welcome — ${bobWelcome.note} Prefer Live+ for yield unless you specifically need welcome volume.`
+          : "BOB base 0.75% on utilities — Live+ 10% wins unless cap is full.",
+        steps: ["Open biller app / BBPS", `Pay ${inr(amt)} with BOB Eterna`],
       });
     }
 
-    // Option D: Amex Gold — 1 MR/₹50 = 1% + monthly 6-txn milestone (only if ≥₹1K AND milestone not done)
     const goldBonus = goldMilestoneBonus(input, amt);
     add({
       cardId: "amex_gold",
@@ -680,16 +837,14 @@ export function recommend(input: RecommendInput): RecommendationResult {
       effectivePct: 1.0 + (goldBonus ? (goldBonus.inr / amt) * 100 : 0),
       baseRewardInr: amt * 0.01,
       bonusRewardInr: goldBonus?.inr ?? 0,
-      pros: goldBonus
-        ? ["1 MR/₹50 = 1% on utilities", goldBonus.note]
-        : ["1 MR/₹50 = 1% on utilities"],
+      pros: goldBonus ? ["1 MR/₹50 = 1% on utilities", goldBonus.note] : ["1 MR/₹50 = 1% on utilities"],
       cons: amt < 1000
-        ? ["< ₹1,000 → does NOT count toward the 6-txn milestone", "Monthly milestone may already be hit this calendar month"]
-        : goldBonus ? [] : ["Monthly 6-txn milestone already hit this calendar month → no bonus"],
+        ? ["< ₹1,000 → does NOT count toward the 6-txn milestone"]
+        : goldBonus ? ["Worse yield than Live+ 10%"] : ["Monthly 6-txn milestone already hit"],
       rationale: amt < 1000
-        ? `Amex Gold earns 1% on utilities, but ₹${Math.round(amt)} is below the ₹1,000 minimum that counts toward the 6-txn monthly milestone.`
-        : "Amex Gold earns 1% + the txn counts toward the 6×₹1K monthly milestone if not yet hit.",
-      steps: ["Open biller app", `Pay ${inr(amt)} with Amex Gold`, "Earn 1 MR per ₹50"],
+        ? `Amex Gold earns 1% on utilities, but ₹${Math.round(amt)} is below the ₹1,000 minimum for the 6-txn milestone.`
+        : "Prefer Live+ 10% for utilities; use Gold only if you still need a ≥₹1k milestone txn this month.",
+      steps: ["Open biller app", `Pay ${inr(amt)} with Amex Gold`],
     });
 
     return finalize(options, input, amt, isForeign, ck);
@@ -698,18 +853,43 @@ export function recommend(input: RecommendInput): RecommendationResult {
   // ============ FUEL ============
   if (cat.includes("fuel") || cat.includes("petrol") || cat.includes("diesel")) {
     add({
-      cardId: "idfc_indigo", label: "IDFC Indigo (0.33%) or pay cash", effectivePct: 0.33,
-      pros: ["Best of a bad lot for fuel"], cons: ["All cards near-zero on fuel; prefer debit/cash"],
-      rationale: "Fuel earns almost nothing on any card.",
-      steps: ["Prefer cash/debit", "If CC: IDFC Indigo (0.33%, 1% surcharge waiver)"],
+      cardId: "upi",
+      label: "Debit / cash / PhonePe UPI — fuel earns ~0% on every card",
+      effectivePct: 0,
+      baseRewardInr: 0,
+      pros: ["Avoids pointless CC friction", "Kiwi / Scapia / BOB all exclude fuel from rewards"],
+      cons: ["No reward anywhere worth chasing"],
+      rationale: "Fuel MCCs earn nothing on Kiwi (excluded from cashback AND Neon milestones), Scapia, BOB, Amex, and Amazon Pay ICICI. Paying petrol with Kiwi only helps if you need the 1% surcharge waiver (₹400–₹5k) — you still get 0% cashback. Prefer debit/cash/PhonePe.",
+      steps: ["Pay with debit card, cash, or PhonePe UPI", "Do NOT use Kiwi expecting cashback — fuel is excluded"],
+    });
+    add({
+      cardId: "idfc_indigo",
+      label: "IDFC Indigo — only if you want 1% fuel surcharge waiver (~0.2–0.3% net)",
+      effectivePct: 0.25,
+      pros: ["1% surcharge waiver on typical pump CC txns"],
+      cons: ["BluChips on fuel are tiny; still prefer debit if no surcharge"],
+      rationale: "Only use a CC at the pump for surcharge waiver. Rewards are negligible.",
+      steps: ["If the pump forces CC and adds surcharge, IDFC Indigo can waive ~1% (check live T&Cs)"],
     });
     return finalize(options, input, amt, isForeign, ck);
   }
 
   // ============ INSURANCE / RENT / TAX ============
   if (cat.includes("insurance") || cat.includes("rent") || cat.includes("tax") || cat.includes("govt")) {
+    if (cat.includes("rent")) {
+      add({
+        cardId: "upi",
+        label: "PhonePe / bank UPI or NEFT — keep doing this for rent",
+        effectivePct: 0,
+        baseRewardInr: 0,
+        pros: ["No platform fee", "Your cards exclude rent from rewards anyway"],
+        cons: ["CC rent via RedGirraffe/NoBroker costs ~0.5–1%+ and your cards earn 0% on rent MCC"],
+        rationale: "In 2026, rent-via-credit-card is a cash-flow tool at best, not a rewards hack. PhonePe/CRED CC rent rails were shut or restricted; remaining platforms charge fees that beat any reward your portfolio earns on rent (most cards exclude MCC 6513). Stick with PhonePe UPI / NEFT for the ₹40k rent.",
+        steps: ["Continue PhonePe UPI / NEFT to landlord", "Skip RedGirraffe/NoBroker unless you need 45-day float and accept ~₹200 fee on ₹40k"],
+      });
+    }
     const bobWelcome = bobWelcomeBonus(input, amt);
-    if (bobWelcome) {
+    if (bobWelcome && !cat.includes("rent")) {
       add({
         cardId: "bob_eterna", label: "BOB Eterna (welcome push)", effectivePct: 0.75 + (bobWelcome.inr / amt) * 100,
         baseRewardInr: amt * 0.0075, bonusRewardInr: bobWelcome.inr,
@@ -719,13 +899,15 @@ export function recommend(input: RecommendInput): RecommendationResult {
         steps: ["Pay with BOB Eterna", "Drives ₹50K welcome (₹2,500)"],
       });
     }
-    add({
-      cardId: "idfc_indigo", label: "Pay direct on insurer / PolicyBazaar (or NEFT) — IDFC ~0.33%", effectivePct: 0.33,
-      pros: ["Paying the insurer/PolicyBazaar directly avoids the platform convenience fee (e.g. Amazon Pay charges fees on insurance)"],
-      cons: ["Insurance/rent/tax earn little on any card; most exclude them. Watch for any 1-2% biller convenience fee — UPI/NEFT direct is often cheapest"],
-      rationale: "These MCCs earn almost nothing on any card and platforms like Amazon Pay add fees — so pay the insurer/PolicyBazaar directly (CC for ~0.33% via IDFC, or NEFT/UPI to avoid fees), unless you're filling the BOB welcome.",
-      steps: ["Pay on the insurer's site / PolicyBazaar directly (avoid wallet platform fees)", "Use IDFC (~0.33%) or NEFT/UPI"],
-    });
+    if (!cat.includes("rent")) {
+      add({
+        cardId: "idfc_indigo", label: "Pay direct on insurer / PolicyBazaar (or NEFT) — IDFC ~0.33%", effectivePct: 0.33,
+        pros: ["Paying the insurer/PolicyBazaar directly avoids the platform convenience fee"],
+        cons: ["Insurance/tax earn little on any card"],
+        rationale: "These MCCs earn almost nothing — pay the insurer directly or NEFT/UPI.",
+        steps: ["Pay on the insurer's site / PolicyBazaar directly", "Use IDFC (~0.33%) or NEFT/UPI"],
+      });
+    }
     return finalize(options, input, amt, isForeign, ck);
   }
 
@@ -743,77 +925,217 @@ export function recommend(input: RecommendInput): RecommendationResult {
 
   // ============ SWIGGY ============
   if (merchant.includes("swiggy") || cat === "swiggy") {
-    if (input.swiggyBlckIssued) {
-      add({ cardId: "swiggy_blck", label: "Swiggy BLCK in-app (10%)", effectivePct: 10.0,
-        pros: ["10% on Swiggy (min ₹249)"], cons: ["Cap ₹1,500/mo = ₹15K spend"],
-        rationale: "BLCK 10% on Swiggy.", steps: ["Open Swiggy app", "Pay with HDFC BLCK", "10% cashback"] });
-    } else {
-      add({ cardId: "amex_gold", label: `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net)`, effectivePct: SHOPWISE_NET_PCT,
-        pros: [`5.8% MR − 1.77% ShopWise fee ≈ ${SHOPWISE_NET_PCT}% net, until BLCK arrives`], cons: ["₹10K/mo ShopWise cap", "ShopWise charges 1.5%+GST convenience fee (already netted)"],
-        rationale: `ShopWise route nets ${SHOPWISE_NET_PCT}% after the 1.5%+GST fee, until Swiggy BLCK is issued.`,
-        steps: ["Open ShopWise", "Buy Swiggy voucher with Amex Gold (5×, ~1.77% fee applies)", "Use voucher in Swiggy app"] });
-    }
+    options.push(buildLivePlusOption(amt, "food", input));
+    add({
+      cardId: "bob_eterna",
+      label: "BOB Eterna 5× dining/online (~3.75%) — backup if Live+ cap full",
+      effectivePct: 3.75,
+      pros: ["LTF", "5× dining / online shopping"],
+      cons: ["5× cap ~₹33k/cycle", "~6pp worse than HSBC Live+ 10%"],
+      rationale: "Backup if Live+'s shared ₹1,200/mo accelerated cap is already used this month.",
+      steps: ["Open Swiggy", "Pay with BOB Eterna"],
+    });
+    add({
+      cardId: "amex_gold",
+      label: `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) — Gold 6×₹1k milestone`,
+      effectivePct: SHOPWISE_NET_PCT,
+      pros: [
+        `~${SHOPWISE_NET_PCT}% net + counts as a Gold ≥₹1k txn`,
+        "Uses Swiggy spend you already make — no Amazon Pay pile-up",
+      ],
+      cons: [
+        "Worse yield than HSBC Live+ 10%",
+        "Only use this slice for Gold milestone; put leftover Swiggy on Live+",
+      ],
+      rationale: "Amex Gold milestone fuel should be ShopWise Swiggy vouchers (meals you already order), NOT Amazon Pay vouchers.",
+      steps: ["Open ShopWise", "Buy Swiggy voucher ≥₹1k with Amex Gold (up to 6 separate days)", "Redeem in Swiggy for meals you'd buy anyway"],
+    });
+    return finalize(options, input, amt, isForeign, ck);
+  }
+
+  // ============ RIDES / PLAYO (UPI scan) ============
+  if (cat.includes("ride") || cat.includes("cab") || cat.includes("playo") || cat.includes("sports") ||
+      merchant.includes("uber") || merchant.includes("rapido") || merchant.includes("ola") || merchant.includes("playo")) {
+    options.push(buildKiwiOption({ ...input, channel: input.channel === "online" ? "upi" : input.channel }, amt));
+    add({
+      cardId: "upi",
+      label: "Normal PhonePe / GPay UPI — 0%",
+      effectivePct: 0,
+      baseRewardInr: 0,
+      pros: [],
+      cons: ["No rewards — only if Kiwi QR isn't accepted"],
+      rationale: "Playo / Uber / Rapido paid via UPI should go through Kiwi scan & pay for ~2%+ Neon, not PhonePe.",
+      steps: ["Prefer Kiwi app → scan & pay"],
+    });
     return finalize(options, input, amt, isForeign, ck);
   }
 
   // ============ AMAZON ============
-  if (merchant.includes("amazon")) {
-    const realApRate = prime ? 5.0 : 3.0; // Amazon.in earns 5% (Prime) / 3% (non-Prime) incl. electronics
+  if (merchant.includes("amazon") || cat.includes("amazon")) {
+    const realApRate = prime ? 5.0 : 3.0;
+    const goldB = goldMilestoneBonus(input, amt);
+    const mrccB = amt >= 1500 ? mrccMilestoneBonus(input, amt) : null;
+    const shopwiseLeft = 10000 - (input.goldShopwiseUsedThisMonth ?? 0);
 
-    // Use idle Amazon Pay balance first if present
+    // Daily Amazon Now / shopping: ICICI 5% (+ Cashkaro / order CB) is the yield winner.
+    {
+      const ckAmz = amazonPlatformCashkaro(cat, amt, ckOverride);
+      const ckInr = ckAmz?.inr ?? 0;
+      const base = amt * (realApRate / 100);
+      add({
+        cardId: "amazon_pay_icici",
+        label: ckInr > 0
+          ? `Cashkaro → Amazon Pay ICICI (${realApRate}% + Cashkaro) — daily Amazon`
+          : `Amazon Pay ICICI direct (${realApRate}% Prime) — daily Amazon Now / shopping`,
+        effectivePct: ((base + ckInr) / amt) * 100,
+        baseRewardInr: base + ckInr,
+        cashkaroSuggested: !!ckAmz,
+        worstCasePct: realApRate,
+        bestCasePct: realApRate + (ckAmz && amt > 0 ? (ckAmz.bestInr / amt) * 100 : 0),
+        pros: [`${realApRate}% uncapped on Amazon.in / Amazon Now`, ckInr > 0 ? `+ Cashkaro ${inr(ckInr)}` : "Enter order-level cashback ₹ in the widget if shown"].filter(Boolean),
+        cons: ["Do NOT pay with Amazon Pay balance if you want this 5%", "Save ShopWise Amazon vouchers for Amex milestone days, not every milk order"],
+        rationale: `For routine Amazon Now (milk, yoghurt, misc) and shopping, Amazon Pay ICICI at ${realApRate}% (Prime) beats ShopWise (~${SHOPWISE_NET_PCT}% net). Use ShopWise only as deliberate Amex milestone fuel (see below), then drain that AP balance on later Amazon orders.`,
+        steps: [
+          ckInr > 0 ? "Open Cashkaro → Amazon first" : "Open Amazon / Amazon Now",
+          `Pay with Amazon Pay ICICI card (${realApRate}%) — not AP balance`,
+          "Log any extra order cashback ₹ shown at checkout in Recommend",
+        ],
+      });
+    }
+
+    // Drain idle AP balance (from prior ShopWise) — opportunity cost is forgoing 5% on that slice.
     if (apBal >= 100) {
       const used = Math.min(apBal, amt);
       add({
-        cardId: "amazon_pay_icici", label: `Apply Amazon Pay balance (${inr(used)}) + ICICI ${realApRate}%`,
-        effectivePct: realApRate, baseRewardInr: (amt - used) * (realApRate / 100),
-        pros: [`Drains ${inr(used)} idle balance`, `Remaining earns ${realApRate}% (Prime)`],
-        cons: ["Balance portion earns no reward (already paid)"],
-        rationale: "Spend idle Amazon Pay balance, pay the rest with Amazon Pay ICICI for max cashback.",
-        steps: ["On Amazon checkout, apply Amazon Pay balance", `Pay rest with Amazon Pay ICICI (${realApRate}%)`],
+        cardId: "amazon_pay_icici",
+        label: `Drain Amazon Pay balance (${inr(used)}) then ICICI on the rest`,
+        effectivePct: ((amt - used) * (realApRate / 100) / amt) * 100,
+        baseRewardInr: (amt - used) * (realApRate / 100),
+        pros: [`Clears ${inr(used)} idle ShopWise-funded balance`, "Prevents AP pile-up"],
+        cons: [`Balance slice forgoes ${realApRate}% ICICI — only drain what ShopWise created this month`],
+        rationale: "After Amex ShopWise top-ups, spend that AP balance on Amazon deliberately so it doesn't sit idle. Rest of the order still earns ICICI 5%.",
+        steps: ["Apply Amazon Pay balance at checkout", `Pay remainder with Amazon Pay ICICI (${realApRate}%)`],
       });
     }
-    // ShopWise route (deterministic, via Amex Gold) — capped ₹10K/mo, net of 1.77% fee
-    const shopwiseLeft = 10000 - (input.goldShopwiseUsedThisMonth ?? 0);
+
+    // Amex Gold ShopWise Amazon — only if you need a Gold txn AND will drain AP on real Amazon.
+    // Prefer ShopWise Swiggy for Gold milestones (see Swiggy branch) — you don't have ₹6k+ spare Amazon.
+    {
+      const swNet = amt * (SHOPWISE_NET_PCT / 100);
+      const bonus = goldB?.inr ?? 0;
+      add({
+        cardId: "amex_gold",
+        label: goldB
+          ? `Amex Gold ShopWise Amazon voucher — only if you'll drain this AP balance`
+          : `Amex Gold ShopWise Amazon voucher (${SHOPWISE_NET_PCT}% net)`,
+        effectivePct: ((swNet + bonus) / amt) * 100,
+        baseRewardInr: swNet,
+        bonusRewardInr: bonus,
+        feasible: shopwiseLeft >= 100 && amt >= 1000 && (goldB != null || apBal < 500),
+        feasibilityNote: amt < 1000
+          ? "Gold milestone needs ≥₹1,000 per txn"
+          : !goldB && apBal >= 500
+            ? "Gold milestone done / AP balance already idle — prefer ICICI 5%; use ShopWise Swiggy for Gold instead of more Amazon GC"
+            : shopwiseLeft < amt
+              ? `Only ${inr(Math.max(0, shopwiseLeft))} ShopWise headroom left this month`
+              : undefined,
+        pros: [
+          `~${SHOPWISE_NET_PCT}% net MR after fee`,
+          goldB ? goldB.note : "Prefer ShopWise Swiggy vouchers for Gold 6×₹1k — matches food spend you already have",
+        ],
+        cons: [
+          "Creates Amazon Pay balance you must spend on Amazon — you may not have enough Amazon volume",
+          "Daily Amazon Now should stay on ICICI 5%",
+        ],
+        rationale: "Do not buy ₹6–16k/mo Amazon ShopWise vouchers. Gold milestones → ShopWise Swiggy. Amazon ShopWise only in small amounts you can clear on real Amazon Now orders.",
+        steps: [
+          "Prefer: ShopWise → Swiggy voucher on Amex Gold for milestones",
+          "Only if needed: small Amazon Pay voucher you can drain the same week",
+          "All other Amazon → ICICI 5%",
+        ],
+      });
+    }
+
+    // Amex MRCC — do NOT push Amazon vouchers; park real shopping. Shown as guidance when ≥₹1.5k.
+    if (amt >= 1500 && mrccB) {
+      add({
+        cardId: "amex_mrcc",
+        label: "Consider Amex MRCC for this ≥₹1.5k spend (cycle milestone) — not via Amazon GC",
+        effectivePct: 0.78 + (mrccB.inr / amt) * 100,
+        baseRewardInr: amt * 0.0078,
+        bonusRewardInr: mrccB.inr,
+        pros: [mrccB.note, "Better on Flipkart/Myntra/big tickets than inventing Amazon vouchers"],
+        cons: [
+          "Amazon itself is still better on ICICI 5% for pure yield",
+          "Only divert non-Amazon big spends to MRCC, or accept missing monthly MRCC milestone",
+        ],
+        rationale: "MRCC should eat real Myntra/Flipkart/large spends — not ₹10k/mo Amazon gift cards you can't liquidate. Skip forced Amazon ShopWise for MRCC.",
+        steps: [
+          "For Amazon: pay ICICI 5%",
+          "For Flipkart/Myntra ≥₹1.5k when MRCC cycle is open: pay MRCC (or ShopWise Flipkart/Myntra voucher)",
+          "Don't manufacture Amazon volume for MRCC",
+        ],
+      });
+    }
+
+    // Live+ on Amazon = base 1.5% only (marketplace excluded from 10%)
     add({
-      cardId: "amex_gold", label: `Amex Gold via ShopWise → Amazon Pay voucher (${SHOPWISE_NET_PCT}% net)`,
-      effectivePct: SHOPWISE_NET_PCT, feasible: shopwiseLeft >= 100,
-      feasibilityNote: shopwiseLeft < amt ? `Only ${inr(Math.max(0, shopwiseLeft))} ShopWise headroom left this month` : undefined,
-      pros: [`Deterministic ${SHOPWISE_NET_PCT}% net (5.8% MR − 1.77% fee), no tracking risk`],
-      cons: ["₹10K/mo ShopWise cap", "ShopWise 1.5%+GST convenience fee (already netted)"],
-      rationale: `ShopWise nets ${SHOPWISE_NET_PCT}% after the 1.5%+GST fee — deterministic, usually beats Cashkaro on Amazon (CK Amazon tracking is unreliable).`,
-      steps: ["Open ShopWise", "Buy Amazon Pay voucher with Amex Gold (5×, ~1.77% fee)", "Use voucher on Amazon"],
+      cardId: "hsbc_live_plus",
+      label: "HSBC Live+ on Amazon (1.5% only — marketplace excluded from 10%)",
+      effectivePct: LIVE_PLUS_BASE_PCT,
+      worstCasePct: LIVE_PLUS_BASE_PCT,
+      bestCasePct: LIVE_PLUS_BASE_PCT,
+      pros: ["Accepted on Amazon"],
+      cons: [
+        "Amazon / Flipkart / Myntra are excluded from Live+ 10%",
+        `Only ${LIVE_PLUS_BASE_PCT}% vs Amazon Pay ICICI ${realApRate}%`,
+      ],
+      rationale: `Live+ can pay Amazon, but accelerated 10% does not apply — you get ${LIVE_PLUS_BASE_PCT}%. Always prefer Amazon Pay ICICI for Amazon shopping / Now.`,
+      steps: ["Do not use Live+ for Amazon — use Amazon Pay ICICI instead"],
     });
-    // Amazon Pay ICICI direct
-    add({
-      cardId: "amazon_pay_icici", label: `Amazon Pay ICICI direct (${realApRate}% Prime)`,
-      effectivePct: realApRate, worstCasePct: realApRate, bestCasePct: realApRate + (ck ? ck.max * 0.5 : 0),
-      cashkaroSuggested: !!ck && ck.zone !== "na",
-      pros: [`${realApRate}% on Amazon.in (uncapped)`, "Best above ShopWise ₹10K cap"],
-      cons: ["CK Amazon tracking unreliable — treat as bonus only"],
-      rationale: `Amazon Pay ICICI ${realApRate}% (Prime), uncapped. Use above the ShopWise cap.`,
-      steps: ["Add to Amazon cart", `Pay with Amazon Pay ICICI (${realApRate}%)`, "Do NOT pay with Amazon Pay voucher if trying Cashkaro"],
-    });
+
     return finalize(options, input, amt, isForeign, ck);
   }
 
   // ============ CLEARTRIP ============
   if (merchant.includes("cleartrip")) {
     const isHotel = cat.includes("hotel");
-    if (input.swiggyBlckIssued) {
-      add({ cardId: "swiggy_blck", label: `BLCK + HDFCCC coupon (${isHotel ? "24%" : "11%"})`,
-        effectivePct: isHotel ? 24 : 11, worstCasePct: isHotel ? 24 : 11, bestCasePct: isHotel ? 28 : 13,
-        cashkaroSuggested: true,
-        pros: ["BLCK coupon stack is best-in-class"], cons: ["Cashkaro may not track with instant discount"],
-        rationale: "BLCK HDFCCC coupon + 5% online = top stack.",
-        steps: ["Try Cashkaro click-through", "Apply HDFCCC coupon on Cleartrip", "Pay with BLCK"] });
-    } else {
-      add({ cardId: "amex_plat_travel", label: "Amex PT + Cashkaro (until BLCK arrives)",
-        effectivePct: 1.0 + (ck ? ck.mid * 0.7 : 0), worstCasePct: 1.0, bestCasePct: 1.0 + (ck ? ck.max : 0),
-        cashkaroSuggested: true, bonusRewardInr: 0,
-        pros: ["Counts toward PT ₹4L/₹7L milestone"], cons: ["Low base until BLCK arrives"],
-        rationale: "Amex PT + Cashkaro is your best Cleartrip route pre-BLCK.",
-        steps: ["Try Cashkaro → Cleartrip", "Pay with Amex PT"] });
+    add({
+      cardId: "bob_eterna",
+      label: ck ? `Cashkaro + BOB Eterna 5× travel (~${(3.75 + ck.mid * 0.85).toFixed(1)}%)` : "BOB Eterna 5× travel (~3.75%)",
+      effectivePct: 3.75 + (ck ? ck.mid * 0.85 : 0),
+      worstCasePct: 3.75,
+      bestCasePct: 3.75 + (ck?.max ?? 0),
+      cashkaroSuggested: !!ck,
+      pros: ["BOB 5× on travel/online", ck ? `+ ~${ck.mid}% Cashkaro` : "Try Cashkaro click-through"],
+      cons: ["5× cap ~₹33k/cycle", "No HDFC BLCK / HDFCCC coupon in this portfolio"],
+      rationale: `Cleartrip: Cashkaro + BOB 5× is the best held stack (no Swiggy BLCK). ${isHotel ? "Hotels usually track better on Cashkaro than flights." : ""}`,
+      steps: ["Open Cashkaro → Cleartrip", "Book", "Pay with BOB Eterna"],
+    });
+    if (sbiSimplyClickPartner(merchant, cat)) {
+      add({
+        cardId: "sbi_simplyclick",
+        label: "Cashkaro + SBI SimplyCLICK 10× Cleartrip (~2.5%)",
+        effectivePct: 2.5 + (ck ? ck.mid * 0.85 : 0),
+        cashkaroSuggested: !!ck,
+        pros: ["10× partner brand"],
+        cons: ["Usually behind BOB 5×"],
+        rationale: "SBI 10× Cleartrip is a backup if BOB 5× headroom is gone.",
+        steps: ["Cashkaro → Cleartrip", "Pay with SBI SimplyCLICK"],
+      });
     }
+    add({
+      cardId: "amex_plat_travel",
+      label: "Amex PT + Cashkaro (milestone push)",
+      effectivePct: 1.0 + (ck ? ck.mid * 0.7 : 0),
+      worstCasePct: 1.0,
+      bestCasePct: 1.0 + (ck ? ck.max : 0),
+      cashkaroSuggested: true,
+      pros: ["Counts toward PT ₹4L/₹7L milestone"],
+      cons: ["Low base vs BOB 5×"],
+      rationale: "Use Amex PT on Cleartrip mainly when you need annual milestone volume.",
+      steps: ["Try Cashkaro → Cleartrip", "Pay with Amex PT"],
+    });
     return finalize(options, input, amt, isForeign, ck);
   }
 
@@ -957,37 +1279,60 @@ export function recommend(input: RecommendInput): RecommendationResult {
 
   // ============ ZOMATO (before Cashkaro-reliable — Zomato is also zone reliable) ============
   if (merchant.includes("zomato")) {
-    add({ cardId: "bob_eterna", label: "Cashkaro + BOB 5× dining", effectivePct: 3.75 + 4 * 0.85,
-      worstCasePct: 3.75, bestCasePct: 8.75, cashkaroSuggested: true,
-      pros: ["BOB 5× dining + Cashkaro Zomato"], cons: ["5× cap 5K RP/cycle"],
-      rationale: "BOB 5× dining + Cashkaro ≈ 6.75-8.75%.",
+    const ckInr = ck && ck.zone === "reliable" ? amt * (ck.mid / 100) * 0.85 : 0;
+    options.push(buildLivePlusOption(amt, "food", input, {
+      cashkaroInr: ckInr,
+      cashkaroNote: ckInr > 0 ? `+ ~${ck!.mid}% Cashkaro via click-through` : "",
+    }));
+    add({ cardId: "bob_eterna", label: "Cashkaro + BOB 5× dining", effectivePct: 3.75 + (ck ? ck.mid * 0.85 : 0),
+      worstCasePct: 3.75, bestCasePct: 3.75 + (ck?.max ?? 0), cashkaroSuggested: !!ck,
+      pros: ["BOB 5× dining + Cashkaro Zomato"], cons: ["5× cap 5K RP/cycle", "Worse than Live+ 10%"],
+      rationale: "Backup if Live+ accelerated cap is full. Cashkaro + BOB ≈ 6.75–8.75%.",
       steps: ["Cashkaro → Zomato", "Pay with BOB Eterna"] });
+    return finalize(options, input, amt, isForeign, ck);
+  }
+
+  // ============ GROCERIES (Instamart / Blinkit / Zepto / BigBasket) ============
+  if (cat.includes("grocery") || merchant.includes("instamart") || merchant.includes("blinkit") || merchant.includes("zepto") || merchant.includes("bigbasket") || merchant.includes("big basket")) {
+    options.push(buildLivePlusOption(amt, "grocery", input));
+    add({
+      cardId: "bob_eterna",
+      label: "BOB Eterna 5× online (~3.75%) — backup",
+      effectivePct: 3.75,
+      pros: ["LTF 5× online"],
+      cons: ["Worse than Live+ 10%"],
+      rationale: "Live+ 10% on groceries is primary; BOB is overflow after the shared cap.",
+      steps: ["Pay with BOB Eterna"],
+    });
     return finalize(options, input, amt, isForeign, ck);
   }
 
   // ============ CASHKARO-RELIABLE ONLINE MERCHANTS ============
   if (ck && ck.zone === "reliable") {
-    if (input.swiggyBlckIssued) {
-      add({ cardId: "swiggy_blck", label: `Cashkaro + BLCK 5% online`,
-        effectivePct: 5 + ck.mid * 0.85, worstCasePct: 5, bestCasePct: 5 + ck.max, cashkaroSuggested: true,
-        pros: ["BLCK 5% online + Cashkaro stack"], cons: ["BLCK 5% cap ₹1,500/mo"],
-        rationale: "BLCK 5% online + Cashkaro stacks reliably.",
-        steps: ["Cashkaro click-through", `Pay ${input.merchant} with BLCK`] });
+    // Live+ 10% on eligible shopping (not Amazon/FK/Myntra) + Cashkaro
+    const lpBucket = livePlusAccelBucket(merchant, cat);
+    if (lpBucket === "shopping" || lpBucket === "food" || lpBucket === "grocery") {
+      const ckInr = amt * (ck.mid / 100) * 0.85;
+      options.push(buildLivePlusOption(amt, lpBucket, input, {
+        cashkaroInr: ckInr,
+        cashkaroNote: `+ ~${ck.mid}% Cashkaro`,
+      }));
     }
     const bob5xLeft = 33000 - (input.bobCycleSpend5x ?? 0);
     add({ cardId: "bob_eterna", label: "Cashkaro + BOB Eterna 5× online (3.75%)",
       effectivePct: 3.75 + ck.mid * 0.85, worstCasePct: 3.75, bestCasePct: 3.75 + ck.max, cashkaroSuggested: true,
       feasible: bob5xLeft >= 100, feasibilityNote: bob5xLeft < amt ? `Only ${inr(Math.max(0,bob5xLeft))} of 5× headroom left this cycle` : undefined,
       pros: ["BOB 5× online (3.75%) + Cashkaro"], cons: ["5× cap 5,000 RP/cycle (~₹33K)"],
-      rationale: "BOB 5× online + Cashkaro stacks. Cap 5K RP/cycle.",
+      rationale: "BOB 5× online + Cashkaro stacks. Cap 5K RP/cycle. Prefer Live+ 10% when the merchant is Live+-eligible.",
       steps: ["Cashkaro click-through", `Pay ${input.merchant} with BOB Eterna`] });
     return finalize(options, input, amt, isForeign, ck);
   }
 
   // ============ DINING (offline) ============
   if (cat.includes("dining") || cat.includes("restaurant")) {
-    add({ cardId: "bob_eterna", label: "BOB Eterna 5× dining (3.75%)", effectivePct: 3.75,
-      pros: ["5× dining"], cons: ["Cap 5K RP/cycle"], rationale: "BOB 5× on dining.",
+    options.push(buildLivePlusOption(amt, "dining", input));
+    add({ cardId: "bob_eterna", label: "BOB Eterna 5× dining (3.75%) — backup", effectivePct: 3.75,
+      pros: ["5× dining"], cons: ["Cap 5K RP/cycle", "Worse than Live+ 10%"], rationale: "Live+ 10% dining is primary.",
       steps: ["Pay with BOB Eterna at the restaurant"] });
     return finalize(options, input, amt, isForeign, ck);
   }
@@ -1086,8 +1431,8 @@ function genericCardEval(
         return { pct: 0, label: "SBI (abroad)", reason: "3.5% forex, no international bonus." };
       case "amazon_pay_icici":
         return { pct: 0, label: "Amazon Pay ICICI (abroad)", reason: "International spends are excluded from cashback + forex markup applies." };
-      case "swiggy_blck":
-        return { pct: 0, label: "HDFC BLCK (abroad)", reason: "Forex excluded from BLCK cashback; 3.5% markup." };
+      case "hsbc_live_plus":
+        return { pct: 0, label: "HSBC Live+ (abroad)", reason: "International spends are excluded from Live+ cashback post-deval; forex markup applies. Use Scapia." };
       default:
         return null;
     }
@@ -1106,6 +1451,8 @@ function genericCardEval(
         return { pct: 0.5 * 0.45, label: "IDFC Indigo", reason: "0.5 BluChip/₹100 ≈ 0.23% on these MCCs (travel-locked)." };
       case "bob_eterna":
         return { pct: 0.75, label: "BOB Eterna", reason: "Base 0.75% (5× doesn't apply). Only worth it during the ₹50K welcome window, where every spend counts." };
+      case "hsbc_live_plus":
+        return { pct: 0, label: "HSBC Live+", reason: "Rent / fuel / insurance / tax are not Live+ accelerated categories (and often excluded)." };
       // scapia / yes_kiwi fall through to their exclusion handling below (→ 0).
     }
   }
@@ -1142,8 +1489,28 @@ function genericCardEval(
       return { pct: 0.78, label: "Amex MRCC", reason: "~0.78% base. Best as a monthly-milestone filler (4×₹1.5K + ₹20K/cycle) when the cycle is still open." };
     case "bob_eterna":
       return { pct: 0.75, label: "BOB Eterna", reason: "5× (3.75%) only on online shopping / dining / travel / international. This spend is general → base 0.75% only (and the welcome window isn't driving it)." };
-    case "swiggy_blck":
-      return { pct: 1.0, label: "HDFC Swiggy BLCK", reason: "10% on Swiggy, 5% on select online (Amazon/Flipkart/Myntra/Ajio/Nykaa) + Cleartrip coupon stack. Not applicable here → 1% base." };
+    case "hsbc_live_plus": {
+      const bucket = livePlusAccelBucket(merch, cat);
+      if (bucket) {
+        return {
+          pct: LIVE_PLUS_ACCEL_PCT,
+          label: "HSBC Live+",
+          reason: `10% accelerated on ${bucket} (shared ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo cap). Category rule should have ranked this already if it's the best route.`,
+        };
+      }
+      if (isLivePlusMarketplaceExcluded(merch, cat)) {
+        return {
+          pct: LIVE_PLUS_BASE_PCT,
+          label: "HSBC Live+",
+          reason: `Amazon / Flipkart / Myntra are excluded from Live+ 10% — only ${LIVE_PLUS_BASE_PCT}% base. Prefer Amazon Pay ICICI for Amazon.`,
+        };
+      }
+      return {
+        pct: LIVE_PLUS_BASE_PCT,
+        label: "HSBC Live+",
+        reason: `Not an accelerated category here → ${LIVE_PLUS_BASE_PCT}% base. Live+ 10% is for dining / food / grocery / utilities / non-marketplace shopping.`,
+      };
+    }
     default:
       return null;
   }
@@ -1462,9 +1829,8 @@ function finalize(
   // Ensure every active card has at least a reasoning entry so the user always
   // sees WHY a card (incl. Kiwi/Scapia/SBI) was not the top pick.
   const present = new Set(options.map((o) => o.cardId));
-  const active = ["amex_gold", "amex_plat_travel", "amex_mrcc", "scapia", "idfc_indigo", "bob_eterna", "yes_kiwi", "sbi_simplyclick"];
+  const active = ["amex_gold", "amex_plat_travel", "amex_mrcc", "scapia", "idfc_indigo", "bob_eterna", "yes_kiwi", "sbi_simplyclick", "hsbc_live_plus"];
   if (input.amazonPayIciciIssued !== false) active.push("amazon_pay_icici");
-  if (input.swiggyBlckIssued) active.push("swiggy_blck");
 
   for (const id of active) {
     if (present.has(id)) continue;

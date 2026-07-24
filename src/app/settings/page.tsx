@@ -14,9 +14,10 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "sbiYtdSpend", label: "SBI SimplyCLICK — YTD online spend (₹)", group: "Annual milestone progress", numeric: true },
   { key: "idfcYtdSpend", label: "IDFC Indigo — YTD spend (₹)", group: "Annual milestone progress", numeric: true },
   { key: "bobYtdSpend", label: "BOB Eterna — spend since issuance (₹)", group: "Annual milestone progress", numeric: true },
-  { key: "blckYtdSpend", label: "Swiggy BLCK — YTD spend (₹)", group: "Annual milestone progress", numeric: true },
+  { key: "hsbcLivePlusYtdSpend", label: "HSBC Live+ — YTD spend (₹, fee waiver @ ₹2L)", group: "Annual milestone progress", numeric: true },
   { key: "scapiaMonthlySpend", label: "Scapia — current month spend (₹)", group: "Monthly tracking", numeric: true },
   { key: "kiwiNeonCycleSpend", label: "Kiwi Neon cycle (Apr–Mar) spend (₹)", group: "Monthly tracking", numeric: true },
+  { key: "livePlusAccelCashbackUsedThisMonth", label: "HSBC Live+ — 10% cashback used this month (cap ₹1,200)", group: "Monthly milestone counters", numeric: true },
   { key: "goldThisMonthTxnsAt1k", label: "Amex Gold — ≥₹1K txns this calendar month (0-6)", group: "Monthly milestone counters", numeric: true },
   { key: "mrccThisCycleTxnsAt1500", label: "Amex MRCC — ≥₹1.5K txns this cycle (0-4)", group: "Monthly milestone counters", numeric: true },
   { key: "mrccThisCycleAmount", label: "Amex MRCC — total this cycle (toward ₹20K)", group: "Monthly milestone counters", numeric: true },
@@ -25,6 +26,7 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "amazonPayBalance", label: "Amazon Pay balance (₹, idle gift-card money)", group: "Amazon Pay & welcome windows", numeric: true },
   { key: "bobEternaIssueDate", label: "BOB Eterna issue date (YYYY-MM-DD, drives 60-day welcome)", group: "Amazon Pay & welcome windows", numeric: false },
   { key: "amazonPayIciciIssueDate", label: "Amazon Pay ICICI issue date (YYYY-MM-DD)", group: "Amazon Pay & welcome windows", numeric: false },
+  { key: "hsbcLivePlusIssueDate", label: "HSBC Live+ issue date (YYYY-MM-DD, drives ₹20k/30d welcome)", group: "Amazon Pay & welcome windows", numeric: false },
   { key: "amexMrPooled", label: "Amex MR — pooled balance", group: "Reward balances", numeric: true },
   { key: "indigoBluChips", label: "IndiGo BluChips balance", group: "Reward balances", numeric: true },
   { key: "scapiaCoins", label: "Scapia coins balance", group: "Reward balances", numeric: true },
@@ -39,10 +41,10 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
 ];
 
 const TOGGLES: { key: keyof AppState; label: string }[] = [
-  { key: "swiggyBlckIssued", label: "Swiggy BLCK issued (received)" },
   { key: "amazonPayIciciIssued", label: "Amazon Pay ICICI issued (received)" },
   { key: "primeMember", label: "Amazon Prime member" },
   { key: "bobWelcomeUnlocked", label: "BOB Eterna ₹50K welcome bonus already credited" },
+  { key: "hsbcWelcomeClaimed", label: "HSBC Live+ ₹1k welcome cashback already credited" },
   // BOGO is now auto-derived from your logged District transactions — no manual toggle needed.
 ];
 

@@ -14,7 +14,7 @@ export default function CashkaroPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="page-title flex items-center gap-2">
           <Icon.Sparkles /> Cashkaro Routes
         </h1>
         <p className="text-fg-muted mt-1">Always-try policy: worst case = direct card rewards (no loss); best case = bonus cashback.</p>

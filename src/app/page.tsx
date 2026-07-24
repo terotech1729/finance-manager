@@ -49,29 +49,29 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Hero header */}
-      <div className="flex items-start justify-between gap-6 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Welcome back</h1>
-          <p className="text-fg-muted mt-1">Your personal finance command center</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <h1 className="page-title">Welcome back</h1>
+          <p className="page-sub">Your personal finance command center</p>
         </div>
-        <Link href="/recommend" className="btn-primary">
-          <Icon.Zap size={16} /> Recommend a route for a spend
+        <Link href="/recommend" className="btn-primary w-full sm:w-auto">
+          <Icon.Zap size={16} /> Recommend a route
         </Link>
       </div>
 
       {/* Primary CTA banner */}
       <Link href="/recommend" className="block">
-        <div className="card-shell p-5 bg-gradient-to-br from-accent/10 via-bg-elevated to-bg-elevated border-accent/40 hover:border-accent transition-colors flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="card-shell p-4 sm:p-5 bg-gradient-to-br from-accent/10 via-bg-elevated to-bg-elevated border-accent/40 hover:border-accent transition-colors flex items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center text-accent shrink-0">
               <Icon.Zap size={20} />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="font-semibold">About to spend on something?</div>
-              <div className="text-sm text-fg-muted">Get the optimal card + payment route — compares every card, Cashkaro, gift-card & voucher stack.</div>
+              <div className="text-sm text-fg-muted mt-0.5">Optimal card + route — Cashkaro, gift-cards & stacks compared.</div>
             </div>
           </div>
-          <Icon.ArrowRight size={18} className="text-fg-muted shrink-0" />
+          <Icon.ArrowRight size={18} className="text-fg-muted shrink-0 hidden sm:block" />
         </div>
       </Link>
 
@@ -79,17 +79,17 @@ export default function DashboardPage() {
       <section className="grid md:grid-cols-3 gap-3">
         <div className="card-shell p-5 bg-gradient-to-br from-success/10 via-bg-elevated to-bg-elevated border-success/30">
           <div className="label">Total wallet value (loyalty)</div>
-          <div className="text-3xl font-bold mt-1 text-success">{inr(totalLifetimeSavings)}</div>
+          <div className="text-2xl sm:text-3xl font-bold mt-1 text-success">{inr(totalLifetimeSavings)}</div>
           <div className="text-xs text-fg-muted mt-1">Sum of all loyalty currencies at best-case redemption</div>
         </div>
         <div className="card-shell p-5 bg-gradient-to-br from-accent/10 via-bg-elevated to-bg-elevated border-accent/30">
           <div className="label">Logged YTD CC spend</div>
-          <div className="text-3xl font-bold mt-1">{inr(totalSpentThisYear)}</div>
+          <div className="text-2xl sm:text-3xl font-bold mt-1">{inr(totalSpentThisYear)}</div>
           <div className="text-xs text-fg-muted mt-1">{txns.length} txns · {inr(totalRewardsThisYear)} earned in rewards</div>
         </div>
         <div className="card-shell p-5 bg-gradient-to-br from-info/10 via-bg-elevated to-bg-elevated border-info/30">
           <div className="label">Portfolio value</div>
-          <div className="text-3xl font-bold mt-1 text-info">{inr(totalPortfolioValue)}</div>
+          <div className="text-2xl sm:text-3xl font-bold mt-1 text-info">{inr(totalPortfolioValue)}</div>
           <div className="text-xs text-fg-muted mt-1">{inr(totalInvested)} invested across {holdings.length} holding{holdings.length === 1 ? "" : "s"} · <Link href="/investments" className="underline">manage</Link></div>
         </div>
       </section>

@@ -47,12 +47,12 @@ function isActive(path: string, href: string) {
 
 function Brand() {
   return (
-    <Link href="/" className="flex items-center gap-2.5">
-      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold shadow-md shadow-accent/30">
+    <Link href="/" className="flex items-center gap-2.5 min-w-0">
+      <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold shadow-md shadow-accent/30">
         ₹
       </div>
-      <div>
-        <div className="text-sm font-semibold leading-none">Personal Finance</div>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold leading-none truncate">Personal Finance</div>
         <div className="text-xs text-fg-muted leading-none mt-1">Manager</div>
       </div>
     </Link>
@@ -122,12 +122,17 @@ export function MobileNav() {
   }, [open]);
 
   return (
-    <header className="md:hidden sticky top-0 z-30 bg-bg-chrome/90 backdrop-blur-sm border-b border-border">
-      <div className="px-4 h-14 flex items-center justify-between">
-        <Brand />
+    <header
+      className="md:hidden sticky top-0 z-30 bg-bg-chrome/90 backdrop-blur-sm border-b border-border"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
+      <div className="px-3 sm:px-4 h-14 flex items-center justify-between gap-2 min-w-0">
+        <div className="min-w-0 shrink">
+          <Brand />
+        </div>
         <button
           aria-label="Menu"
-          className="btn-ghost px-2 py-2"
+          className="btn-ghost px-2 py-2 shrink-0 min-h-[44px] min-w-[44px]"
           onClick={() => setOpen(true)}
         >
           <Icon.Menu size={22} />
@@ -135,14 +140,17 @@ export function MobileNav() {
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-40">
+        <div className="fixed inset-0 z-40" style={{ paddingTop: "env(safe-area-inset-top)" }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-0 h-full w-72 max-w-[85vw] bg-bg-chrome border-l border-border shadow-2xl flex flex-col toast-in">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div
+            className="absolute right-0 top-0 h-full w-72 max-w-[min(85vw,20rem)] bg-bg-chrome border-l border-border shadow-2xl flex flex-col toast-in"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
+            <div className="px-4 py-4 border-b border-border flex items-center justify-between gap-2">
               <Brand />
-              <button aria-label="Close" className="btn-ghost px-2 py-2" onClick={() => setOpen(false)}><Icon.Close size={20} /></button>
+              <button aria-label="Close" className="btn-ghost px-2 py-2 min-h-[44px] min-w-[44px]" onClick={() => setOpen(false)}><Icon.Close size={20} /></button>
             </div>
-            <nav className="flex-1 p-3 overflow-y-auto">
+            <nav className="flex-1 p-3 overflow-y-auto overscroll-contain">
               <NavLinks path={path} onNavigate={() => setOpen(false)} />
             </nav>
           </div>

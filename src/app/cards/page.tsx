@@ -11,7 +11,7 @@ export default function CardsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">All Cards</h1>
+        <h1 className="page-title">All Cards</h1>
         <p className="text-fg-muted mt-1">{CARDS.length} cards · {active.length} active · {applied.length} pending</p>
       </div>
 

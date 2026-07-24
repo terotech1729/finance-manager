@@ -54,7 +54,7 @@ const RULES: Rule[] = [
       options: [
         { value: "electronics", label: "Electronics (phone, laptop, gadget)", category: "amazon electronics", channel: "online" },
         { value: "general", label: "General (clothes, books, household)", category: "amazon (general)", channel: "online" },
-        { value: "fresh", label: "Amazon Fresh / Now (groceries)", category: "groceries", channel: "merchant_app" },
+        { value: "fresh", label: "Amazon Fresh / Now (milk, groceries)", category: "amazon (general)", channel: "online" },
       ],
     },
   },
@@ -111,7 +111,8 @@ const RULES: Rule[] = [
   { match: /\bbooking\.com\b|\bagoda\b/i, category: "booking.com / agoda", prettyLabel: "Booking.com / Agoda", channel: "online", confidence: "high" },
   { match: /\bmakemytrip\b|\bmmt\b|\beasemytrip\b|\byatra\b|\bgoibibo\b/i, category: "makemytrip / easemytrip", prettyLabel: "MMT / EaseMyTrip / Yatra", channel: "online", confidence: "high" },
   { match: /\b(taj|marriott|hyatt|oberoi|hilton|itc|leela|radisson|novotel|ibis)\b/i, category: "hotel direct", prettyLabel: "Hotel (direct)", channel: "online", confidence: "medium" },
-  { match: /\b(uber|ola|rapido|namma\s*yatri)\b/i, category: "ride / cab", prettyLabel: "Ride / cab", channel: "merchant_app", confidence: "high" },
+  { match: /\bplayo\b|\bbadminton\b|\bsports\s*court\b|\bturf\s*book/i, category: "playo / sports booking", prettyLabel: "Playo / sports court", channel: "upi", confidence: "high" },
+  { match: /\b(uber|ola|rapido|namma\s*yatri)\b/i, category: "ride / cab", prettyLabel: "Ride / cab", channel: "upi", confidence: "high" },
   { match: /\bmetro\b|\birctc\b|\btrain\b/i, category: "transit (metro / train)", prettyLabel: "Metro / Train", channel: "online", confidence: "medium" },
 
   // ---- UTILITIES ----
@@ -242,6 +243,7 @@ export const ALL_CATEGORIES = [
   "booking.com / agoda",
   "makemytrip / easemytrip",
   "hotel direct",
+  "playo / sports booking",
   "ride / cab",
   "transit (metro / train)",
   "dining (offline restaurant)",

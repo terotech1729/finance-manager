@@ -16,7 +16,8 @@ export type AppState = {
   bobCycleSpend5x: number;
   sbiYtdSpend: number;
   idfcYtdSpend: number;
-  blckYtdSpend: number;
+  hsbcLivePlusYtdSpend: number;
+  livePlusAccelCashbackUsedThisMonth: number;
   scapiaMonthlySpend: number;
   kiwiNeonCycleSpend: number;
   // Calendar-month / cycle milestone counters
@@ -29,7 +30,8 @@ export type AppState = {
   bobEternaIssueDate: string;
   bobWelcomeUnlocked: boolean;
   amazonPayIciciIssueDate: string;
-  swiggyBlckIssueDate?: string;
+  hsbcLivePlusIssueDate: string;
+  hsbcWelcomeClaimed: boolean; // ₹1k welcome @ ₹20k/30d already credited
   // Amazon Pay balance (idle gift-card money)
   amazonPayBalance: number;
   // Amazon Pay ICICI one-time welcome coupons already used (offer ids)
@@ -40,7 +42,7 @@ export type AppState = {
   bills: Record<string, { billAmount: number; paid: boolean }>;
   // Calendar month the monthly counters belong to (auto-resets when the month rolls over).
   monthKey: string;
-  // Calendar year for annual milestone spend counters (SBI / IDFC / Swiggy BLCK).
+  // Calendar year for annual milestone spend counters (SBI / IDFC / HSBC Live+).
   yearKey?: string;
   // Amex Plat Travel membership year (boundary 3 Dec) for eligible-spend reset.
   ptccYearKey?: string;
@@ -66,7 +68,6 @@ export type AppState = {
   credCoins: number;
   cheqChips: number;
   // Card states
-  swiggyBlckIssued: boolean;
   amazonPayIciciIssued: boolean;
   primeMember: boolean;
   // Milestone hits
@@ -83,7 +84,8 @@ export const DEFAULT_STATE: AppState = {
   bobCycleSpend5x: 0,
   sbiYtdSpend: 91614,
   idfcYtdSpend: 508923,
-  blckYtdSpend: 0,
+  hsbcLivePlusYtdSpend: 0,
+  livePlusAccelCashbackUsedThisMonth: 0,
   scapiaMonthlySpend: 44009,
   kiwiNeonCycleSpend: 11849,
   goldThisMonthTxnsAt1k: 6,
@@ -94,7 +96,8 @@ export const DEFAULT_STATE: AppState = {
   bobEternaIssueDate: "2026-05-27",
   bobWelcomeUnlocked: false,
   amazonPayIciciIssueDate: "2026-05-25",
-  swiggyBlckIssueDate: undefined,
+  hsbcLivePlusIssueDate: "2026-07-20",
+  hsbcWelcomeClaimed: false,
   amazonPayBalance: 3338,
   amazonWelcomeClaimed: [],
   giftCardRateOverrides: {},
@@ -113,7 +116,6 @@ export const DEFAULT_STATE: AppState = {
   kiwiLifetimeEarned: 9825,
   credCoins: 1531012,
   cheqChips: 3846,
-  swiggyBlckIssued: false,
   amazonPayIciciIssued: true,
   primeMember: true,
   milestonesHit: ["amex_plat_travel:190000", "idfc_indigo:200000", "idfc_indigo:500000"],
@@ -179,15 +181,16 @@ export function loadState(): AppState {
     st.goldShopwiseUsedThisMonth = 0;
     st.scapiaMonthlySpend = 0;
     st.bobCycleSpend5x = 0;
+    st.livePlusAccelCashbackUsedThisMonth = 0;
     changed = true;
   }
-  // ANNUAL — calendar year (SBI / IDFC / Swiggy BLCK)
+  // ANNUAL — calendar year (SBI / IDFC / HSBC Live+)
   if (!st.yearKey) { st.yearKey = yk; changed = true; }
   else if (st.yearKey !== yk) {
     st.yearKey = yk;
     st.sbiYtdSpend = 0;
     st.idfcYtdSpend = 0;
-    st.blckYtdSpend = 0;
+    st.hsbcLivePlusYtdSpend = 0;
     changed = true;
   }
   // Amex Plat Travel membership year (3 Dec)
@@ -235,7 +238,8 @@ export function recomputeCounters(): AppState {
     bobCycleSpend5x: 0,
     sbiYtdSpend: 0,
     idfcYtdSpend: 0,
-    blckYtdSpend: 0,
+    hsbcLivePlusYtdSpend: 0,
+    livePlusAccelCashbackUsedThisMonth: 0,
     scapiaMonthlySpend: 0,
     goldThisMonthTxnsAt1k: 0,
     goldShopwiseUsedThisMonth: 0,
@@ -265,7 +269,12 @@ export function recomputeCounters(): AppState {
         break;
       case "sbi_simplyclick": if (inYear) next.sbiYtdSpend += amt; break;
       case "idfc_indigo": if (inYear) next.idfcYtdSpend += amt; break;
-      case "swiggy_blck": if (inYear) next.blckYtdSpend += amt; break;
+      case "hsbc_live_plus":
+        if (inYear) next.hsbcLivePlusYtdSpend += amt;
+        if (inMonth && (t.effectivePct ?? 0) >= 9) {
+          next.livePlusAccelCashbackUsedThisMonth += Math.min(amt * 0.1, t.rewardInr || amt * 0.1);
+        }
+        break;
       case "scapia": if (inMonth) next.scapiaMonthlySpend += amt; break;
       case "amex_gold":
         if (inMonth && amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);

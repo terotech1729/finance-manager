@@ -80,7 +80,7 @@ export default function InvestmentAnalyzerPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Investment Analyzer</h1>
+          <h1 className="page-title">Investment Analyzer</h1>
           <p className="text-fg-muted mt-1">Allocation, deployment over time, and gains across your holdings.</p>
         </div>
         <div className="card-shell p-8 text-center text-fg-muted">
@@ -98,7 +98,7 @@ export default function InvestmentAnalyzerPage() {
     <div className="space-y-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Investment Analyzer</h1>
+          <h1 className="page-title">Investment Analyzer</h1>
           <p className="text-fg-muted mt-1">Allocation, gains, deployment over time, and platform split.</p>
         </div>
         <Link href="/investments" className="btn-secondary"><Icon.Plus size={16} /> Manage holdings</Link>

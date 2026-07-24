@@ -17,6 +17,9 @@ function routeName(cardId: string): string {
   if (cardId === "upi") return "UPI (PhonePe/GPay)";
   if (cardId === "cash") return "Cash";
   if (cardId === "amazon_pay_balance") return "Amazon Pay balance";
+  if (cardId === "hsbc_live_plus") return "HSBC Live+";
+  if (cardId === "axis_ace") return "Axis Ace (not in plan)";
+  if (cardId === "cheq_au") return "CheQ AU (skip)";
   return cardId;
 }
 import { inr, newId, todayLocal, localDateToISO } from "@/lib/utils";
@@ -90,7 +93,8 @@ export function RecommendationWidget({ onLogged }: Props) {
       bobCycleSpend5x: state.bobCycleSpend5x,
       sbiYtdSpend: state.sbiYtdSpend,
       idfcYtdSpend: state.idfcYtdSpend,
-      blckYtdSpend: state.blckYtdSpend,
+      hsbcLivePlusYtdSpend: state.hsbcLivePlusYtdSpend,
+      livePlusAccelCashbackUsedThisMonth: state.livePlusAccelCashbackUsedThisMonth,
       goldThisMonthTxnsAt1k: state.goldThisMonthTxnsAt1k,
       mrccThisCycleTxnsAt1500: state.mrccThisCycleTxnsAt1500,
       mrccThisCycleAmount: state.mrccThisCycleAmount,
@@ -102,7 +106,6 @@ export function RecommendationWidget({ onLogged }: Props) {
         (t) => t.cardId === "bob_eterna" && t.date.slice(0, 7) === date.slice(0, 7) &&
           (t.path === "district" || /district|bogo/i.test(`${t.merchant} ${t.category}`))
       ),
-      swiggyBlckIssued: state.swiggyBlckIssued,
       amazonPayIciciIssued: state.amazonPayIciciIssued,
       primeMember: state.primeMember,
       amazonPayBalance: state.amazonPayBalance,
@@ -114,6 +117,8 @@ export function RecommendationWidget({ onLogged }: Props) {
       movieTheatre: movieTheatre || undefined,
       bobEternaIssueDate: state.bobEternaIssueDate,
       bobWelcomeUnlocked: state.bobWelcomeUnlocked,
+      hsbcLivePlusIssueDate: state.hsbcLivePlusIssueDate,
+      hsbcWelcomeClaimed: state.hsbcWelcomeClaimed,
       today: localDateToISO(date),
     };
     return recommend(input);
@@ -168,7 +173,7 @@ export function RecommendationWidget({ onLogged }: Props) {
     };
     addTransaction(t);
     const next: AppState = { ...state };
-    applyCardSpend(next, chosen.cardId, amt, chosen.totalRewardInr);
+    applyCardSpend(next, chosen.cardId, amt, chosen.totalRewardInr, chosen.effectivePct);
     if (chosen.cardId === "bob_eterna" && next.bobYtdSpend >= 50000) next.bobWelcomeUnlocked = true;
     if (chosen.cardId === "amex_gold" && chosen.label.toLowerCase().includes("shopwise")) {
       next.goldShopwiseUsedThisMonth += amt;
@@ -214,39 +219,41 @@ export function RecommendationWidget({ onLogged }: Props) {
       </div>
 
       <div className="card-body space-y-4">
-        <div className="grid sm:grid-cols-[1fr_140px_150px_auto] gap-3 items-end">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_150px_auto] gap-3 items-stretch sm:items-end">
+          <div className="min-w-0">
             <label className="label mb-1 block">What are you buying?</label>
             <input
-              className="input text-base"
-              placeholder="e.g. Airtel recharge, Amazon, Cleartrip hotel, BESCOM bill…"
+              className="input"
+              placeholder="e.g. Airtel, Amazon, Cleartrip…"
               value={merchant}
               onChange={(e) => setMerchant(e.target.value)}
               autoFocus
             />
           </div>
-          <div>
-            <label className="label mb-1 block">Amount (₹)</label>
-            <input
-              className="input text-base"
-              placeholder="e.g. 899"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              inputMode="numeric"
-            />
+          <div className="grid grid-cols-2 sm:contents gap-3">
+            <div className="min-w-0">
+              <label className="label mb-1 block">Amount (₹)</label>
+              <input
+                className="input"
+                placeholder="e.g. 899"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                inputMode="decimal"
+              />
+            </div>
+            <div className="min-w-0">
+              <label className="label mb-1 block">Date</label>
+              <input
+                type="date"
+                className="input"
+                value={date}
+                max={todayLocal()}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <label className="label mb-1 block">Date</label>
-            <input
-              type="date"
-              className="input text-base"
-              value={date}
-              max={todayLocal()}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
-          <div>
-            <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => setShowOverride((v) => !v)} type="button">
+          <div className="sm:self-end">
+            <button className="btn-secondary text-sm w-full sm:w-auto whitespace-nowrap" onClick={() => setShowOverride((v) => !v)} type="button">
               {showOverride ? "Hide" : "Advanced ▾"}
             </button>
           </div>
@@ -451,9 +458,9 @@ export function RecommendationWidget({ onLogged }: Props) {
                   </button>
                 )}
               </div>
-              <div className="text-right shrink-0">
+              <div className="text-left sm:text-right shrink-0 w-full sm:w-auto">
                 <div className="label">{rec.effectiveRange && routeToLog === best ? "Value (typical redemption)" : "Total value"}</div>
-                <div className="text-3xl font-bold text-success">{routeToLog.effectivePct.toFixed(2)}%</div>
+                <div className="text-2xl sm:text-3xl font-bold text-success">{routeToLog.effectivePct.toFixed(2)}%</div>
                 <div className="text-xs text-fg-muted">≈ {inr(routeToLog.totalRewardInr)}{routeToLog.bonusRewardInr > 0 ? ` (${inr(routeToLog.baseRewardInr)} base + ${inr(routeToLog.bonusRewardInr)} milestone)` : ""}</div>
                 {rec.effectiveRange && routeToLog === best && (
                   <div className="text-xs text-fg-muted mt-1">
