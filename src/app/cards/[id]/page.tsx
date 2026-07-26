@@ -61,11 +61,12 @@ const CARD_TIPS: Record<string, { useFor: string[]; dontUseFor: string[]; primar
       "Groceries (Instamart/Blinkit/Zepto)",
       "Other shopping except Amazon/Flipkart/Myntra",
       "Hit ₹20k in first 30 days + HSBC app login for ₹1k welcome",
-      "₹2L/yr for fee waiver; use 4 domestic lounges + Times Prime / District perks",
+      "₹2L/yr for fee waiver; 2 domestic lounges/yr + 1 intl (from Sep 2026); Times Prime / District",
     ],
     dontUseFor: [
       "Amazon / Flipkart / Myntra (only 1.5% — use Amazon Pay ICICI for Amazon)",
       "Amazon bill-pay for utilities (codes as Amazon, not 10%)",
+      "Hospital / healthcare / local transport (0% post-reval — welcome volume only)",
       "International (0% cashback + forex — use Scapia)",
       "Fuel as primary earn (only quarterly contactless fuel CB if eligible)",
     ],

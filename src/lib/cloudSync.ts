@@ -49,6 +49,11 @@ export async function pullFromCloud(): Promise<{ pulled: boolean; hadRemote: boo
   }
   if (data?.data) {
     importAll(typeof data.data === "string" ? data.data : JSON.stringify(data.data), true);
+    // Heal milestone counters from the pulled txn log so recommend isn't stale.
+    try {
+      const { recomputeCounters } = await import("./storage");
+      recomputeCounters();
+    } catch { /* ignore */ }
     setStatus("synced");
     return { pulled: true, hadRemote: true };
   }

@@ -98,6 +98,8 @@ export type RecommendInput = {
   bobWelcomeUnlocked?: boolean;
   hsbcLivePlusIssueDate?: string;
   hsbcWelcomeClaimed?: boolean;
+  /** Live+ spend inside the 30-day welcome window (from txn log). Falls back to YTD if unset. */
+  hsbcLivePlusWelcomeSpend?: number;
   today?: string; // ISO; used for calendar-month milestone feasibility
   // legacy aliases
   goldMonthlyTxnsDone?: number;
@@ -205,7 +207,7 @@ function buildLivePlusOption(
         ? `Accelerated cap already used — ${LIVE_PLUS_BASE_PCT}% statement cashback (auto ~45 days)`
         : `10% statement cashback (Visa Infinite) — liquid, auto-credited`,
       `Shared accel cap ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo (~₹${Math.round(used)} used this month)`,
-      "Also: Times Prime, District dining/BOGO, 4 domestic lounges/yr, 1 intl lounge/yr (from Sep 2026)",
+      "Also: Times Prime, District dining/BOGO, 2 domestic lounges/yr, 1 intl lounge/yr (from Sep 2026)",
       welcome?.note ?? "",
       opts?.cashkaroNote ?? "",
     ],
@@ -240,18 +242,25 @@ function livePlusWelcomeBonus(input: RecommendInput, amt: number): { inr: number
   const issued = new Date(issue);
   const days = Math.floor((today.getTime() - issued.getTime()) / (1000 * 60 * 60 * 24));
   if (days < 0 || days > 30) return null;
-  const ytd = input.hsbcLivePlusYtdSpend ?? 0;
-  if (ytd >= 20000) return null;
-  const remaining = 20000 - ytd;
+  // Prefer spend actually logged inside the 30-day window; fall back to YTD only if unset.
+  const spent = input.hsbcLivePlusWelcomeSpend ?? input.hsbcLivePlusYtdSpend ?? 0;
+  if (spent >= 20000) return null;
+  const remaining = 20000 - spent;
   const progress = Math.min(amt, remaining) / 20000;
   const inrVal = 1000 * progress;
-  const completes = ytd + amt >= 20000;
+  const completes = spent + amt >= 20000;
   return {
     inr: inrVal,
     note: completes
       ? `Completes ₹20k/30-day welcome → unlocks ₹1,000 cashback (also need HSBC app login)`
-      : `Builds welcome ₹20k/30d (${inr(ytd + Math.min(amt, remaining))}/₹20k) → +${inr(inrVal)} marginal of ₹1k bonus`,
+      : `Builds welcome ₹20k/30d (${inr(spent + Math.min(amt, remaining))}/₹20k) → +${inr(inrVal)} marginal of ₹1k bonus`,
   };
+}
+
+/** Post-reval: hospital + local transport (bus/metro) earn 0% — not even 1.5% base. */
+function livePlusZeroBase(merchant: string, category: string): boolean {
+  const t = `${merchant} ${category}`.toLowerCase();
+  return /hospital|healthcare|clinic|doctor|dermat|derma|medical|metro|local\s*transport|\bbus\b/.test(t);
 }
 
 function pickCard(id: string): Card {
@@ -1505,6 +1514,13 @@ function genericCardEval(
           reason: `Amazon / Flipkart / Myntra are excluded from Live+ 10% — only ${LIVE_PLUS_BASE_PCT}% base. Prefer Amazon Pay ICICI for Amazon.`,
         };
       }
+      if (livePlusZeroBase(merch, cat)) {
+        return {
+          pct: 0,
+          label: "HSBC Live+",
+          reason: "Hospital / healthcare / local transport earn 0% post-reval (not even 1.5% base). Use only if you need ₹20k/30d welcome volume.",
+        };
+      }
       return {
         pct: LIVE_PLUS_BASE_PCT,
         label: "HSBC Live+",
@@ -1744,6 +1760,34 @@ function finalize(
         cons: ["Base only 0.75% on non-5× categories — the value is the welcome milestone, not the base rate"],
         rationale: `You're inside the BOB 60-day welcome window — ${bobW.note} Route most decent spends here until you hit ₹50K; the marginal value far exceeds the base 0.75%.`,
         steps: ["Pay with BOB Eterna", `Drives the ₹50K welcome milestone (₹2,500 bonus)`],
+      }));
+    }
+  }
+
+  // ---- Universal HSBC Live+ welcome push (30-day ₹20K → ₹1,000) ----
+  // Same pattern as BOB: every eligible spend during the window drives the welcome, including
+  // categories that only earn 1.5% (or 0% hospital/transport) base.
+  {
+    const lpW = livePlusWelcomeBonus(input, amt);
+    if (lpW && !options.some((o) => o.cardId === "hsbc_live_plus" && (o.bonusRewardInr > 0 || /welcome/i.test(o.label)))) {
+      const zero = livePlusZeroBase(input.merchant || "", input.category || "");
+      const basePct = zero ? 0 : LIVE_PLUS_BASE_PCT;
+      const baseInr = amt * (basePct / 100);
+      options.push(mkOption(amt, {
+        cardId: "hsbc_live_plus",
+        label: zero
+          ? "HSBC Live+ (welcome push — 0% base on healthcare/transport)"
+          : "HSBC Live+ (welcome push to ₹20k/30d)",
+        effectivePct: ((baseInr + lpW.inr) / amt) * 100,
+        baseRewardInr: baseInr,
+        bonusRewardInr: lpW.inr,
+        pros: [lpW.note, "Inside 30-day welcome — every Live+ spend drives the ₹1,000 bonus (need HSBC app login too)"],
+        cons: [
+          zero ? "This MCC earns 0% base post-reval — value is welcome only" : `Base only ${LIVE_PLUS_BASE_PCT}% outside accelerated cats`,
+          "Prefer Live+ 10% categories (dining/food/grocery/utilities/shopping) when available",
+        ],
+        rationale: `You're inside the Live+ ₹20k/30-day welcome window — ${lpW.note}`,
+        steps: ["Pay with HSBC Live+", "Log into HSBC India app if you haven't", `Builds toward ₹20k welcome (₹1,000 cashback)`],
       }));
     }
   }

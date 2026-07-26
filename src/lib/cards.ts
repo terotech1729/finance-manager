@@ -172,14 +172,14 @@ export const CARDS: readonly Card[] = [
     annualFee: 1179, // ₹999 + GST approx
     feeWaivable: true,
     feeWaiverAt: 200000,
-    forexPct: 3.5,
-    loungeRule: "4 domestic/yr (1/quarter) + 1 international/yr (from Sep 2026)",
+    forexPct: 1.99,
+    loungeRule: "2 domestic/yr + 1 international/yr (from Sep 2026)",
     status: "active",
     pointValue: 1.0,
     baseRatePct: 1.5,
     bestRatePct: 10.0,
     statementDay: 1,
-    notes: "ACTIVE — Visa Infinite. 10% statement cashback (auto within ~45 days of statement) on dining, food delivery, groceries, utilities & shopping; Amazon/Flipkart/Myntra = 1.5% only. Shared accel cap ₹1,200/mo (~₹12k spend). Welcome: ₹1k CB @ ₹20k/30d + app login. Perks: Times Prime, District BOGO/dining, 4 domestic lounges/yr, 1 intl lounge/yr (from Sep 2026), ~₹250/qtr contactless fuel CB (eligible >₹10k), Visa Infinite concierge. Fee ₹999+GST, waived at ₹2L/yr.",
+    notes: "ACTIVE — Visa Infinite (from 26 Jul 2026). 10% statement cashback (auto ~45 days) on dining, food delivery, groceries, utilities & shopping; Amazon/Flipkart/Myntra = 1.5% only. Shared accel cap ₹1,200/mo (~₹12k spend). Hospital/local transport = 0%. Welcome: ₹1k CB @ ₹20k/30d + app login. Perks: Times Prime, District BOGO/dining, 2 domestic lounges/yr, 1 intl lounge/yr (from Sep 2026), ~₹250/qtr contactless fuel CB (≥₹10k), Visa Infinite concierge. Forex 1.99%. Fee ₹999+GST, waived at ₹2L/yr.",
   },
   {
     id: "axis_ace",

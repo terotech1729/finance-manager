@@ -170,14 +170,14 @@ export function loadState(): AppState {
   const kk = kiwiNeonYearKey();
   let changed = false;
 
-  // MONTHLY (calendar month)
+  // MONTHLY (calendar month) — only reset calendar-month fields.
+  // Do NOT reset mrccCycleSpend here: that tracks fee-waiver annual progress (₹90k/₹1.5L).
   if (!st.monthKey) { st.monthKey = mk; changed = true; }
   else if (st.monthKey !== mk) {
     st.monthKey = mk;
     st.goldThisMonthTxnsAt1k = 0;
     st.mrccThisCycleTxnsAt1500 = 0;
     st.mrccThisCycleAmount = 0;
-    st.mrccCycleSpend = 0;
     st.goldShopwiseUsedThisMonth = 0;
     st.scapiaMonthlySpend = 0;
     st.bobCycleSpend5x = 0;
@@ -215,19 +215,15 @@ export function loadState(): AppState {
 }
 
 /**
- * Rebuild all log-derived spend / milestone counters from the transaction log,
- * scoped to each card's current period. Loyalty-point balances, issuance flags and
- * manually-tracked figures are preserved. Use when counters look out of sync.
+ * Derive log-based milestone/spend counters without writing to localStorage.
+ * Prefer this before ranking so recommend never trusts a stale counter cache.
  * NOTE: only reflects spend logged in the app (not pre-app seeded statement history).
  */
-export function recomputeCounters(): AppState {
-  const st = loadState();
-  const txns = loadTransactions();
+export function deriveCountersFromLog(st: AppState = loadState(), txns: Transaction[] = loadTransactions()): AppState {
   const mk = thisMonthKey();
   const yk = calYearKey();
   const pk = ptYearKey();
   const kk = kiwiNeonYearKey();
-
   const next: AppState = {
     ...st,
     ptccEligibleSpend: 0,
@@ -257,24 +253,27 @@ export function recomputeCounters(): AppState {
     switch (t.cardId) {
       case "amex_plat_travel": if (inPt) next.ptccEligibleSpend += amt; break;
       case "amex_mrcc":
+        // Fee-waiver progress = calendar year; monthly milestones = this calendar month.
+        if (inYear) next.mrccCycleSpend += amt;
         if (inMonth) {
-          next.mrccCycleSpend += amt;
           next.mrccThisCycleAmount += amt;
           if (amt >= 1500) next.mrccThisCycleTxnsAt1500 = Math.min(4, next.mrccThisCycleTxnsAt1500 + 1);
         }
         break;
       case "bob_eterna":
         next.bobYtdSpend += amt;
+        // 5× headroom is monthly; approximate with all BOB spends this month.
         if (inMonth) next.bobCycleSpend5x += amt;
         break;
       case "sbi_simplyclick": if (inYear) next.sbiYtdSpend += amt; break;
       case "idfc_indigo": if (inYear) next.idfcYtdSpend += amt; break;
-      case "hsbc_live_plus":
+      case "hsbc_live_plus": {
         if (inYear) next.hsbcLivePlusYtdSpend += amt;
-        if (inMonth && (t.effectivePct ?? 0) >= 9) {
+        if (inMonth && ((t.effectivePct ?? 0) >= 9 || (t.rewardInr ?? 0) >= amt * 0.09)) {
           next.livePlusAccelCashbackUsedThisMonth += Math.min(amt * 0.1, t.rewardInr || amt * 0.1);
         }
         break;
+      }
       case "scapia": if (inMonth) next.scapiaMonthlySpend += amt; break;
       case "amex_gold":
         if (inMonth && amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);
@@ -283,6 +282,32 @@ export function recomputeCounters(): AppState {
       case "yes_kiwi": if (inKiwi) next.kiwiNeonCycleSpend += amt; break;
     }
   }
+  if (next.bobYtdSpend >= 50000) next.bobWelcomeUnlocked = true;
+  return next;
+}
+
+/** Live+ welcome progress: sum of Live+ txns dated within [issue, issue+30d]. */
+export function getLivePlusWelcomeSpend(st: AppState = loadState(), txns: Transaction[] = loadTransactions()): number {
+  const issue = st.hsbcLivePlusIssueDate;
+  if (!issue) return 0;
+  const start = new Date(issue).getTime();
+  if (!Number.isFinite(start)) return 0;
+  const end = start + 30 * 24 * 60 * 60 * 1000;
+  let sum = 0;
+  for (const t of txns) {
+    if (t.cardId !== "hsbc_live_plus" || !t.amount) continue;
+    const ms = new Date(t.date).getTime();
+    if (ms >= start && ms <= end) sum += t.amount;
+  }
+  return sum;
+}
+
+/**
+ * Rebuild all log-derived spend / milestone counters from the transaction log and persist.
+ * Loyalty-point balances, issuance flags and manually-tracked figures are preserved.
+ */
+export function recomputeCounters(): AppState {
+  const next = deriveCountersFromLog();
   saveState(next);
   return next;
 }

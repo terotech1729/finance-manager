@@ -14,6 +14,7 @@ export function applyCardSpend(next: AppState, cardId: string, amt: number, rewa
   }
   if (cardId === "bob_eterna") {
     next.bobYtdSpend += amt;
+    next.bobCycleSpend5x += amt;
     if (next.bobYtdSpend >= 50000) next.bobWelcomeUnlocked = true;
   }
   if (cardId === "sbi_simplyclick") next.sbiYtdSpend += amt;
@@ -23,7 +24,6 @@ export function applyCardSpend(next: AppState, cardId: string, amt: number, rewa
     if ((effectivePct ?? 0) >= 9 || rewardInr >= amt * 0.09) {
       next.livePlusAccelCashbackUsedThisMonth += Math.min(rewardInr || amt * 0.1, amt * 0.1);
     }
-    if (next.hsbcLivePlusYtdSpend >= 20000) next.hsbcWelcomeClaimed = next.hsbcWelcomeClaimed; // set manually after bank credits
   }
   if (cardId === "scapia") next.scapiaMonthlySpend += amt;
   if (cardId === "amex_gold" && amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);
@@ -51,6 +51,7 @@ export function reverseCardSpend(next: AppState, cardId: string, amt: number, re
   }
   if (cardId === "bob_eterna") {
     next.bobYtdSpend = clamp0(next.bobYtdSpend - amt);
+    next.bobCycleSpend5x = clamp0(next.bobCycleSpend5x - amt);
     next.bobWelcomeUnlocked = next.bobYtdSpend >= 50000;
   }
   if (cardId === "sbi_simplyclick") next.sbiYtdSpend = clamp0(next.sbiYtdSpend - amt);

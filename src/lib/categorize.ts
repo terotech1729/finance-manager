@@ -194,7 +194,7 @@ const RULES: Rule[] = [
 
   // ---- HEALTH ----
   { match: /\bapollo\b.*pharm|\bnetmeds\b|\b1mg\b|\bpharmeasy\b|medlife|pharmacy/i, category: "online (general)", prettyLabel: "Pharmacy / health", channel: "online", confidence: "high" },
-  { match: /hospital|clinic|doctor|consult/i, category: "healthcare", prettyLabel: "Healthcare", channel: "online", confidence: "medium" },
+  { match: /hospital|clinic|doctor|consult|dermat|derma|skin\s*clinic/i, category: "healthcare", prettyLabel: "Healthcare", channel: "online", confidence: "medium" },
 ];
 
 export function detectCategory(merchant: string): CategoryDetection {

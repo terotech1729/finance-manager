@@ -5,8 +5,7 @@ import Link from "next/link";
 import { recommend, type RecommendInput } from "@/lib/recommend";
 import { detectCategory, ALL_CATEGORIES, ALL_CHANNELS, type ChannelType } from "@/lib/categorize";
 import { findWelcomeOffer } from "@/lib/stacking";
-import { addTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
-import { applyCardSpend } from "@/lib/spendTracking";
+import { addTransaction, deriveCountersFromLog, getLivePlusWelcomeSpend, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
 import { toast } from "./Toast";
 import { getCardById } from "@/lib/cards";
 
@@ -48,7 +47,10 @@ export function RecommendationWidget({ onLogged }: Props) {
   /** Which ranked route to log — 0 = best, 1+ = alternatives index + 1 conceptually; we store the route itself. */
   const [selectedRoute, setSelectedRoute] = useState<RouteOption | null>(null);
 
-  useEffect(() => { setStateLocal(loadState()); }, []);
+  useEffect(() => {
+    // Always heal counters from the txn log before recommending — avoids stale MRCC/Gold/Live+ state.
+    setStateLocal(deriveCountersFromLog());
+  }, []);
   useEffect(() => {
     setClarificationAnswer(null);
     setMovieTheatre("");
@@ -81,44 +83,48 @@ export function RecommendationWidget({ onLogged }: Props) {
 
   const rec = useMemo(() => {
     if (!state || noAmount || merchantTooShort || needsClarification) return null;
+    // Fresh counters from the log every ranking — never trust a stale React snapshot alone.
+    const fresh = deriveCountersFromLog(loadState(), loadTransactions());
+    const welcomeSpend = getLivePlusWelcomeSpend(fresh, loadTransactions());
     const input: RecommendInput = {
       merchant: merchant.trim(),
       category: finalCategory,
       amount: amt,
       channel: finalChannel,
       isForeign: finalChannel === "foreign" || detection.forex,
-      ptccEligibleSpend: state.ptccEligibleSpend,
-      mrccCycleSpend: state.mrccCycleSpend,
-      bobYtdSpend: state.bobYtdSpend,
-      bobCycleSpend5x: state.bobCycleSpend5x,
-      sbiYtdSpend: state.sbiYtdSpend,
-      idfcYtdSpend: state.idfcYtdSpend,
-      hsbcLivePlusYtdSpend: state.hsbcLivePlusYtdSpend,
-      livePlusAccelCashbackUsedThisMonth: state.livePlusAccelCashbackUsedThisMonth,
-      goldThisMonthTxnsAt1k: state.goldThisMonthTxnsAt1k,
-      mrccThisCycleTxnsAt1500: state.mrccThisCycleTxnsAt1500,
-      mrccThisCycleAmount: state.mrccThisCycleAmount,
-      goldShopwiseUsedThisMonth: state.goldShopwiseUsedThisMonth,
-      scapiaMonthlySpend: state.scapiaMonthlySpend,
-      kiwiNeonCycleSpend: state.kiwiNeonCycleSpend,
+      ptccEligibleSpend: fresh.ptccEligibleSpend,
+      mrccCycleSpend: fresh.mrccCycleSpend,
+      bobYtdSpend: fresh.bobYtdSpend,
+      bobCycleSpend5x: fresh.bobCycleSpend5x,
+      sbiYtdSpend: fresh.sbiYtdSpend,
+      idfcYtdSpend: fresh.idfcYtdSpend,
+      hsbcLivePlusYtdSpend: fresh.hsbcLivePlusYtdSpend,
+      livePlusAccelCashbackUsedThisMonth: fresh.livePlusAccelCashbackUsedThisMonth,
+      goldThisMonthTxnsAt1k: fresh.goldThisMonthTxnsAt1k,
+      mrccThisCycleTxnsAt1500: fresh.mrccThisCycleTxnsAt1500,
+      mrccThisCycleAmount: fresh.mrccThisCycleAmount,
+      goldShopwiseUsedThisMonth: fresh.goldShopwiseUsedThisMonth,
+      scapiaMonthlySpend: fresh.scapiaMonthlySpend,
+      kiwiNeonCycleSpend: fresh.kiwiNeonCycleSpend,
       // Purely derived from the log so it self-heals (delete the txn → BOGO available again).
       bobBogoUsedThisMonth: loadTransactions().some(
         (t) => t.cardId === "bob_eterna" && t.date.slice(0, 7) === date.slice(0, 7) &&
           (t.path === "district" || /district|bogo/i.test(`${t.merchant} ${t.category}`))
       ),
-      amazonPayIciciIssued: state.amazonPayIciciIssued,
-      primeMember: state.primeMember,
-      amazonPayBalance: state.amazonPayBalance,
-      amazonWelcomeClaimed: state.amazonWelcomeClaimed,
-      giftCardRateOverrides: state.giftCardRateOverrides,
+      amazonPayIciciIssued: fresh.amazonPayIciciIssued,
+      primeMember: fresh.primeMember,
+      amazonPayBalance: fresh.amazonPayBalance,
+      amazonWelcomeClaimed: fresh.amazonWelcomeClaimed,
+      giftCardRateOverrides: fresh.giftCardRateOverrides,
       cashkaroPctOverride: Number((cashkaroOverride || "").replace(/[^0-9.]/g, "")) || undefined,
       amazonOrderCashbackInr: Number((amazonOrderCashback || "").replace(/[^0-9.]/g, "")) || undefined,
       credGiftCardPctOverride: Number((credGiftCardPct || "").replace(/[^0-9.]/g, "")) || undefined,
       movieTheatre: movieTheatre || undefined,
-      bobEternaIssueDate: state.bobEternaIssueDate,
-      bobWelcomeUnlocked: state.bobWelcomeUnlocked,
-      hsbcLivePlusIssueDate: state.hsbcLivePlusIssueDate,
-      hsbcWelcomeClaimed: state.hsbcWelcomeClaimed,
+      bobEternaIssueDate: fresh.bobEternaIssueDate,
+      bobWelcomeUnlocked: fresh.bobWelcomeUnlocked,
+      hsbcLivePlusIssueDate: fresh.hsbcLivePlusIssueDate,
+      hsbcWelcomeClaimed: fresh.hsbcWelcomeClaimed,
+      hsbcLivePlusWelcomeSpend: welcomeSpend,
       today: localDateToISO(date),
     };
     return recommend(input);
@@ -172,11 +178,12 @@ export function RecommendationWidget({ onLogged }: Props) {
       rewardInr: chosen.totalRewardInr,
     };
     addTransaction(t);
-    const next: AppState = { ...state };
-    applyCardSpend(next, chosen.cardId, amt, chosen.totalRewardInr, chosen.effectivePct);
-    if (chosen.cardId === "bob_eterna" && next.bobYtdSpend >= 50000) next.bobWelcomeUnlocked = true;
+    // Rebuild counters from the full log (includes this txn) so we never overwrite
+    // fresher localStorage with a stale React snapshot.
+    const next: AppState = deriveCountersFromLog();
+    // Non-counter side effects that aren't fully derived from the log:
     if (chosen.cardId === "amex_gold" && chosen.label.toLowerCase().includes("shopwise")) {
-      next.goldShopwiseUsedThisMonth += amt;
+      // ShopWise path is also counted via t.path === "shopwise" in derive — ensure path set above.
     }
     if (chosen.cardId === "amazon_pay_icici" && chosen.label.toLowerCase().includes("balance")) {
       next.amazonPayBalance = Math.max(0, next.amazonPayBalance - Math.min(next.amazonPayBalance, amt));
@@ -184,6 +191,11 @@ export function RecommendationWidget({ onLogged }: Props) {
     if (chosen.cardId === "amazon_pay_icici" && chosen.label.toLowerCase().includes("welcome")) {
       const w = findWelcomeOffer(merchant.trim(), finalCategory, next.amazonWelcomeClaimed || []);
       if (w) next.amazonWelcomeClaimed = [...(next.amazonWelcomeClaimed || []), w.id];
+    }
+    // Kiwi reward-balance increments aren't in deriveCountersFromLog — apply delta from this txn.
+    if (chosen.cardId === "yes_kiwi") {
+      next.kiwiCashback += chosen.totalRewardInr / 0.25;
+      next.kiwiLifetimeEarned += chosen.totalRewardInr;
     }
     setStateLocal(next);
     saveState(next);
