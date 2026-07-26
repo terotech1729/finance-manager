@@ -132,6 +132,7 @@ export const CARDS: readonly Card[] = [
     name: "SBI SimplyCLICK",
     short: "SBI SimplyCLICK",
     network: "Visa Platinum",
+    issuer: "SBI Card",
     creditLimit: 240000,
     annualFee: 589,
     feeWaivable: true,
