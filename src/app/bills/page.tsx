@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { addTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
+import { addTransaction, deriveCountersFromLog, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
 import { CARDS } from "@/lib/cards";
 import { HISTORICAL_SPEND } from "@/lib/history";
-import { applyCardSpend } from "@/lib/spendTracking";
 import { inr, inrExact, newId, todayLocal, localDateToISO } from "@/lib/utils";
 import type { Transaction } from "@/lib/types";
 import { Icon } from "@/components/Icons";
@@ -76,8 +75,9 @@ export default function BillsPage() {
       notes: `Auto-added to reconcile ${monthLabelFull(month)} statement`,
     };
     setTxns(addTransaction(t));
-    const next = { ...loadState() };
-    applyCardSpend(next, cardId, diff, 0);
+    // Rebuild counters from the full log so past-month misc lands in the right period
+    // (not blindly bumped onto "today's" month counters).
+    const next = deriveCountersFromLog();
     update(next);
   };
 
@@ -164,7 +164,13 @@ export default function BillsPage() {
       </div>
 
       <Callout tone="info" title="How reconciliation works">
-        <b>Logged</b> = sum of transactions you recorded for that card this month. <b>Statement bill</b> = the actual amount you enter. If the bill is higher (you didn&apos;t log everything), click <b>&ldquo;+ add as misc&rdquo;</b> — it adds the difference as a miscellaneous transaction (and counts toward that card&apos;s milestone tracking), so your logs match the statement. Tick <b>Paid</b> when you&apos;ve repaid. For past months (Jan–May), the statement bill is pre-filled from the totals you gave me.
+        <b>Logged</b> = sum of transactions you recorded for that card this month. <b>Statement bill</b> = the actual amount you enter.
+        If the bill is higher (you didn&apos;t log everything), click <b>&ldquo;+ add as misc&rdquo;</b> — it adds the difference as a miscellaneous transaction
+        dated mid-month, and <b>it does count toward milestones</b> (annual fee-waiver spend, Live+/SBI/IDFC YTD, Scapia monthly, MRCC ₹20k amount, etc.).
+        <br /><br />
+        <b>Caveat:</b> one big misc lump counts as <b>one</b> transaction for Amex Gold 6×₹1k / MRCC 4×₹1.5k. If those monthly txn-count milestones still matter,
+        log the real ≥₹1k / ≥₹1.5k spends separately when you can — misc is best for leftover amount after those are logged.
+        Tick <b>Paid</b> when you&apos;ve repaid.
       </Callout>
     </div>
   );

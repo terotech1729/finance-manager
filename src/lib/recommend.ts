@@ -711,11 +711,11 @@ export function recommend(input: RecommendInput): RecommendationResult {
       cashkaroSuggested: !!ckUsable,
       pros: ["0% forex markup — saves ~3.5% vs Amex / ~2% vs IDFC abroad", "Best card you hold for non-INR"],
       cons: ["Scapia earns no coins on forex spends (excluded) — the win is purely the 0% markup", "Maintain ≥₹20K/mo for lounge"],
-      rationale: "Scapia has 0% forex — unbeatable for non-INR.",
+      rationale: "Scapia has 0% forex — unbeatable for non-INR. (Visa Infinite Meet & Greet needs ~$1k intl POS on Live+/BOB — don't use those abroad for markup; use Scapia, then push a deliberate Infinite POS only if hunting Meet & Assist eligibility — see Network perks.)",
       steps: [
         ckUsable ? "If on Cashkaro (Booking/Agoda), open via Cashkaro first" : `Pay with Scapia at the foreign merchant / POS`,
         "Scapia charges 0% forex markup",
-        "Earn coins on Scapia-app travel",
+        "See Network perks → Visa Infinite Meet & Greet if you still need $1k intl POS on Live+ or BOB",
       ],
     });
     // IDFC as a backup forex option

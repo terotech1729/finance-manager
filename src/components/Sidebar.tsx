@@ -35,6 +35,7 @@ const groups: NavGroup[] = [
     items: [
       { href: "/cards", label: "Cards", icon: Icon.Card },
       { href: "/milestones", label: "Milestones", icon: Icon.Sparkles },
+      { href: "/network-perks", label: "Network perks", icon: Icon.Plane },
       { href: "/redemptions", label: "Redemptions", icon: Icon.Plane },
       { href: "/settings", label: "Settings", icon: Icon.Settings },
     ],
