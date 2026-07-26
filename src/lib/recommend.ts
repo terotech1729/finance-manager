@@ -336,29 +336,48 @@ function goldMilestoneBonus(input: RecommendInput, amt: number): { inr: number; 
   };
 }
 
-/** Amex MRCC milestone marginal value (4×₹1.5K + ₹20K, statement cycle). */
-function mrccMilestoneBonus(input: RecommendInput, amt: number): { inr: number; note: string } | null {
+/** Amex MRCC milestone marginal value (4×₹1.5K + ₹20K calendar month). */
+function mrccMilestoneBonus(input: RecommendInput, amt: number): { inr: number; note: string; label: string } | null {
   const txnsDone = input.mrccThisCycleTxnsAt1500 ?? input.mrccMonthlyTxnsDone ?? 0;
   const amtDone = input.mrccThisCycleAmount ?? input.mrccMonthlyAmount ?? 0;
   const daysLeft = daysLeftInMonth(input.today);
   let bonus = 0;
   const notes: string[] = [];
-  if (amt >= 1500 && txnsDone < 4) {
+  const txnOpen = amt >= 1500 && txnsDone < 4;
+  const amtOpen = amtDone < 20000;
+
+  if (txnOpen) {
     const remaining = 4 - txnsDone;
     if (remaining > daysLeft + 1) {
       notes.push(`4-txn part unreachable (${remaining} more ≥₹1.5K needed, ${daysLeft}d left)`);
     } else {
-      bonus += remaining === 1 ? 500 : 500 / remaining; // completing unlocks full ₹500
-      notes.push(remaining === 1 ? `completes 4-txn milestone (+₹500)` : `txn ${txnsDone + 1}/4 (≥₹1.5K)`);
+      bonus += remaining === 1 ? 500 : 500 / remaining;
+      notes.push(remaining === 1 ? `completes 4-txn part (+₹500)` : `txn ${txnsDone + 1}/4 (≥₹1.5K)`);
     }
   }
-  if (amtDone < 20000) {
+  if (amtOpen) {
     const fills = Math.min(amt, 20000 - amtDone);
-    bonus += (fills / 20000) * 500; // ₹20K can be filled by one big txn, so not day-gated
-    notes.push(`fills ${inr(fills)} of ₹20K cycle target`);
+    bonus += (fills / 20000) * 500;
+    notes.push(`fills ${inr(fills)} of ₹20K amount`);
+  } else if (txnOpen) {
+    notes.push("₹20K amount already hit — a big prior spend only counted as 1 txn");
   }
   if (bonus <= 0) return null;
-  return { inr: bonus, note: `MRCC milestone: ${notes.join(", ")} → +${inr(bonus)} marginal` };
+
+  let label = "Amex MRCC (fills monthly milestone)";
+  if (!amtOpen && txnOpen) {
+    label = `Amex MRCC (still need ${4 - txnsDone} more ≥₹1.5k txns)`;
+  } else if (amtOpen && !txnOpen) {
+    label = "Amex MRCC (still need ₹20k amount — 4-txn done)";
+  } else if (txnOpen && txnsDone === 3) {
+    label = "Amex MRCC (completes 4-txn monthly)";
+  }
+
+  return {
+    inr: bonus,
+    note: `MRCC: ${notes.join("; ")} → +${inr(bonus)} marginal`,
+    label,
+  };
 }
 
 function ckRange(merchant: string, category: string): { mid: number; min: number; max: number; zone: string } | null {
@@ -1359,26 +1378,36 @@ export function recommend(input: RecommendInput): RecommendationResult {
       steps: ["Pay with BOB Eterna", "Drives ₹50K welcome milestone"] });
   }
 
-  // Amex PT for large spends (milestone push)
+  // Amex PT — only when near ₹4L (real urgency). Otherwise the universal annual push covers it once.
   if (amt >= 5000) {
-    const ptClose = (input.ptccEligibleSpend ?? 0) > 350000;
-    add({ cardId: "amex_plat_travel", label: ptClose ? "Amex PT (near ₹4L milestone!)" : "Amex PT (1% + milestone)",
-      effectivePct: 1.0, baseRewardInr: amt * 0.01, bonusRewardInr: ptClose ? amt * 0.04 : 0,
-      worstCasePct: 1.0, bestCasePct: 7.0,
-      pros: ["Builds ₹4L (10K MR) and ₹7L (22.5K MR + Taj voucher) milestones"],
-      cons: ["Excludes fuel/insurance/utilities/cash/EMI"],
-      rationale: ptClose ? "Near the ₹4L milestone — pushing here triggers the 10K MR bonus." : "Default workhorse for large spends building PT milestones.",
-      steps: [`Pay ${inr(amt)} with Amex PT`, "Builds annual milestone"] });
+    const ptSpend = input.ptccEligibleSpend ?? 0;
+    const ptClose = ptSpend > 350000;
+    if (ptClose) {
+      const mb = annualMilestoneBonus("amex_plat_travel", input, amt);
+      add({
+        cardId: "amex_plat_travel",
+        label: mb ? `Amex PT — near ${inr(mb.threshold)} milestone` : "Amex PT (near milestone)",
+        effectivePct: 1.0 + ((mb?.inr ?? 0) / amt) * 100,
+        baseRewardInr: amt * 0.01,
+        bonusRewardInr: mb?.inr ?? 0,
+        worstCasePct: 1.0,
+        bestCasePct: 7.0,
+        pros: [mb?.note ?? "Near ₹4L / ₹7L annual milestone"],
+        cons: ["Excludes fuel/insurance/utilities/cash/EMI"],
+        rationale: mb?.note ?? "Near the next PT annual milestone.",
+        steps: [`Pay ${inr(amt)} with Amex PT`, "Builds annual milestone"],
+      });
+    }
   }
 
   // Amex MRCC milestone filler
   const mrccBonus = mrccMilestoneBonus(input, amt);
   if (mrccBonus) {
-    add({ cardId: "amex_mrcc", label: "Amex MRCC (fills monthly milestone)",
+    add({ cardId: "amex_mrcc", label: mrccBonus.label,
       effectivePct: 0.78 + (mrccBonus.inr / amt) * 100, baseRewardInr: amt * 0.0078, bonusRewardInr: mrccBonus.inr,
-      pros: [mrccBonus.note], cons: ["Excludes fuel/insurance/utilities"],
-      rationale: "MRCC monthly milestone marginal value.",
-      steps: [`Pay with Amex MRCC`, "Fills monthly milestone"] });
+      pros: [mrccBonus.note], cons: ["Excludes fuel/insurance/utilities", "One big spend still counts as only 1 of 4 ≥₹1.5k txns"],
+      rationale: mrccBonus.note,
+      steps: [`Pay with Amex MRCC`, mrccBonus.label.includes("still need") ? "Counts toward the open monthly part" : "Fills monthly milestone"] });
   }
 
   // Amex Gold milestone filler (≥₹1K)
@@ -1812,17 +1841,17 @@ function finalize(
       }));
     }
     const mB = mrccMilestoneBonus(input, amt);
-    if (mB && mB.inr > 0 && !options.some((o) => o.cardId === "amex_mrcc" && /milestone/i.test(o.label))) {
+    if (mB && mB.inr > 0 && !options.some((o) => o.cardId === "amex_mrcc" && /MRCC/i.test(o.label))) {
       options.push(mkOption(amt, {
         cardId: "amex_mrcc",
-        label: "Amex MRCC (fills monthly milestone)",
+        label: mB.label,
         effectivePct: 0.78 + (mB.inr / amt) * 100,
         baseRewardInr: amt * 0.0078,
         bonusRewardInr: mB.inr,
         pros: [mB.note],
-        cons: [],
-        rationale: `Routing this to Amex MRCC — ${mB.note}`,
-        steps: ["Pay with Amex MRCC", "Fills the monthly milestone (4×₹1.5K + ₹20K)"],
+        cons: ["One big spend still counts as only 1 of 4 ≥₹1.5k txns"],
+        rationale: mB.note,
+        steps: ["Pay with Amex MRCC", "Counts toward the open monthly MRCC part"],
       }));
     }
   }
@@ -1833,8 +1862,8 @@ function finalize(
   if (!isForeign) {
     for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel"]) {
       if (cardId === "amex_plat_travel" && amexExcluded(input.category || "")) continue;
-      // Skip if this card already has a milestone/bonus option (monthly/welcome takes precedence).
-      if (options.some((o) => o.cardId === cardId && o.bonusRewardInr > 0)) continue;
+      // One row per card — skip if this card already has any option.
+      if (options.some((o) => o.cardId === cardId)) continue;
       const mb = annualMilestoneBonus(cardId, input, amt);
       if (!mb || mb.inr < 1) continue;
       const baseEval = genericCardEval(cardId, input, false);
@@ -1923,13 +1952,22 @@ function finalize(
   // score so travel-locked coins (Scapia/BluChips) don't out-rank equal-nominal liquid cash.
   const LIQ_WEIGHT: Record<string, number> = { cash: 1.0, flexible: 0.9, locked: 0.7 };
   const unique = dedupeGiftCardOptions(options);
+  // One best row per card (prevents e.g. two Amex PT rows: generic + annual push).
+  const bestByCard = new Map<string, RouteOption>();
   for (const o of unique) {
+    const prev = bestByCard.get(o.cardId);
+    if (!prev || o.totalRewardInr > prev.totalRewardInr || (o.totalRewardInr === prev.totalRewardInr && o.bonusRewardInr > prev.bonusRewardInr)) {
+      bestByCard.set(o.cardId, o);
+    }
+  }
+  const deduped = [...bestByCard.values()];
+  for (const o of deduped) {
     o.liquidity = liquidityOf(o.cardId, o.label);
     const rng = pointsRange(o.cardId, o.label, o.totalRewardInr, o.effectivePct, amt);
     if (rng) o.redemptionRange = { worstPct: rng.worstPct, bestPct: rng.bestPct };
   }
   const score = (o: RouteOption) => o.totalRewardInr * (LIQ_WEIGHT[o.liquidity ?? "cash"] ?? 1);
-  const ranked = [...unique].sort((a, b) => {
+  const ranked = [...deduped].sort((a, b) => {
     if (a.feasible !== b.feasible) return a.feasible ? -1 : 1;
     return score(b) - score(a);
   });
