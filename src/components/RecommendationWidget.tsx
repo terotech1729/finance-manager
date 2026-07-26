@@ -5,7 +5,8 @@ import Link from "next/link";
 import { recommend, type RecommendInput } from "@/lib/recommend";
 import { detectCategory, ALL_CATEGORIES, ALL_CHANNELS, type ChannelType } from "@/lib/categorize";
 import { findWelcomeOffer } from "@/lib/stacking";
-import { addTransaction, deriveCountersFromLog, getLivePlusWelcomeSpend, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
+import { addTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
+import { applyCardSpend } from "@/lib/spendTracking";
 import { toast } from "./Toast";
 import { getCardById } from "@/lib/cards";
 
@@ -48,8 +49,8 @@ export function RecommendationWidget({ onLogged }: Props) {
   const [selectedRoute, setSelectedRoute] = useState<RouteOption | null>(null);
 
   useEffect(() => {
-    // Always heal counters from the txn log before recommending — avoids stale MRCC/Gold/Live+ state.
-    setStateLocal(deriveCountersFromLog());
+    // Always start from saved milestone counters (Milestones / Settings) — past truth for Recommend.
+    setStateLocal(loadState());
   }, []);
   useEffect(() => {
     setClarificationAnswer(null);
@@ -83,9 +84,8 @@ export function RecommendationWidget({ onLogged }: Props) {
 
   const rec = useMemo(() => {
     if (!state || noAmount || merchantTooShort || needsClarification) return null;
-    // Fresh counters from the log every ranking — never trust a stale React snapshot alone.
-    const fresh = deriveCountersFromLog(loadState(), loadTransactions());
-    const welcomeSpend = getLivePlusWelcomeSpend(fresh, loadTransactions());
+    // Past first: re-read saved counters every ranking (edits on Milestones apply immediately).
+    const fresh = loadState();
     const input: RecommendInput = {
       merchant: merchant.trim(),
       category: finalCategory,
@@ -106,7 +106,6 @@ export function RecommendationWidget({ onLogged }: Props) {
       goldShopwiseUsedThisMonth: fresh.goldShopwiseUsedThisMonth,
       scapiaMonthlySpend: fresh.scapiaMonthlySpend,
       kiwiNeonCycleSpend: fresh.kiwiNeonCycleSpend,
-      // Purely derived from the log so it self-heals (delete the txn → BOGO available again).
       bobBogoUsedThisMonth: loadTransactions().some(
         (t) => t.cardId === "bob_eterna" && t.date.slice(0, 7) === date.slice(0, 7) &&
           (t.path === "district" || /district|bogo/i.test(`${t.merchant} ${t.category}`))
@@ -124,7 +123,8 @@ export function RecommendationWidget({ onLogged }: Props) {
       bobWelcomeUnlocked: fresh.bobWelcomeUnlocked,
       hsbcLivePlusIssueDate: fresh.hsbcLivePlusIssueDate,
       hsbcWelcomeClaimed: fresh.hsbcWelcomeClaimed,
-      hsbcLivePlusWelcomeSpend: welcomeSpend,
+      // Welcome progress = edited Live+ YTD (set on Milestones to your real ₹20k-window spend).
+      hsbcLivePlusWelcomeSpend: fresh.hsbcLivePlusYtdSpend,
       today: localDateToISO(date),
     };
     return recommend(input);
@@ -178,12 +178,11 @@ export function RecommendationWidget({ onLogged }: Props) {
       rewardInr: chosen.totalRewardInr,
     };
     addTransaction(t);
-    // Rebuild counters from the full log (includes this txn) so we never overwrite
-    // fresher localStorage with a stale React snapshot.
-    const next: AppState = deriveCountersFromLog();
-    // Non-counter side effects that aren't fully derived from the log:
+    // Past counters are manual (Milestones) — bump them for this new spend, don't wipe from log.
+    const next: AppState = { ...loadState() };
+    applyCardSpend(next, chosen.cardId, amt, chosen.totalRewardInr, chosen.effectivePct);
     if (chosen.cardId === "amex_gold" && chosen.label.toLowerCase().includes("shopwise")) {
-      // ShopWise path is also counted via t.path === "shopwise" in derive — ensure path set above.
+      next.goldShopwiseUsedThisMonth += amt;
     }
     if (chosen.cardId === "amazon_pay_icici" && chosen.label.toLowerCase().includes("balance")) {
       next.amazonPayBalance = Math.max(0, next.amazonPayBalance - Math.min(next.amazonPayBalance, amt));
@@ -191,11 +190,6 @@ export function RecommendationWidget({ onLogged }: Props) {
     if (chosen.cardId === "amazon_pay_icici" && chosen.label.toLowerCase().includes("welcome")) {
       const w = findWelcomeOffer(merchant.trim(), finalCategory, next.amazonWelcomeClaimed || []);
       if (w) next.amazonWelcomeClaimed = [...(next.amazonWelcomeClaimed || []), w.id];
-    }
-    // Kiwi reward-balance increments aren't in deriveCountersFromLog — apply delta from this txn.
-    if (chosen.cardId === "yes_kiwi") {
-      next.kiwiCashback += chosen.totalRewardInr / 0.25;
-      next.kiwiLifetimeEarned += chosen.totalRewardInr;
     }
     setStateLocal(next);
     saveState(next);

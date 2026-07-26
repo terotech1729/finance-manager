@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { addTransaction, deriveCountersFromLog, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
+import { addTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
 import { CARDS } from "@/lib/cards";
 import { HISTORICAL_SPEND } from "@/lib/history";
+import { applyCardSpend } from "@/lib/spendTracking";
 import { inr, inrExact, newId, todayLocal, localDateToISO } from "@/lib/utils";
 import type { Transaction } from "@/lib/types";
 import { Icon } from "@/components/Icons";
@@ -75,9 +76,9 @@ export default function BillsPage() {
       notes: `Auto-added to reconcile ${monthLabelFull(month)} statement`,
     };
     setTxns(addTransaction(t));
-    // Rebuild counters from the full log so past-month misc lands in the right period
-    // (not blindly bumped onto "today's" month counters).
-    const next = deriveCountersFromLog();
+    // Bump saved counters for this card (don't wipe manual Milestone edits via full recompute).
+    const next = { ...loadState() };
+    applyCardSpend(next, cardId, diff, 0);
     update(next);
   };
 
