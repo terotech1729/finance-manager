@@ -181,42 +181,6 @@ export const CARDS: readonly Card[] = [
     statementDay: 1,
     notes: "ACTIVE — Visa Infinite (from 26 Jul 2026). 10% statement cashback (auto ~45 days) on dining, food delivery, groceries, utilities & shopping; Amazon/Flipkart/Myntra = 1.5% only. Shared accel cap ₹1,200/mo (~₹12k spend). Hospital/local transport = 0%. Welcome: ₹1k CB @ ₹20k/30d + app login. Perks: Times Prime, District BOGO/dining, 2 domestic lounges/yr, 1 intl lounge/yr (from Sep 2026), ~₹250/qtr contactless fuel CB (≥₹10k), Visa Infinite concierge. Forex 1.99%. Fee ₹999+GST, waived at ₹2L/yr.",
   },
-  {
-    id: "axis_ace",
-    name: "Axis Bank ACE",
-    short: "Axis Ace",
-    network: "Visa",
-    issuer: "Axis Bank",
-    creditLimit: 0,
-    annualFee: 589, // ₹499 + GST approx
-    feeWaivable: true,
-    feeWaiverAt: 200000,
-    forexPct: 3.5,
-    loungeRule: "—",
-    status: "future",
-    pointValue: 1.0,
-    baseRatePct: 1.5,
-    bestRatePct: 5.0,
-    notes: "SKIP for now — Live+ covers utilities at 10% (shared cap). Ace only if you blow past Live+ ₹1,200/mo accelerated and still need a bills specialist.",
-  },
-  {
-    id: "cheq_au",
-    name: "CheQ AU Bank Credit Card",
-    short: "CheQ AU",
-    network: "Visa / RuPay",
-    issuer: "AU Small Finance Bank",
-    creditLimit: 0,
-    annualFee: 499,
-    feeWaivable: true,
-    feeWaiverAt: 300000,
-    forexPct: 3.5,
-    loungeRule: "—",
-    status: "future",
-    pointValue: 0.5, // best-case 2 pts = ₹1
-    baseRatePct: 0.5,
-    bestRatePct: 6.0, // 12% face × 0.5 at travel/GC redemption
-    notes: "SKIP for this portfolio — not cashback. CheQ Points only; travel/GC redeem 2=₹1 (~6% effective); bill redeem 4=₹1 (~3%). Locks you into CheQ. Prefer Axis Ace for liquid bill cashback.",
-  },
 ];
 
 export const ANNUAL_MILESTONES: readonly AnnualMilestone[] = [

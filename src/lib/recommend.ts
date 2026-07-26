@@ -803,21 +803,6 @@ export function recommend(input: RecommendInput): RecommendationResult {
       });
     }
 
-    // Optional Ace — not in portfolio plan (Live+ covers utilities)
-    add({
-      cardId: "axis_ace",
-      label: "Axis Ace via GPay (5%) — not in portfolio plan",
-      effectivePct: 5.0,
-      worstCasePct: 1.5,
-      bestCasePct: 5.0,
-      feasible: false,
-      feasibilityNote: "Skipped — Live+ is the bills card; Ace not being applied",
-      pros: ["Would be 5% via Google Pay if issued"],
-      cons: ["Not taking Ace — Live+ 10% covers utilities under the shared cap"],
-      rationale: "Portfolio plan is Live+ only for utilities. Ace stays listed only so you remember why it was skipped.",
-      steps: ["Skip"],
-    });
-
     // Spend down Amazon Pay balance (sunk gift-card money)
     if (apBal >= 100) {
       const used = Math.min(apBal, amt);

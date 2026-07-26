@@ -17,9 +17,6 @@ function routeName(cardId: string): string {
   if (cardId === "upi") return "UPI (PhonePe/GPay)";
   if (cardId === "cash") return "Cash";
   if (cardId === "amazon_pay_balance") return "Amazon Pay balance";
-  if (cardId === "hsbc_live_plus") return "HSBC Live+";
-  if (cardId === "axis_ace") return "Axis Ace (not in plan)";
-  if (cardId === "cheq_au") return "CheQ AU (skip)";
   return cardId;
 }
 import { inr, newId, todayLocal, localDateToISO } from "@/lib/utils";
