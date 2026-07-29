@@ -128,6 +128,10 @@ export function RecommendationWidget({ onLogged }: Props) {
   }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride, amazonOrderCashback, credGiftCardPct, movieTheatre]);
 
   const isAmazon = /amazon/i.test(merchant) || /amazon/i.test(finalCategory);
+  const isTravel =
+    /hotel|flight|bus|train|travel|agoda|cleartrip|makemytrip|\bmmt\b|booking\.com|indigo|irctc|redbus/i.test(
+      `${merchant} ${finalCategory}`
+    );
   const isMovie =
     /movie|event|bookmyshow|\bbms\b|district|pvr|inox|cinepolis|cinema/i.test(`${merchant} ${finalCategory}`);
   const isCredGcCandidate =
@@ -275,14 +279,25 @@ export function RecommendationWidget({ onLogged }: Props) {
           </div>
         )}
 
-        {isAmazon && !merchantTooShort && (
+        {(isAmazon || isTravel) && !merchantTooShort && (
           <div className="bg-amber-50 dark:bg-amber-950/20 rounded-lg p-3 border border-amber-300/60 dark:border-amber-700/40 space-y-2">
             <div className="text-sm font-semibold flex items-center gap-1.5">
               <Icon.Sparkles size={14} className="text-amber-600" />
-              Amazon order — any extra offer at checkout?
+              {isTravel && !isAmazon
+                ? "Travel — any Amazon / first-booking extra ₹ at checkout?"
+                : "Amazon order — any extra offer at checkout?"}
             </div>
             <div className="text-xs text-fg-muted">
-              Amazon shows order-level offers we can&apos;t see (e.g. <em>&quot;Cashback on orders above ₹1,398 → ₹200 to Amazon Pay Wallet&quot;</em>). The standard <b>5% Amazon Pay ICICI</b> cashback is already counted — only enter the <b>extra order cashback ₹</b> shown on the order/payment page. MRP discounts &amp; Prime delivery savings are the same on every card, so leave those out.
+              {isTravel ? (
+                <>
+                  We compare <b>Amazon travel</b> (ICICI 5%/3% flights&amp;hotels, ~2% bus/train), <b>Cashkaro → Agoda (~7%)</b>, MMT/Cleartrip flats, Scapia app, and airline/hotel direct.
+                  Enter any <b>extra Amazon first-booking / wallet cashback ₹</b> shown at checkout (card % is already counted). Always fare-match platforms — a higher fare kills the %.
+                </>
+              ) : (
+                <>
+                  Amazon shows order-level offers we can&apos;t see (e.g. <em>&quot;Cashback on orders above ₹1,398 → ₹200 to Amazon Pay Wallet&quot;</em>). The standard <b>5% Amazon Pay ICICI</b> cashback is already counted — only enter the <b>extra order cashback ₹</b> shown on the order/payment page. MRP discounts &amp; Prime delivery savings are the same on every card, so leave those out.
+                </>
+              )}
             </div>
             <div className="grid sm:grid-cols-[200px_1fr] gap-2 items-center">
               <input
@@ -292,7 +307,9 @@ export function RecommendationWidget({ onLogged }: Props) {
                 value={amazonOrderCashback}
                 onChange={(e) => setAmazonOrderCashback(e.target.value)}
               />
-              <span className="text-xs text-fg-muted">Added to the Amazon Pay ICICI route (you bank it by paying via Amazon Pay).</span>
+              <span className="text-xs text-fg-muted">
+                {isTravel ? "Added to the Amazon travel → ICICI route." : "Added to the Amazon Pay ICICI route."}
+              </span>
             </div>
           </div>
         )}
@@ -439,7 +456,7 @@ export function RecommendationWidget({ onLogged }: Props) {
 
         {merchantTooShort && noAmount && (
           <div className="text-sm text-fg-muted text-center py-4 border border-dashed border-border rounded-lg">
-            Type what you're buying (e.g. <em>Airtel recharge</em>, <em>Amazon</em>, <em>Cleartrip hotel</em>) and the amount.
+            Type what you&apos;re buying (e.g. <em>hotel</em>, <em>flight</em>, <em>Agoda</em>, <em>Amazon</em>, <em>Airtel recharge</em>) and the amount.
           </div>
         )}
 

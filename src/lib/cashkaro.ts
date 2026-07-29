@@ -18,10 +18,15 @@ export const CASHKARO_RATES: readonly CashkaroRate[] = [
   { merchant: "Mamaearth", rate: "5–10%", minRate: 5, maxRate: 10, zone: "reliable" },
   { merchant: "Meesho", rate: "varies", minRate: 1, maxRate: 8, zone: "reliable" },
   { merchant: "Zomato", rate: "3–5%", minRate: 3, maxRate: 5, zone: "reliable" },
-  { merchant: "Booking.com", rate: "3–6%", minRate: 3, maxRate: 6, zone: "reliable" },
-  { merchant: "Agoda", rate: "3–6%", minRate: 3, maxRate: 6, zone: "reliable" },
-  { merchant: "MakeMyTrip", rate: "2–4%", minRate: 2, maxRate: 4, zone: "reliable" },
+  { merchant: "Booking.com", rate: "3–6%", minRate: 3, maxRate: 6, zone: "reliable", notes: "Hotels. Stack with BOB 5× travel when booking through Cashkaro." },
+  { merchant: "Agoda", rate: "flat 7%", minRate: 7, maxRate: 7, zone: "reliable", notes: "Jul 2026: Flat 7% Cashkaro on Agoda hotel bookings. Stack with BOB 5×." },
+  { merchant: "MakeMyTrip", category: "Hotels", rate: "flat ₹140", minRate: 0, maxRate: 0, flatInr: 140, zone: "reliable", notes: "Domestic hotels over ₹1,000 → flat ₹140 Cashkaro (check live)." },
+  { merchant: "MakeMyTrip", category: "Flights", rate: "flat ~₹90", minRate: 0, maxRate: 0, flatInr: 90, zone: "try", notes: "Domestic flights Cashkaro often flat ₹ — verify on store page." },
   { merchant: "EaseMyTrip", rate: "2–4%", minRate: 2, maxRate: 4, zone: "reliable" },
+  { merchant: "Yatra", rate: "1–3%", minRate: 1, maxRate: 3, zone: "reliable" },
+  { merchant: "Cleartrip", category: "Hotels", rate: "flat ₹180", minRate: 0, maxRate: 0, flatInr: 180, zone: "try", notes: "Domestic hotels — flat ₹180 Cashkaro typical; verify live." },
+  { merchant: "Cleartrip", category: "Flights", rate: "flat ₹45", minRate: 0, maxRate: 0, flatInr: 45, zone: "try", notes: "Flights — flat ₹45 Cashkaro typical; verify live." },
+  { merchant: "RedBus", rate: "try", minRate: 1, maxRate: 3, zone: "try", notes: "Bus bookings — verify Cashkaro store; Amazon bus often simpler at 2% AP ICICI." },
 
   // Try anyway (less reliable but worst case = direct)
   { merchant: "Amazon", category: "Beauty / Apparel / Luxury / Bags / Shoes", rate: "5%", minRate: 5, maxRate: 5, zone: "try" },
@@ -29,9 +34,7 @@ export const CASHKARO_RATES: readonly CashkaroRate[] = [
   { merchant: "Amazon", category: "Kitchen / Home / Grocery", rate: "2.5%", minRate: 2.5, maxRate: 2.5, zone: "try" },
   { merchant: "Amazon", category: "Electronics", rate: "~1%", minRate: 1, maxRate: 1, zone: "shopwise" },
   { merchant: "Amazon", category: "Recharge / Bills", rate: "flat ₹1.5", minRate: 0, maxRate: 0, flatInr: 1.5, zone: "try", notes: "Amazon recharge/bills Cashkaro link pays a flat ₹1.5 — stacks on top of card + welcome." },
-  { merchant: "Cleartrip", category: "Hotels", rate: "3–5%", minRate: 3, maxRate: 5, zone: "try", notes: "Try Cashkaro → pay BOB Eterna 5×." },
-  { merchant: "Cleartrip", category: "Flights", rate: "1–3%", minRate: 1, maxRate: 3, zone: "try", notes: "Try Cashkaro → pay BOB Eterna 5× (or SBI SimplyCLICK 10×)." },
-  { merchant: "Yatra", rate: "1–3%", minRate: 1, maxRate: 3, zone: "reliable" },
+  { merchant: "Amazon", category: "Travel", rate: "n/a (card earn is the win)", minRate: 0, maxRate: 0, zone: "na", notes: "Book flights/hotels/bus/train on Amazon → pay Amazon Pay ICICI (5%/3% flights&hotels; ~2% bus/train). Cashkaro Amazon travel tracking is weak." },
 
   // Not on Cashkaro
   { merchant: "IndiGo", rate: "n/a (not on Cashkaro)", minRate: 0, maxRate: 0, zone: "na" },
@@ -53,6 +56,7 @@ const MERCHANT_ALIASES: { pattern: RegExp; canonical: string }[] = [
   { pattern: /\bbooking\.com\b/i, canonical: "Booking.com" },
   { pattern: /\bagoda\b/i, canonical: "Agoda" },
   { pattern: /\byatra\b/i, canonical: "Yatra" },
+  { pattern: /\bredbus\b|\bred\s*bus\b/i, canonical: "RedBus" },
   { pattern: /\blenskart\b/i, canonical: "Lenskart" },
   { pattern: /\bboat\b/i, canonical: "boAt" },
   { pattern: /\bmamaearth\b/i, canonical: "Mamaearth" },

@@ -380,10 +380,302 @@ function mrccMilestoneBonus(input: RecommendInput, amt: number): { inr: number; 
   };
 }
 
-function ckRange(merchant: string, category: string): { mid: number; min: number; max: number; zone: string } | null {
+function ckRange(merchant: string, category: string): { mid: number; min: number; max: number; zone: string; flatInr?: number } | null {
   const m = findCashkaro(merchant, category);
   if (!m) return null;
+  if (m.flatInr != null && m.flatInr > 0) {
+    return { mid: 0, min: 0, max: 0, zone: m.zone, flatInr: m.flatInr };
+  }
   return { mid: (m.minRate + m.maxRate) / 2, min: m.minRate, max: m.maxRate, zone: m.zone };
+}
+
+/** Cashkaro ₹ for a named OTA (supports flat ₹ rates like Agoda 7% or MMT ₹140). */
+function ckInrForStore(
+  store: string,
+  category: string,
+  amt: number,
+  overridePct?: number
+): { inr: number; note: string; zone: string } | null {
+  if (overridePct != null && overridePct > 0) {
+    return { inr: amt * (overridePct / 100), note: `Cashkaro live ${overridePct}% (you entered)`, zone: "reliable" };
+  }
+  const r = ckRange(store, category);
+  if (!r || r.zone === "na") return null;
+  if (r.flatInr != null && r.flatInr > 0) {
+    return { inr: r.flatInr, note: `Cashkaro flat ${inr(r.flatInr)} on ${store}`, zone: r.zone };
+  }
+  if (r.mid <= 0) return null;
+  const haircut = r.zone === "try" ? 0.7 : 0.85;
+  return {
+    inr: amt * (r.mid / 100) * haircut,
+    note: `Cashkaro ~${r.mid}% on ${store}${r.zone === "try" ? " (tracking try-zone)" : ""}`,
+    zone: r.zone,
+  };
+}
+
+type TravelKind = "hotel" | "flight" | "bus" | "train";
+
+function travelKindOf(cat: string, merchant: string): TravelKind | null {
+  const t = `${cat} ${merchant}`.toLowerCase();
+  if (/amazon travel hotel|cleartrip hotels|agoda|booking\.com|makemytrip hotels|hotel direct|hotel booking|\bhotel\b/.test(t) && !/flight/.test(t)) {
+    return "hotel";
+  }
+  if (/indigo|cleartrip flights|makemytrip flights|flight booking|amazon travel flight|airline|\bflight\b|air india|spicejet|akasa|vistara/.test(t)) {
+    return "flight";
+  }
+  if (/bus booking|amazon travel bus|\bbus\b|redbus|abhibus/.test(t)) return "bus";
+  if (/train booking|amazon travel train|irctc|\btrain\b/.test(t) && !/metro/.test(t)) return "train";
+  if (/travel booking|amazon travel/.test(t)) return null; // needs clarification
+  return null;
+}
+
+/**
+ * Amazon Pay ICICI earn on Amazon.in travel (per Amazon help / Oct 2025 partner refresh):
+ * flights & hotels → 5% Prime / 3% non-Prime; bus & train → treat as digitally-fulfilled-style ~2%.
+ * Enter any first-booking / checkout promo via amazonOrderCashbackInr.
+ */
+function amazonTravelCardPct(kind: TravelKind, prime: boolean): number {
+  if (kind === "flight" || kind === "hotel") return prime ? 5 : 3;
+  return 2; // bus / train on Amazon
+}
+
+type AddFn = (o: Partial<RouteOption> & { cardId: string; label: string; effectivePct: number }) => void;
+
+/** Exhaust OTA + Amazon + Scapia routes for hotel / flight / bus / train. */
+function addExhaustiveTravelRoutes(
+  kind: TravelKind,
+  input: RecommendInput,
+  amt: number,
+  add: AddFn,
+  ckOverride?: number
+): void {
+  const prime = input.primeMember !== false;
+  const apPct = amazonTravelCardPct(kind, prime);
+  const extra = input.amazonOrderCashbackInr && input.amazonOrderCashbackInr > 0 ? input.amazonOrderCashbackInr : 0;
+  const bobHeadroom = Math.max(0, 33000 - (input.bobCycleSpend5x ?? 0));
+  const bob5xOk = bobHeadroom >= Math.min(amt, 1000);
+
+  // --- Amazon.in travel + Amazon Pay ICICI ---
+  {
+    const cardInr = amt * (apPct / 100);
+    const total = cardInr + extra;
+    add({
+      cardId: "amazon_pay_icici",
+      label: extra > 0
+        ? `Amazon.in ${kind} → Amazon Pay ICICI (${apPct}% + ${inr(extra)} checkout offer)`
+        : `Amazon.in ${kind} → Amazon Pay ICICI (${apPct}%${prime && (kind === "flight" || kind === "hotel") ? " Prime" : ""})`,
+      effectivePct: (total / amt) * 100,
+      baseRewardInr: cardInr,
+      bonusRewardInr: extra,
+      worstCasePct: apPct,
+      bestCasePct: (total / amt) * 100,
+      pros: [
+        kind === "flight" || kind === "hotel"
+          ? `${apPct}% uncapped on Amazon.in flights & hotels (${prime ? "Prime" : "non-Prime"})`
+          : `${apPct}% on Amazon bus/train-style bookings (digitally fulfilled / bills tier)`,
+        extra > 0 ? `+ ${inr(extra)} Amazon checkout / first-booking offer you entered` : "Add any Amazon first-booking / wallet cashback ₹ in the widget if shown",
+        "Liquid as Amazon Pay balance",
+      ],
+      cons: [
+        "Compare Amazon's fare vs Agoda/MMT/Cleartrip before locking — fare can wipe the % win",
+        kind === "bus" || kind === "train" ? "Confirm category posts as expected (2%); exclusions can apply" : "",
+      ].filter(Boolean),
+      rationale: `Always price-check Amazon vs OTAs. Card earn: ${apPct}% via Amazon Pay ICICI on Amazon.in ${kind}${extra > 0 ? ` plus ${inr(extra)} order offer` : ""}.`,
+      steps: [
+        `Open Amazon.in → Travel → ${kind}`,
+        "Compare total payable vs Agoda / MMT / Cleartrip / airline site",
+        `Pay with Amazon Pay ICICI card (${apPct}%) — not AP balance`,
+        extra > 0 ? `Expect ~${inr(total)} total (card + checkout offer)` : `Expect ~${apPct}% (${inr(cardInr)})`,
+      ],
+    });
+  }
+
+  // --- Hotels: Agoda 7% Cashkaro + BOB 5× ---
+  if (kind === "hotel") {
+    const agoda = ckInrForStore("Agoda", "Hotels", amt, ckOverride);
+    if (agoda) {
+      const bobInr = bob5xOk ? amt * 0.0375 : amt * 0.0075;
+      const bobPct = bob5xOk ? 3.75 : 0.75;
+      add({
+        cardId: "bob_eterna",
+        label: `Cashkaro → Agoda (${agoda.note.includes("7") || agoda.inr / amt > 0.06 ? "7%" : "CK"}) + BOB ${bobPct}%`,
+        effectivePct: ((agoda.inr + bobInr) / amt) * 100,
+        baseRewardInr: agoda.inr + bobInr,
+        cashkaroSuggested: true,
+        worstCasePct: bobPct,
+        bestCasePct: ((agoda.inr + bobInr) / amt) * 100,
+        pros: [agoda.note, `BOB ${bobPct}% on travel/online`, "Often beats Amazon 5% when Agoda fare is similar"],
+        cons: [
+          !bob5xOk ? "BOB 5× cycle headroom low — base 0.75% only on card side" : "5× cap ~₹33k/cycle",
+          "Voucher/Taj Amex stays need direct IHCL booking — not Agoda",
+        ],
+        rationale: `Agoda via Cashkaro (often flat 7%) + BOB travel earn. Compare all-in vs Amazon 5%.`,
+        steps: ["Open Cashkaro → Agoda", "Book hotel", "Pay with BOB Eterna"],
+      });
+    }
+    const booking = ckInrForStore("Booking.com", "Hotels", amt, ckOverride);
+    if (booking) {
+      const bobInr = bob5xOk ? amt * 0.0375 : amt * 0.0075;
+      add({
+        cardId: "bob_eterna",
+        label: `Cashkaro → Booking.com + BOB ${bob5xOk ? "5×" : "base"}`,
+        effectivePct: ((booking.inr + bobInr) / amt) * 100,
+        baseRewardInr: booking.inr + bobInr,
+        cashkaroSuggested: true,
+        pros: [booking.note, "BOB travel earn"],
+        cons: ["Usually behind Agoda's flat 7% when both list the hotel"],
+        rationale: "Booking.com Cashkaro stack — backup if Agoda inventory/price is worse.",
+        steps: ["Cashkaro → Booking.com", "Pay with BOB Eterna"],
+      });
+    }
+    const mmtH = ckInrForStore("MakeMyTrip", "Hotels", amt, ckOverride);
+    if (mmtH) {
+      const bobInr = bob5xOk ? amt * 0.0375 : amt * 0.0075;
+      add({
+        cardId: "bob_eterna",
+        label: `Cashkaro → MMT hotels (${mmtH.note}) + BOB`,
+        effectivePct: ((mmtH.inr + bobInr) / amt) * 100,
+        baseRewardInr: mmtH.inr + bobInr,
+        cashkaroSuggested: true,
+        pros: [mmtH.note, "Good when MMT has exclusive inventory"],
+        cons: ["Flat Cashkaro ₹ is weak on large hotel bills vs Agoda 7%"],
+        rationale: "MMT domestic hotels: flat Cashkaro ₹ + BOB. Prefer Agoda % on bigger stays.",
+        steps: ["Cashkaro → MakeMyTrip Hotels", "Pay with BOB Eterna"],
+      });
+    }
+    const ctH = ckInrForStore("Cleartrip", "Hotels", amt, ckOverride);
+    if (ctH) {
+      const bobInr = bob5xOk ? amt * 0.0375 : amt * 0.0075;
+      add({
+        cardId: "bob_eterna",
+        label: `Cashkaro → Cleartrip hotels + BOB 5×`,
+        effectivePct: ((ctH.inr + bobInr) / amt) * 100,
+        baseRewardInr: ctH.inr + bobInr,
+        cashkaroSuggested: true,
+        pros: [ctH.note, "BOB 5× travel"],
+        cons: ["Flat CK ₹ — weak vs Agoda 7% on large bookings"],
+        rationale: "Cleartrip hotels via Cashkaro + BOB.",
+        steps: ["Cashkaro → Cleartrip", "Book hotel", "Pay with BOB Eterna"],
+      });
+    }
+    // Scapia-app travel 4%
+    add({
+      cardId: "scapia",
+      label: "Scapia app travel (20% coins = 4% value)",
+      effectivePct: 4.0,
+      worstCasePct: 2.0,
+      bestCasePct: 4.0,
+      pros: ["4% when booked inside Scapia app/store", "Coins redeemable only for Scapia travel"],
+      cons: ["Need Scapia inventory; coins travel-locked", "Maintain ₹20k/mo for lounge if you care"],
+      rationale: "If the hotel is on Scapia travel, 4% locked coins can beat Amazon 5% only when you will burn Scapia coins — otherwise Amazon/Agoda cash stacks win.",
+      steps: ["Open Scapia → Travel", "Book hotel if listed", "Pay with Scapia"],
+    });
+    // Amex PT milestone / direct hotel
+    {
+      const mb = annualMilestoneBonus("amex_plat_travel", input, amt);
+      const base = amt * 0.01;
+      add({
+        cardId: "amex_plat_travel",
+        label: mb ? `Hotel direct / OTA → Amex PT (1% + milestone)` : "Hotel direct → Amex PT (1% / MR)",
+        effectivePct: ((base + (mb?.inr ?? 0)) / amt) * 100,
+        baseRewardInr: base,
+        bonusRewardInr: mb?.inr ?? 0,
+        pros: [
+          "Needed for Taj / Amex voucher stays (book IHCL direct)",
+          mb?.note ?? "Counts toward PT ₹4L / ₹7L",
+        ],
+        cons: ["Yield below Agoda 7% + BOB or Amazon 5% unless voucher / milestone matters"],
+        rationale: "Use Amex PT when burning Taj vouchers (direct IHCL only) or pushing annual milestones — not for pure OTA yield.",
+        steps: [
+          "For Taj voucher: book on tajhotels.com (public rate), apply voucher, pay remainder Amex",
+          "Else compare vs Amazon / Agoda stacks first",
+        ],
+      });
+    }
+  }
+
+  // --- Flights: Cleartrip / MMT Cashkaro + BOB; airline direct ---
+  if (kind === "flight") {
+    const ctF = ckInrForStore("Cleartrip", "Flights", amt, ckOverride);
+    if (ctF) {
+      const bobInr = bob5xOk ? amt * 0.0375 : amt * 0.0075;
+      add({
+        cardId: "bob_eterna",
+        label: `Cashkaro → Cleartrip flights + BOB ${bob5xOk ? "5×" : "base"}`,
+        effectivePct: ((ctF.inr + bobInr) / amt) * 100,
+        baseRewardInr: ctF.inr + bobInr,
+        cashkaroSuggested: true,
+        pros: [ctF.note, "BOB 5× travel"],
+        cons: ["Flight Cashkaro often flat ₹ — Amazon 5% usually wins on large fares if fare matches"],
+        rationale: "Cleartrip + Cashkaro + BOB. Always fare-match vs Amazon and airline direct.",
+        steps: ["Cashkaro → Cleartrip", "Book flight", "Pay with BOB Eterna"],
+      });
+    }
+    const mmtF = ckInrForStore("MakeMyTrip", "Flights", amt, ckOverride);
+    if (mmtF) {
+      const bobInr = bob5xOk ? amt * 0.0375 : amt * 0.0075;
+      add({
+        cardId: "bob_eterna",
+        label: `Cashkaro → MMT flights + BOB`,
+        effectivePct: ((mmtF.inr + bobInr) / amt) * 100,
+        baseRewardInr: mmtF.inr + bobInr,
+        cashkaroSuggested: true,
+        pros: [mmtF.note],
+        cons: ["Flat CK weak on expensive tickets vs Amazon 5%"],
+        rationale: "MMT flights via Cashkaro — compare fare + Amazon 5%.",
+        steps: ["Cashkaro → MakeMyTrip", "Pay with BOB Eterna"],
+      });
+    }
+    if (sbiSimplyClickPartner("cleartrip", "flights")) {
+      add({
+        cardId: "sbi_simplyclick",
+        label: "Cashkaro → Cleartrip → SBI SimplyCLICK 10× (~2.5%)",
+        effectivePct: 2.5 + (ctF ? (ctF.inr / amt) * 100 : 0),
+        cashkaroSuggested: !!ctF,
+        pros: ["10× partner"],
+        cons: ["Usually behind BOB 5× and Amazon 5%"],
+        rationale: "SBI Cleartrip backup if BOB 5× is exhausted.",
+        steps: ["Cashkaro → Cleartrip", "Pay with SBI SimplyCLICK"],
+      });
+    }
+    add({
+      cardId: "scapia",
+      label: "Scapia app flights (20% coins = 4%)",
+      effectivePct: 4.0,
+      pros: ["4% travel-locked coins in Scapia app"],
+      cons: ["Only if you will redeem Scapia coins on travel"],
+      rationale: "Scapia-app flight when inventory exists and you burn coins.",
+      steps: ["Scapia → Travel → Flights", "Pay with Scapia"],
+    });
+  }
+
+  // --- Bus ---
+  if (kind === "bus") {
+    const rb = ckInrForStore("RedBus", "Bus", amt, ckOverride);
+    if (rb) {
+      const bobInr = bob5xOk ? amt * 0.0375 : amt * 0.0075;
+      add({
+        cardId: "bob_eterna",
+        label: `Cashkaro → RedBus + BOB`,
+        effectivePct: ((rb.inr + bobInr) / amt) * 100,
+        baseRewardInr: rb.inr + bobInr,
+        cashkaroSuggested: true,
+        pros: [rb.note],
+        cons: ["Amazon bus at 2% may be simpler if fare is equal"],
+        rationale: "RedBus via Cashkaro vs Amazon 2% — pick higher all-in.",
+        steps: ["Cashkaro → RedBus (if listed)", "Or Amazon Travel → Bus", "Pay accordingly"],
+      });
+    }
+    add({
+      cardId: "scapia",
+      label: "Scapia travel bus (4% if in-app)",
+      effectivePct: 4.0,
+      pros: ["4% when booked in Scapia"],
+      cons: ["Coins travel-locked"],
+      rationale: "Scapia bus if available in-app.",
+      steps: ["Scapia → Travel → Bus"],
+    });
+  }
 }
 
 function isMovieExpense(merchant: string, category: string): boolean {
@@ -468,7 +760,7 @@ function sbiSimplyClickPartner(merchant: string, category: string): boolean {
  */
 function amazonPayable(category: string, merchant: string): boolean {
   const c = `${category} ${merchant}`.toLowerCase();
-  return /utilit|electric|mobile|recharge|broadband|\btv\b|dth|\bgas\b|water|amazon|bookmyshow|\bbms\b|movie/.test(c);
+  return /utilit|electric|mobile|recharge|broadband|\btv\b|dth|\bgas\b|water|amazon|bookmyshow|\bbms\b|movie|flight|hotel|bus|train|travel/.test(c);
 }
 
 /** Categories where Amex earns no MR AND doesn't count toward Amex milestones. */
@@ -752,20 +1044,29 @@ export function recommend(input: RecommendInput): RecommendationResult {
     return finalize(options, input, amt, isForeign, ck);
   }
 
-  // --- IndiGo flight → IDFC Indigo direct ---
-  if (cat.includes("indigo") || (merchant.includes("indigo") && !merchant.includes("amazon"))) {
-    add({
-      cardId: "idfc_indigo",
-      label: "IDFC Indigo via IndiGo app (up to 22 BluChips/₹100)",
-      effectivePct: 9.9,
-      bestCasePct: 9.9,
-      worstCasePct: 6 * 0.45, // card-only 6 BluChips if not a tier member
-      pros: ["Up to 22 BluChips/₹100 (6 card + up to 16 IndiGo tier) ≈ 9.9% at ₹0.45/BluChip", "Burn 5K-BluChip voucher (exp 6 Jun 2026)"],
-      cons: ["Must book on IndiGo app/site directly", "BluChips redeemable only on IndiGo one-way flights (base fare+fuel), value dynamic ₹0.40–0.60"],
-      rationale: "Up to 22 BluChips/₹100 ≈ 9.9% (at ₹0.45/BluChip). IndiGo isn't a Cashkaro affiliate, so book direct.",
-      steps: ["Open IndiGo (6E) app", "Select flight", "Pay with IDFC Indigo card", "Earn up to 22 BluChips/₹100"],
-    });
-    return finalize(options, input, amt, isForeign, ck);
+  // --- Travel bookings (hotel / flight / bus / train) — exhaust Amazon + OTA + Scapia ---
+  {
+    const kind = travelKindOf(cat, merchant);
+    const isIndiGo = cat.includes("indigo") || (merchant.includes("indigo") && !merchant.includes("amazon"));
+    if (isIndiGo) {
+      add({
+        cardId: "idfc_indigo",
+        label: "IDFC Indigo via IndiGo app (up to 22 BluChips/₹100)",
+        effectivePct: 9.9,
+        bestCasePct: 9.9,
+        worstCasePct: 6 * 0.45,
+        pros: ["Up to 22 BluChips/₹100 (6 card + up to 16 IndiGo tier) ≈ 9.9% at ₹0.45/BluChip", "Burn BluChip vouchers on IndiGo"],
+        cons: ["Must book on IndiGo app/site directly", "BluChips redeemable only on IndiGo one-way flights (base fare+fuel)"],
+        rationale: "IndiGo direct + IDFC is usually the best flight route you hold — still compare Amazon 5% if IndiGo fare is worse on Amazon.",
+        steps: ["Open IndiGo (6E) app", "Select flight", "Pay with IDFC Indigo card", "Earn up to 22 BluChips/₹100"],
+      });
+      addExhaustiveTravelRoutes("flight", input, amt, add, ckOverride);
+      return finalize(options, input, amt, isForeign, ck);
+    }
+    if (kind) {
+      addExhaustiveTravelRoutes(kind, input, amt, add, ckOverride);
+      return finalize(options, input, amt, isForeign, ck);
+    }
   }
 
   // --- UPI scan/pay (Kiwi) ---
@@ -1110,47 +1411,8 @@ export function recommend(input: RecommendInput): RecommendationResult {
     return finalize(options, input, amt, isForeign, ck);
   }
 
-  // ============ CLEARTRIP ============
-  if (merchant.includes("cleartrip")) {
-    const isHotel = cat.includes("hotel");
-    add({
-      cardId: "bob_eterna",
-      label: ck ? `Cashkaro + BOB Eterna 5× travel (~${(3.75 + ck.mid * 0.85).toFixed(1)}%)` : "BOB Eterna 5× travel (~3.75%)",
-      effectivePct: 3.75 + (ck ? ck.mid * 0.85 : 0),
-      worstCasePct: 3.75,
-      bestCasePct: 3.75 + (ck?.max ?? 0),
-      cashkaroSuggested: !!ck,
-      pros: ["BOB 5× on travel/online", ck ? `+ ~${ck.mid}% Cashkaro` : "Try Cashkaro click-through"],
-      cons: ["5× cap ~₹33k/cycle", "No HDFC BLCK / HDFCCC coupon in this portfolio"],
-      rationale: `Cleartrip: Cashkaro + BOB 5× is the best held stack (no Swiggy BLCK). ${isHotel ? "Hotels usually track better on Cashkaro than flights." : ""}`,
-      steps: ["Open Cashkaro → Cleartrip", "Book", "Pay with BOB Eterna"],
-    });
-    if (sbiSimplyClickPartner(merchant, cat)) {
-      add({
-        cardId: "sbi_simplyclick",
-        label: "Cashkaro + SBI SimplyCLICK 10× Cleartrip (~2.5%)",
-        effectivePct: 2.5 + (ck ? ck.mid * 0.85 : 0),
-        cashkaroSuggested: !!ck,
-        pros: ["10× partner brand"],
-        cons: ["Usually behind BOB 5×"],
-        rationale: "SBI 10× Cleartrip is a backup if BOB 5× headroom is gone.",
-        steps: ["Cashkaro → Cleartrip", "Pay with SBI SimplyCLICK"],
-      });
-    }
-    add({
-      cardId: "amex_plat_travel",
-      label: "Amex PT + Cashkaro (milestone push)",
-      effectivePct: 1.0 + (ck ? ck.mid * 0.7 : 0),
-      worstCasePct: 1.0,
-      bestCasePct: 1.0 + (ck ? ck.max : 0),
-      cashkaroSuggested: true,
-      pros: ["Counts toward PT ₹4L/₹7L milestone"],
-      cons: ["Low base vs BOB 5×"],
-      rationale: "Use Amex PT on Cleartrip mainly when you need annual milestone volume.",
-      steps: ["Try Cashkaro → Cleartrip", "Pay with Amex PT"],
-    });
-    return finalize(options, input, amt, isForeign, ck);
-  }
+  // ============ CLEARTRIP / MMT / AGODA handled in travel exhaust above ============
+  // (legacy Cleartrip-only block removed — travelKindOf covers these merchants)
 
   // ============ MOVIES / EVENTS (before Cashkaro-reliable early-return) ============
   // BookMyShow is a "reliable" Cashkaro merchant — if this block ran AFTER that early-return,

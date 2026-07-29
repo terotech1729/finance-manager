@@ -73,7 +73,14 @@ const CARD_TIPS: Record<string, { useFor: string[]; dontUseFor: string[]; primar
   },
   amazon_pay_icici: {
     primaryRole: "Amazon (5% Prime, uncapped) + low-forex backup (1.99%)",
-    useFor: ["All Amazon purchases (5% Prime, no cap)", "Utility overflow after Live+ 10% cap (2% via Amazon bills)", "Amazon Pay partner merchants (2%)", "International if Scapia rejected"],
+    useFor: [
+      "All Amazon shopping (5% Prime, uncapped)",
+      "Amazon.in flights & hotels (5% Prime / 3% non-Prime)",
+      "Amazon bus/train (~2%)",
+      "Utility overflow after Live+ 10% cap (2% via Amazon bills)",
+      "Amazon Pay partner merchants (2%)",
+      "International if Scapia rejected",
+    ],
     dontUseFor: ["Outside Amazon (only 1% other)", "Wallet load (fees may apply)", "Primary utilities while Live+ cap has room"],
   },
 };

@@ -160,7 +160,7 @@ export const CARDS: readonly Card[] = [
     pointValue: 1.0,
     baseRatePct: 1.0,
     bestRatePct: 5.0,
-    notes: "LTF. 5% Prime / 3% non-Prime on Amazon.in; 2% bills/recharges via Amazon; 1% else. Cashback as Amazon Pay balance.",
+    notes: "LTF. 5% Prime / 3% non-Prime on Amazon.in shopping + flights & hotels via Amazon; ~2% on bills/recharges and Amazon bus/train; 2% Login & Pay partners; 1% else. Cashback as Amazon Pay balance.",
   },
   {
     id: "hsbc_live_plus",
