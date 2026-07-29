@@ -64,8 +64,18 @@ export default function MilestonesPage() {
   useEffect(() => { setState(loadState()); }, []);
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 
-  const setSpend = (key: SpendKey, value: number) => {
-    const next = { ...state, [key]: value };
+  const setSpend = (key: SpendKey, value: number, cardId?: string) => {
+    const next: AppState = { ...state, [key]: value };
+    // Keep hit flags in sync with the number you just typed (source of truth).
+    if (cardId) {
+      const thresholds = ANNUAL_MILESTONES.filter((m) => m.cardId === cardId).map((m) => m.threshold);
+      const without = (next.milestonesHit || []).filter((h) => !h.startsWith(`${cardId}:`));
+      const hit = thresholds.filter((t) => value >= t).map((t) => `${cardId}:${t}`);
+      next.milestonesHit = [...without, ...hit];
+    }
+    if (key === "kiwiNeonCycleSpend") {
+      // Kiwi uses its own thresholds (not ANNUAL_MILESTONES)
+    }
     setState(next);
     saveState(next);
   };
@@ -108,7 +118,7 @@ export default function MilestonesPage() {
                 </Link>
                 <div className="flex items-center gap-2 ml-auto">
                   {key ? (
-                    <EditableSpend value={spent} onChange={(n) => setSpend(key, n)} />
+                    <EditableSpend value={spent} onChange={(n) => setSpend(key, n, cardId)} />
                   ) : (
                     <span className="text-xs text-fg-muted">{inrExact(spent)}</span>
                   )}
@@ -117,10 +127,12 @@ export default function MilestonesPage() {
               </div>
               <div className="card-body space-y-4">
                 <CheckpointedProgress
+                  key={`${cardId}-${spent}`}
                   current={spent}
                   total={top}
                   checkpoints={checkpoints}
                   tone={spent >= top ? "success" : "info"}
+                  fillFromCurrentOnly
                 />
                 <div className="space-y-1.5">
                   {sorted.map((m) => {
@@ -156,6 +168,7 @@ export default function MilestonesPage() {
           </div>
           <div className="card-body space-y-4">
             <CheckpointedProgress
+              key={`kiwi-${kiwiSpend}`}
               current={kiwiSpend}
               total={150000}
               checkpoints={KIWI_NEON_MILESTONES.slice(0, -1).map((m) => ({
@@ -163,6 +176,7 @@ export default function MilestonesPage() {
                 hit: kiwiSpend >= m.threshold,
               }))}
               tone={kiwiSpend >= 50000 ? "success" : "info"}
+              fillFromCurrentOnly
             />
             <div className="space-y-1.5">
               {KIWI_NEON_MILESTONES.map((m) => {

@@ -490,7 +490,60 @@ function addExhaustiveTravelRoutes(
     });
   }
 
-  // --- Hotels: Agoda 7% Cashkaro + BOB 5× ---
+  // --- Portal accelerated: Amex Reward Multiplier → MakeMyTrip (hotels & flights) ---
+  // Gold 5× MR = 5 pts/₹50 ≈ 5.8% @ ₹0.58/MR (no ShopWise voucher fee on travel bookings).
+  // Must open via Amex RM / ShopWise travel — MMT app alone does NOT get the multiplier.
+  if (kind === "hotel" || kind === "flight") {
+    const goldRmPct = 5.8;
+    const goldMilestone = goldMilestoneBonus(input, amt);
+    const goldTotal = amt * (goldRmPct / 100) + (goldMilestone?.inr ?? 0);
+    add({
+      cardId: "amex_gold",
+      label: `Amex Reward Multiplier → MMT ${kind} (Gold 5× ≈ ${goldRmPct}%)`,
+      effectivePct: (goldTotal / amt) * 100,
+      baseRewardInr: amt * (goldRmPct / 100),
+      bonusRewardInr: goldMilestone?.inr ?? 0,
+      worstCasePct: goldRmPct,
+      bestCasePct: (goldTotal / amt) * 100,
+      pros: [
+        `5× Membership Rewards via Amex Reward Multiplier portal ≈ ${goldRmPct}% @ Taj/24K value`,
+        "No ShopWise voucher convenience fee (this is a travel booking, not an e-voucher)",
+        goldMilestone?.note ?? "Also counts as a ≥₹1k Gold txn if amount qualifies",
+      ].filter(Boolean),
+      cons: [
+        "Must start from Amex Reward Multiplier / ShopWise → MakeMyTrip (not MMT app alone)",
+        "Fare on MMT via RM can be higher than Agoda — compare all-in",
+        "Usually behind Cashkaro Agoda 7% + BOB 5× (~10.75%) when Agoda price matches",
+      ],
+      rationale: `Amex Gold portal accel on MMT ${kind}: ~${goldRmPct}% MR. Beats Amazon ${apPct}% when fares are equal; still check Agoda+Cashkaro+BOB first.`,
+      steps: [
+        "Open Amex app / americanexpress.com → Reward Multiplier (or ShopWise travel)",
+        `Select MakeMyTrip → book ${kind}`,
+        "Pay with Amex Gold in the same session",
+        "Do NOT book in the standalone MMT app — multiplier won't apply",
+      ],
+    });
+    // MRCC gets a weaker multiplier (~2× ≈ 2.3%) — still list for milestone fills
+    const mrccRmPct = 2.3;
+    const mrccB = mrccMilestoneBonus(input, amt);
+    add({
+      cardId: "amex_mrcc",
+      label: `Amex Reward Multiplier → MMT ${kind} (MRCC ~2× ≈ ${mrccRmPct}%)`,
+      effectivePct: ((amt * (mrccRmPct / 100) + (mrccB?.inr ?? 0)) / amt) * 100,
+      baseRewardInr: amt * (mrccRmPct / 100),
+      bonusRewardInr: mrccB?.inr ?? 0,
+      pros: [mrccB?.note ?? "MRCC portal earn on MMT", "Useful if you need ≥₹1.5k MRCC txn"],
+      cons: [`Only ~${mrccRmPct}% — usually behind Gold RM, Amazon, and Agoda+BOB`],
+      rationale: "MRCC Reward Multiplier on MMT is a milestone tool more than a yield play.",
+      steps: [
+        "Amex Reward Multiplier → MakeMyTrip",
+        `Book ${kind}`,
+        "Pay with Amex MRCC",
+      ],
+    });
+  }
+
+  // --- Hotels: Agoda 7% Cashkaro + BOB 5× (MCC auto-accel — not a separate portal earn) ---
   if (kind === "hotel") {
     const agoda = ckInrForStore("Agoda", "Hotels", amt, ckOverride);
     if (agoda) {
@@ -498,19 +551,24 @@ function addExhaustiveTravelRoutes(
       const bobPct = bob5xOk ? 3.75 : 0.75;
       add({
         cardId: "bob_eterna",
-        label: `Cashkaro → Agoda (${agoda.note.includes("7") || agoda.inr / amt > 0.06 ? "7%" : "CK"}) + BOB ${bobPct}%`,
+        label: `Cashkaro → Agoda + BOB ${bobPct}% travel 5× (MCC auto)`,
         effectivePct: ((agoda.inr + bobInr) / amt) * 100,
         baseRewardInr: agoda.inr + bobInr,
         cashkaroSuggested: true,
         worstCasePct: bobPct,
         bestCasePct: ((agoda.inr + bobInr) / amt) * 100,
-        pros: [agoda.note, `BOB ${bobPct}% on travel/online`, "Often beats Amazon 5% when Agoda fare is similar"],
-        cons: [
-          !bob5xOk ? "BOB 5× cycle headroom low — base 0.75% only on card side" : "5× cap ~₹33k/cycle",
-          "Voucher/Taj Amex stays need direct IHCL booking — not Agoda",
+        pros: [
+          agoda.note,
+          `BOB 5× travel is automatic on travel MCC (15 RP/₹100 = 3.75%) — no special portal to open`,
+          "Redeem RP later at portal.bobcard.co.in @ ₹0.25/RP statement credit",
+          "Often beats Amazon 5% and Amex RM when Agoda fare is similar",
         ],
-        rationale: `Agoda via Cashkaro (often flat 7%) + BOB travel earn. Compare all-in vs Amazon 5%.`,
-        steps: ["Open Cashkaro → Agoda", "Book hotel", "Pay with BOB Eterna"],
+        cons: [
+          !bob5xOk ? "BOB 5× cycle headroom low — base 0.75% only on card side" : "5× bonus capped at 5,000 RP/cycle (~₹33k accelerated spend)",
+          "Taj / Amex voucher stays need IHCL direct — not Agoda",
+        ],
+        rationale: `Agoda via Cashkaro (often flat 7%) + BOB travel 5× MCC earn. BOBCARD portal/app is for redeeming points (statement credit / SmartDeal), not for earning the 5×.`,
+        steps: ["Open Cashkaro → Agoda", "Book hotel", "Pay with BOB Eterna", "Redeem RP later: portal.bobcard.co.in → statement credit (min 1,000 RP)"],
       });
     }
     const booking = ckInrForStore("Booking.com", "Hotels", amt, ckOverride);

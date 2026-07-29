@@ -66,8 +66,9 @@ export const REDEMPTIONS: Redemption[] = [
     cardIds: ["bob_eterna"],
     worst: 0.20, typical: 0.25, best: 0.25,
     how: [
-      { label: "Catalogue / vouchers", value: 0.20, note: "Some catalogue items redeem slightly lower." },
-      { label: "Statement credit (cashback)", value: 0.25, note: "Standard 1 RP = ₹0.25." },
+      { label: "Statement credit (cashback)", value: 0.25, note: "Best default: portal.bobcard.co.in or BOBCARD app → Redeem → statement credit. 1 RP = ₹0.25. Min 1,000 RP (₹250). Credits in ~3–5 days. Eterna points never expire." },
+      { label: "SmartDeal travel (portal)", value: 0.25, note: "Book flights/hotels on BOBCARD SmartDeal using RP (± card). Only if the ₹/RP rate ≥ statement credit — else redeem cash and book Agoda/Amazon yourself." },
+      { label: "Catalogue / vouchers / merchandise", value: 0.20, note: "Often worse than ₹0.25 — check before burning points." },
     ],
   },
   {

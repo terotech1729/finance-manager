@@ -12,26 +12,34 @@ type Props = {
   checkpoints?: Checkpoint[];
   tone?: "info" | "success" | "warning" | "danger";
   showLabels?: boolean;
+  fillFromCurrentOnly?: boolean;
 };
 
-export function CheckpointedProgress({ current, total, checkpoints = [], tone = "info", showLabels = true }: Props) {
+export function CheckpointedProgress({
+  current,
+  total,
+  checkpoints = [],
+  tone = "info",
+  showLabels = true,
+  /** When true (default), fill width follows `current` only — hit dots can still light up. */
+  fillFromCurrentOnly = true,
+}: Props) {
   const fillClass =
     tone === "success" ? "bg-success" :
     tone === "warning" ? "bg-warning" :
     tone === "danger" ? "bg-danger" :
     "bg-accent";
-  // If a checkpoint is explicitly marked hit, the bar should reach at least that
-  // point (the milestone is ground-truth even if tracked spend lags). Avoids a
-  // confusing gap between the fill and a green "hit" dot.
+  // Legacy behaviour inflated the bar to the highest "hit" checkpoint even when
+  // tracked spend lagged — that made editable milestone totals look stuck.
   const maxHitValue = checkpoints.reduce((mx, cp) => (cp.hit && cp.value > mx ? cp.value : mx), 0);
-  const fillValue = Math.max(current, maxHitValue);
+  const fillValue = fillFromCurrentOnly ? current : Math.max(current, maxHitValue);
   const currentPct = pct(fillValue, total);
 
   return (
     <div className="space-y-2 overflow-x-auto overscroll-x-contain pb-1">
       <div className="relative h-2.5 rounded-full bg-bg-chrome overflow-visible min-w-[240px]">
-        {/* Filled portion */}
         <div
+          key={`fill-${Math.round(fillValue)}-${total}`}
           className={`absolute top-0 left-0 h-full rounded-full ${fillClass} transition-all duration-500`}
           style={{ width: `${currentPct}%` }}
         />
