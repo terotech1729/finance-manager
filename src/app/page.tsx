@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { loadState, loadTransactions, loadHoldings, holdingInvested, holdingValue, type AppState } from "@/lib/storage";
-import { CARDS } from "@/lib/cards";
+import { CARDS, netCreditLimit } from "@/lib/cards";
 import { inr, inrExact, nfmt } from "@/lib/utils";
 import type { Transaction, Holding } from "@/lib/types";
 import { CardVisual } from "@/components/CardVisual";
@@ -76,7 +76,7 @@ export default function DashboardPage() {
       </Link>
 
       {/* Lifetime stats hero */}
-      <section className="grid md:grid-cols-3 gap-3">
+      <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="card-shell p-5 bg-gradient-to-br from-success/10 via-bg-elevated to-bg-elevated border-success/30">
           <div className="label">Total wallet value (loyalty)</div>
           <div className="text-2xl sm:text-3xl font-bold mt-1 text-success">{inr(totalLifetimeSavings)}</div>
@@ -92,6 +92,11 @@ export default function DashboardPage() {
           <div className="text-2xl sm:text-3xl font-bold mt-1 text-info">{inr(totalPortfolioValue)}</div>
           <div className="text-xs text-fg-muted mt-1">{inr(totalInvested)} invested across {holdings.length} holding{holdings.length === 1 ? "" : "s"} · <Link href="/investments" className="underline">manage</Link></div>
         </div>
+        <Link href="/cards" className="card-shell p-5 bg-gradient-to-br from-warning/10 via-bg-elevated to-bg-elevated border-warning/30 hover:border-warning transition-colors block">
+          <div className="label">Net credit limit</div>
+          <div className="text-2xl sm:text-3xl font-bold mt-1">{inr(netCreditLimit())}</div>
+          <div className="text-xs text-fg-muted mt-1">Preset limits summed · Amex Gold charge has no fixed limit</div>
+        </Link>
       </section>
 
       {/* Loyalty currencies grid */}

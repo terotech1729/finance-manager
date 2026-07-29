@@ -42,7 +42,7 @@ export const CARDS: readonly Card[] = [
     short: "Amex MRCC",
     network: "Amex",
     issuer: "American Express",
-    creditLimit: 470000,
+    creditLimit: 480000,
     annualFee: 5310,
     feeWaivable: true,
     feeWaiverAt: 150000,
@@ -133,7 +133,7 @@ export const CARDS: readonly Card[] = [
     short: "SBI SimplyCLICK",
     network: "Visa Platinum",
     issuer: "SBI Card",
-    creditLimit: 240000,
+    creditLimit: 242000,
     annualFee: 589,
     feeWaivable: true,
     feeWaiverAt: 100000,
@@ -168,7 +168,7 @@ export const CARDS: readonly Card[] = [
     short: "HSBC Live+",
     network: "Visa Infinite",
     issuer: "HSBC",
-    creditLimit: 0,
+    creditLimit: 714000,
     annualFee: 1179, // ₹999 + GST approx
     feeWaivable: true,
     feeWaiverAt: 200000,
@@ -213,4 +213,11 @@ export const MONTHLY_MILESTONES: readonly MonthlyMilestone[] = [
 
 export function getCardById(id: string): Card | undefined {
   return CARDS.find((c) => c.id === id);
+}
+
+/** Sum of preset limits on active cards. Charge cards with creditLimit 0 (e.g. Amex Gold) are excluded. */
+export function netCreditLimit(cards: readonly Card[] = CARDS): number {
+  return cards
+    .filter((c) => c.status === "active" && c.creditLimit > 0)
+    .reduce((sum, c) => sum + c.creditLimit, 0);
 }
