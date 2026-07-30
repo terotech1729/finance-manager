@@ -48,12 +48,10 @@ export async function pullFromCloud(): Promise<{ pulled: boolean; hadRemote: boo
     return { pulled: false, hadRemote: false };
   }
   if (data?.data) {
+    // Import remote blob as-is. Do NOT recomputeCounters() here — that rebuilds
+    // annual till-dates from the (usually incomplete) txn log and wipes numbers
+    // you typed on Milestones / Settings, then the next push locks the wipe into DB.
     importAll(typeof data.data === "string" ? data.data : JSON.stringify(data.data), true);
-    // Heal milestone counters from the pulled txn log so recommend isn't stale.
-    try {
-      const { recomputeCounters } = await import("./storage");
-      recomputeCounters();
-    } catch { /* ignore */ }
     setStatus("synced");
     return { pulled: true, hadRemote: true };
   }

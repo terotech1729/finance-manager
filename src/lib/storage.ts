@@ -379,8 +379,10 @@ export function getLivePlusWelcomeSpend(st: AppState = loadState(), txns: Transa
 }
 
 /**
- * Rebuild all log-derived spend / milestone counters from the transaction log and persist.
- * Loyalty-point balances, issuance flags and manually-tracked figures are preserved.
+ * Rebuild spend / milestone counters from the transaction log and persist.
+ * WARNING: this overwrites annual till-dates (PT / MRCC / SBI / IDFC / etc.) with
+ * log-only sums. Use only when you intend to discard statement-seeded / manually
+ * edited Milestones numbers. Loyalty balances and issuance dates are kept.
  */
 export function recomputeCounters(): AppState {
   const next = deriveCountersFromLog();

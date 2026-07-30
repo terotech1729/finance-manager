@@ -94,7 +94,7 @@ export default function SettingsPage() {
           <div>
             <div className="font-semibold">Rebuild counters from log</div>
             <div className="text-xs text-fg-muted mt-0.5 max-w-xl">
-              Recomputes every milestone &amp; cycle spend counter from your logged transactions (scoped to each card&apos;s current period). Loyalty-point balances and issuance dates are kept. Use this if counters ever look out of sync after edits or imports.
+              Overwrites Milestones till-date numbers with sums from your logged transactions only (usually incomplete vs statements). Loyalty balances and issuance dates are kept. Prefer editing till-dates on Milestones — do not use this after a redeploy unless you mean to wipe those edits.
             </div>
           </div>
           <button
