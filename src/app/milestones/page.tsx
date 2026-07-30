@@ -14,6 +14,16 @@ const KIWI_NEON_MILESTONES = [
   { threshold: 150000, cashbackRate: 5, lounges: 3 },
 ];
 
+const PERIOD_NOTE: Record<string, string> = {
+  amex_plat_travel: "Membership year (ends ~3 Dec) — not calendar year",
+  amex_mrcc: "Fee waiver = renewal year; monthly txns = calendar month",
+  sbi_simplyclick: "Bar = ONLINE vouchers (year from ~22 May). Fee waiver is separate below.",
+  idfc_indigo: "Tracked as calendar year (confirm on IDFC app)",
+  bob_eterna: "Welcome = 60 days from issue; ₹5L annual from issuance",
+  hsbc_live_plus: "Welcome = 30 days from issue; fee waiver tracked as calendar year",
+  yes_kiwi: "1 Apr → 31 Mar",
+};
+
 type SpendKey =
   | "ptccEligibleSpend"
   | "mrccCycleSpend"
@@ -126,6 +136,9 @@ export default function MilestonesPage() {
                 </div>
               </div>
               <div className="card-body space-y-4">
+                {PERIOD_NOTE[cardId] && (
+                  <p className="text-xs text-fg-muted">{PERIOD_NOTE[cardId]}</p>
+                )}
                 <CheckpointedProgress
                   key={`${cardId}-${spent}`}
                   current={spent}
@@ -151,6 +164,42 @@ export default function MilestonesPage() {
                     );
                   })}
                 </div>
+                {cardId === "sbi_simplyclick" && (
+                  <div className="rounded-lg border border-border/60 bg-bg-elevated/40 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="text-sm font-medium">Fee waiver (anniversary {state.sbiFeeAnniversaryDate || "—"})</div>
+                      <label className="flex items-center gap-1 text-xs text-fg-muted">
+                        <span>Till date</span>
+                        <span className="text-fg-subtle">₹</span>
+                        <input
+                          className="input text-right tabular-nums py-1 px-2 text-sm font-semibold text-fg w-[7.5rem]"
+                          inputMode="numeric"
+                          value={String(Math.round(state.sbiFeeWaiverSpend || 0))}
+                          onChange={(e) => {
+                            const n = Number(e.target.value.replace(/[^0-9]/g, "")) || 0;
+                            const next = { ...state, sbiFeeWaiverSpend: Math.max(0, n) };
+                            setState(next);
+                            saveState(next);
+                          }}
+                          aria-label="SBI fee-waiver spend till date"
+                        />
+                      </label>
+                    </div>
+                    <CheckpointedProgress
+                      key={`sbi-fee-${state.sbiFeeWaiverSpend}`}
+                      current={state.sbiFeeWaiverSpend || 0}
+                      total={100000}
+                      checkpoints={[]}
+                      tone={(state.sbiFeeWaiverSpend || 0) >= 100000 ? "success" : "info"}
+                      fillFromCurrentOnly
+                    />
+                    <p className="text-xs text-fg-muted">
+                      {(state.sbiFeeWaiverSpend || 0) >= 100000
+                        ? "Hit — fee should reverse within ~10 days of the Oct levy."
+                        : `₹${Math.max(0, 100000 - Math.round(state.sbiFeeWaiverSpend || 0)).toLocaleString("en-IN")} short of ₹1L eligible retail (excl. tax/rent). Next fee ~21 Oct 2026.`}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           );

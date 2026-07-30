@@ -11,7 +11,8 @@ import { onSyncStatus, pullFromCloud, pushToCloud, type SyncStatus } from "@/lib
 const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boolean }[] = [
   { key: "ptccEligibleSpend", label: "Amex Plat Travel — eligible cycle spend (₹)", group: "Annual milestone progress", numeric: true },
   { key: "mrccCycleSpend", label: "Amex MRCC — fee-waiver cycle spend (₹)", group: "Annual milestone progress", numeric: true },
-  { key: "sbiYtdSpend", label: "SBI SimplyCLICK — YTD online spend (₹)", group: "Annual milestone progress", numeric: true },
+  { key: "sbiYtdSpend", label: "SBI SimplyCLICK — ONLINE voucher spend (₹, toward ₹1L/₹2L)", group: "Annual milestone progress", numeric: true },
+  { key: "sbiFeeWaiverSpend", label: "SBI SimplyCLICK — fee-waiver eligible spend (₹, since day after fee)", group: "Annual milestone progress", numeric: true },
   { key: "idfcYtdSpend", label: "IDFC Indigo — YTD spend (₹)", group: "Annual milestone progress", numeric: true },
   { key: "bobYtdSpend", label: "BOB Eterna — spend since issuance (₹)", group: "Annual milestone progress", numeric: true },
   { key: "hsbcLivePlusYtdSpend", label: "HSBC Live+ — YTD spend (₹, fee waiver @ ₹2L)", group: "Annual milestone progress", numeric: true },
@@ -27,6 +28,8 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "bobEternaIssueDate", label: "BOB Eterna issue date (YYYY-MM-DD, drives 60-day welcome)", group: "Amazon Pay & welcome windows", numeric: false },
   { key: "amazonPayIciciIssueDate", label: "Amazon Pay ICICI issue date (YYYY-MM-DD)", group: "Amazon Pay & welcome windows", numeric: false },
   { key: "hsbcLivePlusIssueDate", label: "HSBC Live+ issue date (YYYY-MM-DD, drives ₹20k/30d welcome)", group: "Amazon Pay & welcome windows", numeric: false },
+  { key: "sbiFeeAnniversaryDate", label: "SBI SimplyCLICK — annual fee date (YYYY-MM-DD)", group: "Milestone period dates", numeric: false },
+  { key: "sbiOnlineYearStart", label: "SBI SimplyCLICK — online voucher year start (YYYY-MM-DD)", group: "Milestone period dates", numeric: false },
   { key: "amexMrPooled", label: "Amex MR — pooled balance", group: "Reward balances", numeric: true },
   { key: "indigoBluChips", label: "IndiGo BluChips balance", group: "Reward balances", numeric: true },
   { key: "scapiaCoins", label: "Scapia coins balance", group: "Reward balances", numeric: true },
@@ -71,6 +74,20 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold mb-1">Settings</h1>
         <p className="text-fg-muted text-sm">Update card balances, milestone progress, and card-issuance status. Stored locally.</p>
       </div>
+
+      <Callout tone="info">
+        <div className="font-medium mb-1">Milestone periods (not all calendar year)</div>
+        <ul className="text-sm space-y-1 list-disc pl-4">
+          <li><b>Amex Gold / MRCC monthly</b> — calendar month</li>
+          <li><b>Amex PT annual</b> — membership year (ends ~3 Dec), not Jan–Dec</li>
+          <li><b>Amex MRCC fee waiver</b> — renewal / membership year (see card cycle end), not calendar year</li>
+          <li><b>SBI fee waiver</b> — fee anniversary (~21 Oct); spend counts from the day after the fee posts</li>
+          <li><b>SBI online vouchers</b> — separate year (statement reset ~22 May); not the Oct fee year</li>
+          <li><b>Kiwi Neon</b> — 1 Apr → 31 Mar</li>
+          <li><b>IDFC / Live+ fee YTD</b> — tracked as calendar year here (confirm on issuer app if unsure)</li>
+          <li><b>Scapia lounge</b> — calendar month ₹20k · <b>BOB welcome</b> — 60 days from issue</li>
+        </ul>
+      </Callout>
 
       <section className="card-shell border-accent/30 bg-gradient-to-br from-accent/5 to-bg-elevated">
         <div className="card-body flex items-center justify-between gap-4 flex-wrap">

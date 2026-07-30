@@ -14,7 +14,8 @@ export type AppState = {
   mrccCycleSpend: number;
   bobYtdSpend: number;
   bobCycleSpend5x: number;
-  sbiYtdSpend: number;
+  sbiYtdSpend: number; // SimplyCLICK ONLINE voucher tracker (₹1L / ₹2L)
+  sbiFeeWaiverSpend: number; // Eligible retail toward annual-fee reversal (fee-anniversary year)
   idfcYtdSpend: number;
   hsbcLivePlusYtdSpend: number;
   livePlusAccelCashbackUsedThisMonth: number;
@@ -32,6 +33,9 @@ export type AppState = {
   amazonPayIciciIssueDate: string;
   hsbcLivePlusIssueDate: string;
   hsbcWelcomeClaimed: boolean; // ₹1k welcome @ ₹20k/30d already credited
+  // SBI SimplyCLICK period anchors (not calendar year)
+  sbiFeeAnniversaryDate: string; // last / next fee post date (YYYY-MM-DD); waiver year runs from day after
+  sbiOnlineYearStart: string; // start of current ONLINE voucher year (from statement reset)
   // Amazon Pay balance (idle gift-card money)
   amazonPayBalance: number;
   // Amazon Pay ICICI one-time welcome coupons already used (offer ids)
@@ -42,12 +46,16 @@ export type AppState = {
   bills: Record<string, { billAmount: number; paid: boolean }>;
   // Calendar month the monthly counters belong to (auto-resets when the month rolls over).
   monthKey: string;
-  // Calendar year for annual milestone spend counters (SBI / IDFC / HSBC Live+).
+  // Calendar year for IDFC / HSBC Live+ annual counters (SBI uses its own keys below).
   yearKey?: string;
   // Amex Plat Travel membership year (boundary 3 Dec) for eligible-spend reset.
   ptccYearKey?: string;
   // Kiwi Neon membership year (boundary 1 Apr) for cycle-spend reset.
   kiwiYearKey?: string;
+  // SBI online-voucher year key (from sbiOnlineYearStart MD).
+  sbiOnlineYearKey?: string;
+  // SBI fee-waiver year key (from sbiFeeAnniversaryDate MD).
+  sbiFeeYearKey?: string;
   // Monthly counters (legacy, kept for compat)
   monthlyTxns: {
     [yearMonth: string]: {
@@ -82,7 +90,10 @@ export const DEFAULT_STATE: AppState = {
   mrccCycleSpend: 33885,
   bobYtdSpend: 0,
   bobCycleSpend5x: 0,
-  sbiYtdSpend: 91614,
+  // From SBI Jul-2026 ONLINE SPENDS SUMMARY (voucher year starting ~22 May 2026).
+  sbiYtdSpend: 32762,
+  // Eligible retail since day after Oct-2025 fee (excl. tax/rent/fees); ~₹616 short of ₹1L waiver.
+  sbiFeeWaiverSpend: 99384,
   idfcYtdSpend: 508923,
   hsbcLivePlusYtdSpend: 0,
   livePlusAccelCashbackUsedThisMonth: 0,
@@ -98,6 +109,8 @@ export const DEFAULT_STATE: AppState = {
   amazonPayIciciIssueDate: "2026-05-25",
   hsbcLivePlusIssueDate: "2026-07-20",
   hsbcWelcomeClaimed: false,
+  sbiFeeAnniversaryDate: "2025-10-21",
+  sbiOnlineYearStart: "2026-05-22",
   amazonPayBalance: 3338,
   amazonWelcomeClaimed: [],
   giftCardRateOverrides: {},
@@ -106,6 +119,8 @@ export const DEFAULT_STATE: AppState = {
   yearKey: "2026",
   ptccYearKey: "2025",
   kiwiYearKey: "2026",
+  sbiOnlineYearKey: "2026",
+  sbiFeeYearKey: "2025",
   monthlyTxns: {},
   amexMrPooled: 127710,
   indigoBluChips: 14172,
@@ -150,6 +165,16 @@ function kiwiNeonYearKey(d = new Date()): string {
   const y = d.getFullYear();
   return String(d >= new Date(y, 3, 1) ? y : y - 1);
 }
+/** Period key from an anniversary MM-DD (or full ISO date). Year = start year of current period. */
+function anniversaryYearKey(anniversaryIso: string, d = new Date()): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(anniversaryIso.trim());
+  if (!m) return calYearKey(d);
+  const mm = Number(m[2]);
+  const dd = Number(m[3]);
+  const y = d.getFullYear();
+  const boundary = new Date(y, mm - 1, dd);
+  return String(d >= boundary ? y : y - 1);
+}
 
 export function loadState(): AppState {
   if (!isClient()) return DEFAULT_STATE;
@@ -168,7 +193,29 @@ export function loadState(): AppState {
   const yk = calYearKey();
   const pk = ptYearKey();
   const kk = kiwiNeonYearKey();
+  const sbiOnlineStart = st.sbiOnlineYearStart || DEFAULT_STATE.sbiOnlineYearStart;
+  const sbiFeeAnn = st.sbiFeeAnniversaryDate || DEFAULT_STATE.sbiFeeAnniversaryDate;
+  // Fee-waiver year starts the day AFTER the fee posts (spend after 21 Oct counts to next waiver).
+  const feeBoundary = (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(sbiFeeAnn.trim());
+    if (!m) return sbiFeeAnn;
+    const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1);
+    const mm = String(dt.getMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getDate()).padStart(2, "0");
+    return `${dt.getFullYear()}-${mm}-${dd}`;
+  })();
+  const sok = anniversaryYearKey(sbiOnlineStart);
+  const sfk = anniversaryYearKey(feeBoundary);
   let changed = false;
+
+  // One-time migrate old calendar-year SBI default when statement fields first merge.
+  if (st.sbiYtdSpend === 91614) {
+    st.sbiYtdSpend = DEFAULT_STATE.sbiYtdSpend;
+    st.sbiFeeWaiverSpend = DEFAULT_STATE.sbiFeeWaiverSpend;
+    st.sbiFeeAnniversaryDate = DEFAULT_STATE.sbiFeeAnniversaryDate;
+    st.sbiOnlineYearStart = DEFAULT_STATE.sbiOnlineYearStart;
+    changed = true;
+  }
 
   // MONTHLY (calendar month) — only reset calendar-month fields.
   // Do NOT reset mrccCycleSpend here: that tracks fee-waiver annual progress (₹90k/₹1.5L).
@@ -184,11 +231,10 @@ export function loadState(): AppState {
     st.livePlusAccelCashbackUsedThisMonth = 0;
     changed = true;
   }
-  // ANNUAL — calendar year (SBI / IDFC / HSBC Live+)
+  // ANNUAL — calendar year (IDFC / HSBC Live+ only; SBI has its own anniversary keys)
   if (!st.yearKey) { st.yearKey = yk; changed = true; }
   else if (st.yearKey !== yk) {
     st.yearKey = yk;
-    st.sbiYtdSpend = 0;
     st.idfcYtdSpend = 0;
     st.hsbcLivePlusYtdSpend = 0;
     changed = true;
@@ -209,6 +255,20 @@ export function loadState(): AppState {
     st.kiwiNeonCycleSpend = 0;
     changed = true;
   }
+  // SBI online voucher year (~22 May from statement reset May→Jun 2026)
+  if (!st.sbiOnlineYearKey) { st.sbiOnlineYearKey = sok; changed = true; }
+  else if (st.sbiOnlineYearKey !== sok) {
+    st.sbiOnlineYearKey = sok;
+    st.sbiYtdSpend = 0;
+    changed = true;
+  }
+  // SBI fee-waiver year (day after fee anniversary, currently ~22 Oct)
+  if (!st.sbiFeeYearKey) { st.sbiFeeYearKey = sfk; changed = true; }
+  else if (st.sbiFeeYearKey !== sfk) {
+    st.sbiFeeYearKey = sfk;
+    st.sbiFeeWaiverSpend = 0;
+    changed = true;
+  }
 
   if (changed) localStorage.setItem(KEYS.STATE, JSON.stringify(st));
   return st;
@@ -224,6 +284,16 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
   const yk = calYearKey();
   const pk = ptYearKey();
   const kk = kiwiNeonYearKey();
+  const sbiOnlineStart = st.sbiOnlineYearStart || DEFAULT_STATE.sbiOnlineYearStart;
+  const sbiFeeAnn = st.sbiFeeAnniversaryDate || DEFAULT_STATE.sbiFeeAnniversaryDate;
+  const feeBoundaryMd = (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(sbiFeeAnn.trim());
+    if (!m) return sbiFeeAnn;
+    const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  })();
+  const sok = anniversaryYearKey(sbiOnlineStart);
+  const sfk = anniversaryYearKey(feeBoundaryMd);
   const next: AppState = {
     ...st,
     ptccEligibleSpend: 0,
@@ -233,6 +303,7 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
     bobYtdSpend: 0,
     bobCycleSpend5x: 0,
     sbiYtdSpend: 0,
+    sbiFeeWaiverSpend: 0,
     idfcYtdSpend: 0,
     hsbcLivePlusYtdSpend: 0,
     livePlusAccelCashbackUsedThisMonth: 0,
@@ -249,11 +320,13 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
     const inYear = t.date.slice(0, 4) === yk;
     const inPt = ptYearKey(d) === pk;
     const inKiwi = kiwiNeonYearKey(d) === kk;
+    const inSbiOnline = anniversaryYearKey(sbiOnlineStart, d) === sok;
+    const inSbiFee = anniversaryYearKey(feeBoundaryMd, d) === sfk;
     const amt = t.amount;
     switch (t.cardId) {
       case "amex_plat_travel": if (inPt) next.ptccEligibleSpend += amt; break;
       case "amex_mrcc":
-        // Fee-waiver progress = calendar year; monthly milestones = this calendar month.
+        // Fee-waiver progress = membership / renewal year (manual till-date preferred; log uses calendar as approx).
         if (inYear) next.mrccCycleSpend += amt;
         if (inMonth) {
           next.mrccThisCycleAmount += amt;
@@ -265,7 +338,10 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
         // 5× headroom is monthly; approximate with all BOB spends this month.
         if (inMonth) next.bobCycleSpend5x += amt;
         break;
-      case "sbi_simplyclick": if (inYear) next.sbiYtdSpend += amt; break;
+      case "sbi_simplyclick":
+        if (inSbiOnline) next.sbiYtdSpend += amt;
+        if (inSbiFee) next.sbiFeeWaiverSpend += amt;
+        break;
       case "idfc_indigo": if (inYear) next.idfcYtdSpend += amt; break;
       case "hsbc_live_plus": {
         if (inYear) next.hsbcLivePlusYtdSpend += amt;

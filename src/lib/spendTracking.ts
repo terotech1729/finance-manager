@@ -17,7 +17,10 @@ export function applyCardSpend(next: AppState, cardId: string, amt: number, rewa
     next.bobCycleSpend5x += amt;
     if (next.bobYtdSpend >= 50000) next.bobWelcomeUnlocked = true;
   }
-  if (cardId === "sbi_simplyclick") next.sbiYtdSpend += amt;
+  if (cardId === "sbi_simplyclick") {
+    next.sbiYtdSpend += amt;
+    next.sbiFeeWaiverSpend += amt;
+  }
   if (cardId === "idfc_indigo") next.idfcYtdSpend += amt;
   if (cardId === "hsbc_live_plus") {
     next.hsbcLivePlusYtdSpend += amt;
@@ -54,7 +57,10 @@ export function reverseCardSpend(next: AppState, cardId: string, amt: number, re
     next.bobCycleSpend5x = clamp0(next.bobCycleSpend5x - amt);
     next.bobWelcomeUnlocked = next.bobYtdSpend >= 50000;
   }
-  if (cardId === "sbi_simplyclick") next.sbiYtdSpend = clamp0(next.sbiYtdSpend - amt);
+  if (cardId === "sbi_simplyclick") {
+    next.sbiYtdSpend = clamp0(next.sbiYtdSpend - amt);
+    next.sbiFeeWaiverSpend = clamp0(next.sbiFeeWaiverSpend - amt);
+  }
   if (cardId === "idfc_indigo") next.idfcYtdSpend = clamp0(next.idfcYtdSpend - amt);
   if (cardId === "hsbc_live_plus") {
     next.hsbcLivePlusYtdSpend = clamp0(next.hsbcLivePlusYtdSpend - amt);
