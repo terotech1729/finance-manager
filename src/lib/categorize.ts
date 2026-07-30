@@ -82,7 +82,7 @@ function detectTravelIntent(t: string): TravelIntent | null {
   }
   if (hasToken(t, "bus") || hasToken(t, "redbus") || /\babhibus\b/.test(t)) return "bus";
   if (hasToken(t, "train") || hasToken(t, "irctc")) return "train";
-  if (hasToken(t, "hotel") || /\btaj\b|\bmarriott\b|\bhyatt\b|\boberoi\b|\bhilton\b|\bitc\b|\bleela\b|\bvivanta\b|\bradisson\b|\bnovotel\b|\bibis\b|\bseleqtion\b/.test(t)) {
+  if (hasToken(t, "hotel") || /\btaj\b|\bmarriott\b|\bhyatt\b|\boberoi\b|\bhilton\b|\bitc\b|\bleela\b|\bvivanta\b|\bradisson\b|\bnovotel\b|\bibis\b|\bseleqtion\b|\bihg\b|intercontinental|holiday\s*inn|six\s*senses/.test(t)) {
     return "hotel";
   }
   return null;
@@ -245,7 +245,7 @@ export function detectCategory(merchant: string): CategoryDetection {
   const intent = detectTravelIntent(t);
 
   // Luxury hotel brands → direct (any word order: "taj hotel", "hotel taj mumbai")
-  if (/\btaj\b|\bmarriott\b|\bhyatt\b|\boberoi\b|\bhilton\b|\bitc\b|\bleela\b|\bvivanta\b|\bradisson\b|\bnovotel\b|\bibis\b|\bseleqtion\b/.test(t)) {
+  if (/\btaj\b|\bmarriott\b|\bhyatt\b|\boberoi\b|\bhilton\b|\bitc\b|\bleela\b|\bvivanta\b|\bradisson\b|\bnovotel\b|\bibis\b|\bseleqtion\b|\bihg\b|intercontinental|holiday\s*inn|six\s*senses/.test(t)) {
     return { category: "hotel direct", prettyLabel: "Hotel (direct)", channel: "online", confidence: "high" };
   }
 
