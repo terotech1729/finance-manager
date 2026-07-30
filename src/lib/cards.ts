@@ -175,13 +175,13 @@ export const CARDS: readonly Card[] = [
     feeWaivable: true,
     feeWaiverAt: 200000,
     forexPct: 1.99,
-    loungeRule: "2 domestic/yr + 1 international/yr (from Sep 2026)",
+    loungeRule: "2 domestic/yr + 1 international/yr",
     status: "active",
     pointValue: 1.0,
     baseRatePct: 1.5,
     bestRatePct: 10.0,
     statementDay: 1,
-    notes: "ACTIVE — Visa Infinite (from 26 Jul 2026). 10% statement cashback (auto ~45 days) on dining, food delivery, groceries, utilities & shopping; Amazon/Flipkart/Myntra = 1.5% only. Shared accel cap ₹1,200/mo (~₹12k spend). Hospital/local transport = 0%. Welcome: ₹1k CB @ ₹20k/30d + app login. Perks: Times Prime, District BOGO/dining, 2 domestic lounges/yr, 1 intl lounge/yr (from Sep 2026), ~₹250/qtr contactless fuel CB (≥₹10k), Visa Infinite concierge. Forex 1.99%. Fee ₹999+GST, waived at ₹2L/yr.",
+    notes: "Visa Infinite. 10% statement CB (auto ~45d) on dining, food delivery, grocery, shopping & utilities — shared cap ₹1,200/mo; Amazon/Flipkart = 1.5% only; Myntra 10% promo till 31 Oct 2026 then 1.5%. Hospital/local transport = 0%. Welcome: ₹1k CB @ ₹25k/30d + app login; activate ≥₹300 → ₹750 Amazon/Zomato/Swiggy voucher; online+VKYC → ₹250 Amazon. Live+ Reserve (DineWithTimesPrime) from 1 Aug 2026. Perks: District + BookMyShow BOGO, District Play sports, Sephora 10%, Times Prime lifestyle, 2 domestic + 1 intl lounge/yr, ₹250/qtr contactless fuel CB (≥₹10k spend), ITC/Avis/IHG/Agoda/Meet&Greet via Infinite. Forex 1.99%. Fee ₹999+GST, waived at ₹2L/yr.",
   },
 ];
 
@@ -200,7 +200,7 @@ export const ANNUAL_MILESTONES: readonly AnnualMilestone[] = [
   { cardId: "idfc_indigo", threshold: 1200000, reward: "5,000 BluChips voucher", rewardValueInr: 650, hit: false },
   { cardId: "bob_eterna", threshold: 50000, reward: "10,000 RP (welcome, 60-day)", rewardValueInr: 2500, hit: false },
   { cardId: "bob_eterna", threshold: 500000, reward: "20,000 RP (annual)", rewardValueInr: 5000, hit: false },
-  { cardId: "hsbc_live_plus", threshold: 20000, reward: "₹1,000 welcome cashback (30-day + app login)", rewardValueInr: 1000, hit: false },
+  { cardId: "hsbc_live_plus", threshold: 25000, reward: "₹1,000 welcome cashback (₹25k/30d + app login)", rewardValueInr: 1000, hit: false },
   { cardId: "hsbc_live_plus", threshold: 200000, reward: "Annual fee waived (₹999+GST)", rewardValueInr: 1179, hit: false },
 ];
 

@@ -20,7 +20,7 @@ const PERIOD_NOTE: Record<string, string> = {
   sbi_simplyclick: "Bar = ONLINE vouchers (year from ~22 May). Fee waiver is separate below.",
   idfc_indigo: "Tracked as calendar year (confirm on IDFC app)",
   bob_eterna: "Welcome = 60 days from issue; ₹5L annual from issuance",
-  hsbc_live_plus: "Welcome = 30 days from issue; fee waiver tracked as calendar year",
+  hsbc_live_plus: "Welcome = ₹25k in 30 days from issue; fee waiver tracked as calendar year",
   yes_kiwi: "1 Apr → 31 Mar",
 };
 

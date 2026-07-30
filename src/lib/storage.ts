@@ -32,7 +32,7 @@ export type AppState = {
   bobWelcomeUnlocked: boolean;
   amazonPayIciciIssueDate: string;
   hsbcLivePlusIssueDate: string;
-  hsbcWelcomeClaimed: boolean; // ₹1k welcome @ ₹20k/30d already credited
+  hsbcWelcomeClaimed: boolean; // ₹1k welcome @ ₹25k/30d already credited
   // SBI SimplyCLICK period anchors (not calendar year)
   sbiFeeAnniversaryDate: string; // last / next fee post date (YYYY-MM-DD); waiver year runs from day after
   sbiOnlineYearStart: string; // start of current ONLINE voucher year (from statement reset)

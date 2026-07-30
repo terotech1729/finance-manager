@@ -119,22 +119,34 @@ const SHOPWISE_NET_PCT = +(SHOPWISE_GROSS_PCT - SHOPWISE_FEE_PCT).toFixed(2); //
 const LIVE_PLUS_ACCEL_PCT = 10;
 const LIVE_PLUS_ACCEL_CAP_INR = 1200; // ≈ ₹12k eligible accelerated spend / month
 const LIVE_PLUS_BASE_PCT = 1.5;
+/** Welcome refreshed Jul 2026: ₹1k CB when app login + ₹25k spend in first 30 days. */
+const LIVE_PLUS_WELCOME_SPEND = 25000;
+/** Temporary: Live+ earns 10% on Myntra shopping until this date (then marketplace 1.5%). */
+const LIVE_PLUS_MYNTRA_PROMO_END = new Date("2026-10-31T23:59:59");
 
-/** Amazon / Flipkart / Myntra never get Live+ 10% — base 1.5% only. */
-function isLivePlusMarketplaceExcluded(merchant: string, category: string): boolean {
+function livePlusMyntraPromoActive(today?: string): boolean {
+  const d = today ? new Date(today) : new Date();
+  return Number.isFinite(d.getTime()) && d <= LIVE_PLUS_MYNTRA_PROMO_END;
+}
+
+/** Amazon / Flipkart always 1.5%; Myntra excluded after promo ends 31 Oct 2026. */
+function isLivePlusMarketplaceExcluded(merchant: string, category: string, today?: string): boolean {
   const t = `${merchant} ${category}`.toLowerCase();
-  return /\bamazon\b|\bamzn\b|flipkart|\bfkrt\b|\bmyntra\b/.test(t);
+  if (/\bamazon\b|\bamzn\b|flipkart|\bfkrt\b/.test(t)) return true;
+  if (/\bmyntra\b/.test(t)) return !livePlusMyntraPromoActive(today);
+  return false;
 }
 
 /**
  * Live+ 10% buckets (post-reval): dining, food delivery, groceries, utilities, shopping
- * (shopping excludes Amazon/Flipkart/Myntra). Returns null if only base 1.5% applies.
+ * (shopping excludes Amazon/Flipkart; Myntra allowed only during promo). Returns null if base 1.5%.
  */
-function livePlusAccelBucket(merchant: string, category: string):
+function livePlusAccelBucket(merchant: string, category: string, today?: string):
   "food" | "dining" | "grocery" | "utility" | "shopping" | null {
-  if (isLivePlusMarketplaceExcluded(merchant, category)) return null;
+  if (isLivePlusMarketplaceExcluded(merchant, category, today)) return null;
   const c = category.toLowerCase();
   const m = merchant.toLowerCase();
+  if (/\bmyntra\b/.test(`${m} ${c}`) && livePlusMyntraPromoActive(today)) return "shopping";
   if (
     m.includes("swiggy") || c === "swiggy" ||
     m.includes("zomato") || c.includes("zomato") ||
@@ -153,7 +165,7 @@ function livePlusAccelBucket(merchant: string, category: string):
   ) return "utility";
   if (
     c.includes("shopping") || c.includes("fashion") || c.includes("electronics") ||
-    c.includes("online") || c.includes("apparel")
+    c.includes("online") || c.includes("apparel") || c.includes("myntra")
   ) return "shopping";
   return null;
 }
@@ -179,7 +191,7 @@ function buildLivePlusOption(
     dining: "dining",
     grocery: "groceries",
     utility: "utilities (pay biller direct — not via Amazon)",
-    shopping: "shopping (not Amazon / Flipkart / Myntra)",
+    shopping: "shopping (not Amazon / Flipkart; Myntra 10% till 31 Oct 2026)",
   };
   const capFull = headroom < 1;
   const effPct = ((liveCash + ckInr + welcomeInr) / amt) * 100;
@@ -207,12 +219,12 @@ function buildLivePlusOption(
         ? `Accelerated cap already used — ${LIVE_PLUS_BASE_PCT}% statement cashback (auto ~45 days)`
         : `10% statement cashback (Visa Infinite) — liquid, auto-credited`,
       `Shared accel cap ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo (~₹${Math.round(used)} used this month)`,
-      "Also: Times Prime, District dining/BOGO, 2 domestic lounges/yr, 1 intl lounge/yr (from Sep 2026)",
+      "Also: Live+ Reserve dining (from 1 Aug 2026), District + BMS BOGO, 2 domestic + 1 intl lounge/yr",
       welcome?.note ?? "",
       opts?.cashkaroNote ?? "",
     ],
     cons: [
-      "Amazon / Flipkart / Myntra earn only 1.5% — use Amazon Pay ICICI for Amazon",
+      "Amazon / Flipkart earn only 1.5% — use Amazon Pay ICICI for Amazon; Myntra 10% only till 31 Oct 2026",
       bucket === "utility" ? "Pay BBPS / GPay / biller app — not Amazon bill-pay (codes as Amazon 1.5%)" : "",
       "International spends earn 0% cashback post-deval — use Scapia abroad",
       "Fee ₹999+GST waived at ₹2L/yr",
@@ -233,7 +245,7 @@ function buildLivePlusOption(
   });
 }
 
-/** Welcome: ₹1,000 cashback when HSBC app login + ₹20k spend within 30 days of issue. */
+/** Welcome: ₹1,000 cashback when HSBC app login + ₹25k spend within 30 days of issue. */
 function livePlusWelcomeBonus(input: RecommendInput, amt: number): { inr: number; note: string } | null {
   if (input.hsbcWelcomeClaimed) return null;
   const issue = input.hsbcLivePlusIssueDate;
@@ -244,16 +256,17 @@ function livePlusWelcomeBonus(input: RecommendInput, amt: number): { inr: number
   if (days < 0 || days > 30) return null;
   // Prefer spend actually logged inside the 30-day window; fall back to YTD only if unset.
   const spent = input.hsbcLivePlusWelcomeSpend ?? input.hsbcLivePlusYtdSpend ?? 0;
-  if (spent >= 20000) return null;
-  const remaining = 20000 - spent;
-  const progress = Math.min(amt, remaining) / 20000;
+  if (spent >= LIVE_PLUS_WELCOME_SPEND) return null;
+  const remaining = LIVE_PLUS_WELCOME_SPEND - spent;
+  const progress = Math.min(amt, remaining) / LIVE_PLUS_WELCOME_SPEND;
   const inrVal = 1000 * progress;
-  const completes = spent + amt >= 20000;
+  const completes = spent + amt >= LIVE_PLUS_WELCOME_SPEND;
+  const spentLabel = inr(spent + Math.min(amt, remaining));
   return {
     inr: inrVal,
     note: completes
-      ? `Completes ₹20k/30-day welcome → unlocks ₹1,000 cashback (also need HSBC app login)`
-      : `Builds welcome ₹20k/30d (${inr(spent + Math.min(amt, remaining))}/₹20k) → +${inr(inrVal)} marginal of ₹1k bonus`,
+      ? `Completes ₹25k/30-day welcome → unlocks ₹1,000 cashback (also need HSBC app login)`
+      : `Builds welcome ₹25k/30d (${spentLabel}/₹25k) → +${inr(inrVal)} marginal of ₹1k bonus`,
   };
 }
 
@@ -1564,6 +1577,35 @@ export function recommend(input: RecommendInput): RecommendationResult {
         ],
       });
     }
+    if (!oneTicket) {
+      // Live+ cinema BOGO on District + BookMyShow (issuer perk, refreshed Jul 2026).
+      const lpSavings = Math.min(amt / ticketCount, 250);
+      add({
+        cardId: "hsbc_live_plus",
+        label: platformIsBms
+          ? "HSBC Live+ BOGO — BookMyShow (2nd ticket free; also 10% off live events)"
+          : "HSBC Live+ BOGO — District or BookMyShow (2nd ticket free)",
+        effectivePct: (lpSavings / amt) * 100,
+        baseRewardInr: lpSavings,
+        worstCasePct: 0,
+        bestCasePct: (250 / Math.max(amt, 1)) * 100,
+        pros: [
+          `Buy-1-Get-1 ≈ ${inr(lpSavings)} off (capped ~₹250 — confirm in-app)`,
+          platformIsBms ? "Works on BookMyShow with Live+ (unlike BOB which is District-only)" : "District or BookMyShow both listed for Live+",
+          "Also counts toward Live+ ₹2L fee-waiver / welcome spend",
+        ],
+        cons: [
+          "Once per calendar month — confirm unused in District / BMS offer before booking",
+          "Needs 2+ tickets; T&Cs / cap may vary by theatre",
+        ],
+        rationale: "HSBC Live+ now advertises cinema BOGO on District and BookMyShow (plus 10% off BMS live events). Prefer Live+ when BOB BOGO is used or you're already on BMS.",
+        steps: [
+          platformIsBms ? "Stay on BookMyShow (or open District)" : "Open District or BookMyShow",
+          `Select ${ticketCount}+ tickets`,
+          "Pay with HSBC Live+ and apply the BOGO offer",
+        ],
+      });
+    }
     add({
       cardId: "amazon_pay_icici",
       label: "Pay via Amazon Pay (BookMyShow is an Amazon Pay partner) — 2%",
@@ -1642,8 +1684,8 @@ export function recommend(input: RecommendInput): RecommendationResult {
 
   // ============ CASHKARO-RELIABLE ONLINE MERCHANTS ============
   if (ck && ck.zone === "reliable") {
-    // Live+ 10% on eligible shopping (not Amazon/FK/Myntra) + Cashkaro
-    const lpBucket = livePlusAccelBucket(merchant, cat);
+    // Live+ 10% on eligible shopping (Amazon/FK excluded; Myntra OK till 31 Oct 2026) + Cashkaro
+    const lpBucket = livePlusAccelBucket(merchant, cat, input.today);
     if (lpBucket === "shopping" || lpBucket === "food" || lpBucket === "grocery") {
       const ckInr = amt * (ck.mid / 100) * 0.85;
       options.push(buildLivePlusOption(amt, lpBucket, input, {
@@ -1833,7 +1875,7 @@ function genericCardEval(
     case "bob_eterna":
       return { pct: 0.75, label: "BOB Eterna", reason: "5× (3.75%) only on online shopping / dining / travel / international. This spend is general → base 0.75% only (and the welcome window isn't driving it)." };
     case "hsbc_live_plus": {
-      const bucket = livePlusAccelBucket(merch, cat);
+      const bucket = livePlusAccelBucket(merch, cat, input.today);
       if (bucket) {
         return {
           pct: LIVE_PLUS_ACCEL_PCT,
@@ -1841,24 +1883,26 @@ function genericCardEval(
           reason: `10% accelerated on ${bucket} (shared ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo cap). Category rule should have ranked this already if it's the best route.`,
         };
       }
-      if (isLivePlusMarketplaceExcluded(merch, cat)) {
+      if (isLivePlusMarketplaceExcluded(merch, cat, input.today)) {
         return {
           pct: LIVE_PLUS_BASE_PCT,
           label: "HSBC Live+",
-          reason: `Amazon / Flipkart / Myntra are excluded from Live+ 10% — only ${LIVE_PLUS_BASE_PCT}% base. Prefer Amazon Pay ICICI for Amazon.`,
+          reason: livePlusMyntraPromoActive(input.today)
+            ? `Amazon / Flipkart are excluded from Live+ 10% — only ${LIVE_PLUS_BASE_PCT}% base. Prefer Amazon Pay ICICI for Amazon.`
+            : `Amazon / Flipkart / Myntra are excluded from Live+ 10% — only ${LIVE_PLUS_BASE_PCT}% base. Prefer Amazon Pay ICICI for Amazon.`,
         };
       }
       if (livePlusZeroBase(merch, cat)) {
         return {
           pct: 0,
           label: "HSBC Live+",
-          reason: "Hospital / healthcare / local transport earn 0% post-reval (not even 1.5% base). Use only if you need ₹20k/30d welcome volume.",
+          reason: "Hospital / healthcare / local transport earn 0% post-reval (not even 1.5% base). Use only if you need ₹25k/30d welcome volume.",
         };
       }
       return {
         pct: LIVE_PLUS_BASE_PCT,
         label: "HSBC Live+",
-        reason: `Not an accelerated category here → ${LIVE_PLUS_BASE_PCT}% base. Live+ 10% is for dining / food / grocery / utilities / non-marketplace shopping.`,
+        reason: `Not an accelerated category here → ${LIVE_PLUS_BASE_PCT}% base. Live+ 10% is for dining / food / grocery / utilities / shopping (Myntra promo till 31 Oct 2026).`,
       };
     }
     default:
@@ -2098,7 +2142,7 @@ function finalize(
     }
   }
 
-  // ---- Universal HSBC Live+ welcome push (30-day ₹20K → ₹1,000) ----
+  // ---- Universal HSBC Live+ welcome push (30-day ₹25K → ₹1,000) ----
   // Same pattern as BOB: every eligible spend during the window drives the welcome, including
   // categories that only earn 1.5% (or 0% hospital/transport) base.
   {
@@ -2111,7 +2155,7 @@ function finalize(
         cardId: "hsbc_live_plus",
         label: zero
           ? "HSBC Live+ (welcome push — 0% base on healthcare/transport)"
-          : "HSBC Live+ (welcome push to ₹20k/30d)",
+          : "HSBC Live+ (welcome push to ₹25k/30d)",
         effectivePct: ((baseInr + lpW.inr) / amt) * 100,
         baseRewardInr: baseInr,
         bonusRewardInr: lpW.inr,
@@ -2120,8 +2164,8 @@ function finalize(
           zero ? "This MCC earns 0% base post-reval — value is welcome only" : `Base only ${LIVE_PLUS_BASE_PCT}% outside accelerated cats`,
           "Prefer Live+ 10% categories (dining/food/grocery/utilities/shopping) when available",
         ],
-        rationale: `You're inside the Live+ ₹20k/30-day welcome window — ${lpW.note}`,
-        steps: ["Pay with HSBC Live+", "Log into HSBC India app if you haven't", `Builds toward ₹20k welcome (₹1,000 cashback)`],
+        rationale: `You're inside the Live+ ₹25k/30-day welcome window — ${lpW.note}`,
+        steps: ["Pay with HSBC Live+", "Log into HSBC India app if you haven't", `Builds toward ₹25k welcome (₹1,000 cashback)`],
       }));
     }
   }

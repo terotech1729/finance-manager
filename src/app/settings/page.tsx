@@ -27,7 +27,7 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "amazonPayBalance", label: "Amazon Pay balance (₹, idle gift-card money)", group: "Amazon Pay & welcome windows", numeric: true },
   { key: "bobEternaIssueDate", label: "BOB Eterna issue date (YYYY-MM-DD, drives 60-day welcome)", group: "Amazon Pay & welcome windows", numeric: false },
   { key: "amazonPayIciciIssueDate", label: "Amazon Pay ICICI issue date (YYYY-MM-DD)", group: "Amazon Pay & welcome windows", numeric: false },
-  { key: "hsbcLivePlusIssueDate", label: "HSBC Live+ issue date (YYYY-MM-DD, drives ₹20k/30d welcome)", group: "Amazon Pay & welcome windows", numeric: false },
+  { key: "hsbcLivePlusIssueDate", label: "HSBC Live+ issue date (YYYY-MM-DD, drives ₹25k/30d welcome)", group: "Amazon Pay & welcome windows", numeric: false },
   { key: "sbiFeeAnniversaryDate", label: "SBI SimplyCLICK — annual fee date (YYYY-MM-DD)", group: "Milestone period dates", numeric: false },
   { key: "sbiOnlineYearStart", label: "SBI SimplyCLICK — online voucher year start (YYYY-MM-DD)", group: "Milestone period dates", numeric: false },
   { key: "amexMrPooled", label: "Amex MR — pooled balance", group: "Reward balances", numeric: true },

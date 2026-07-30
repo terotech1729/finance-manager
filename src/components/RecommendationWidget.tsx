@@ -120,7 +120,7 @@ export function RecommendationWidget({ onLogged }: Props) {
       bobWelcomeUnlocked: fresh.bobWelcomeUnlocked,
       hsbcLivePlusIssueDate: fresh.hsbcLivePlusIssueDate,
       hsbcWelcomeClaimed: fresh.hsbcWelcomeClaimed,
-      // Welcome progress = edited Live+ YTD (set on Milestones to your real ₹20k-window spend).
+      // Welcome progress = edited Live+ YTD (set on Milestones to your real ₹25k-window spend).
       hsbcLivePlusWelcomeSpend: fresh.hsbcLivePlusYtdSpend,
       today: localDateToISO(date),
     };

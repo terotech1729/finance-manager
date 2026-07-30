@@ -54,17 +54,17 @@ const CARD_TIPS: Record<string, { useFor: string[]; dontUseFor: string[]; primar
     dontUseFor: ["Offline POS (0.25% wasted)", "Outside the 10× partner list", "Anything beyond 10K RP/month per category cap"],
   },
   hsbc_live_plus: {
-    primaryRole: "Primary 10% cashback card — Swiggy/dining/grocery/utilities + non-marketplace shopping",
+    primaryRole: "Primary 10% cashback card — Swiggy/dining/grocery/utilities + shopping (Myntra promo till Oct 2026)",
     useFor: [
-      "Swiggy / Zomato / dining (10%, shared ₹1,200/mo cap)",
+      "Swiggy / Zomato / dining (10%, shared ₹1,200/mo cap) + Live+ Reserve fine dining from 1 Aug 2026",
       "Utilities via BBPS/GPay/biller (10% — not via Amazon)",
       "Groceries (Instamart/Blinkit/Zepto)",
-      "Other shopping except Amazon/Flipkart/Myntra",
-      "Hit ₹20k in first 30 days + HSBC app login for ₹1k welcome",
-      "₹2L/yr for fee waiver; 2 domestic lounges/yr + 1 intl (from Sep 2026); Times Prime / District",
+      "Shopping excl. Amazon/Flipkart; Myntra at 10% until 31 Oct 2026",
+      "Hit ₹25k in first 30 days + HSBC app login for ₹1k welcome; activate ≥₹300 for ₹750 voucher",
+      "District + BookMyShow cinema BOGO; ₹2L/yr fee waiver; 2 domestic + 1 intl lounge/yr",
     ],
     dontUseFor: [
-      "Amazon / Flipkart / Myntra (only 1.5% — use Amazon Pay ICICI for Amazon)",
+      "Amazon / Flipkart (only 1.5% — use Amazon Pay ICICI for Amazon)",
       "Amazon bill-pay for utilities (codes as Amazon, not 10%)",
       "Hospital / healthcare / local transport (0% post-reval — welcome volume only)",
       "International (0% cashback + forex — use Scapia)",
