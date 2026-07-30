@@ -2,7 +2,13 @@ import { CARDS, getCardById, ANNUAL_MILESTONES } from "./cards";
 import { findCashkaro } from "./cashkaro";
 import { findGiftCardDeals, findWelcomeOffer } from "./stacking";
 import { findRedemption } from "./redemptions";
+import { VISA_TIER_GUIDES } from "./visaBenefits";
 import type { Card, RecommendationResult, RouteOption } from "./types";
+
+function visaInfiniteOffer(id: string): { title: string; link?: string; howToClaim?: string } | null {
+  const perk = VISA_TIER_GUIDES.find((g) => g.tier === "infinite")?.perks.find((p) => p.id === id);
+  return perk ? { title: perk.title, link: perk.link, howToClaim: perk.howToClaim } : null;
+}
 
 /**
  * How liquid/usable a route's reward is:
@@ -430,7 +436,7 @@ type TravelKind = "hotel" | "flight" | "bus" | "train";
 
 function travelKindOf(cat: string, merchant: string): TravelKind | null {
   const t = `${cat} ${merchant}`.toLowerCase();
-  if (/amazon travel hotel|cleartrip hotels|agoda|booking\.com|makemytrip hotels|hotel direct|hotel booking|\bhotel\b/.test(t) && !/flight/.test(t)) {
+  if (/amazon travel hotel|cleartrip hotels|agoda|booking\.com|makemytrip hotels|hotel direct|hotel booking|\bhotel\b|ihg|intercontinental|holiday\s*inn|six\s*senses|\bitc\b/.test(t) && !/flight/.test(t)) {
     return "hotel";
   }
   if (/indigo|cleartrip flights|makemytrip flights|flight booking|amazon travel flight|airline|\bflight\b|air india|spicejet|akasa|vistara/.test(t)) {
@@ -453,6 +459,293 @@ function amazonTravelCardPct(kind: TravelKind, prime: boolean): number {
 }
 
 type AddFn = (o: Partial<RouteOption> & { cardId: string; label: string; effectivePct: number }) => void;
+
+/** Prefer BOB for travel MCC earn; Live+ hotel/flight is only 1.5% (0% abroad). */
+function infinitePayCard(input: RecommendInput, travelMcc: boolean): {
+  cardId: "bob_eterna" | "hsbc_live_plus";
+  earnPct: number;
+  earnNote: string;
+} {
+  const bobHeadroom = Math.max(0, 33000 - (input.bobCycleSpend5x ?? 0));
+  const bob5xOk = travelMcc && bobHeadroom >= 1000;
+  if (bob5xOk) {
+    return { cardId: "bob_eterna", earnPct: 3.75, earnNote: "BOB 5× travel MCC (3.75%) — redeem RP later @ ₹0.25" };
+  }
+  if (travelMcc) {
+    return { cardId: "bob_eterna", earnPct: 0.75, earnNote: "BOB base 0.75% (5× headroom low) — still Infinite for Visa portal" };
+  }
+  return { cardId: "hsbc_live_plus", earnPct: 1.5, earnNote: "Live+ 1.5% base (Visa Infinite portal)" };
+}
+
+/**
+ * Visa Infinite portal discounts from HSBC Live+ Know-more offers.
+ * Fare/checkout discounts (not Live+ 10% cashback) — open Visa offer → Redeem Now.
+ */
+function addVisaInfiniteBenefitRoutes(
+  kind: TravelKind | "dining" | "shopping" | "car" | "spa" | "sports",
+  input: RecommendInput,
+  amt: number,
+  add: AddFn,
+  merchCat: string
+): void {
+  const t = merchCat.toLowerCase();
+  const payTravel = infinitePayCard(input, kind === "hotel" || kind === "flight" || kind === "car");
+
+  if (kind === "hotel" || kind === "flight") {
+    const offer = visaInfiniteOffer("inf-agoda");
+    const discPct = 7;
+    const discInr = amt * (discPct / 100);
+    const earnInr = amt * (payTravel.earnPct / 100);
+    add({
+      cardId: payTravel.cardId,
+      label: `Visa Infinite → Agoda ${kind} (~${discPct}% portal) + ${payTravel.cardId === "bob_eterna" ? "BOB" : "Live+"}`,
+      effectivePct: ((discInr + earnInr) / amt) * 100,
+      baseRewardInr: earnInr,
+      bonusRewardInr: discInr,
+      worstCasePct: payTravel.earnPct,
+      bestCasePct: discPct + payTravel.earnPct,
+      pros: [
+        `Visa Infinite Agoda portal discount up to ~${discPct}% (hotels/flights/activities)`,
+        payTravel.earnNote,
+        "Same Infinite plastic: Live+ or BOB Eterna",
+      ],
+      cons: [
+        "Must open Visa Agoda offer → Redeem Now (not plain Agoda app)",
+        "Usually does NOT stack with Cashkaro Agoda — pick portal OR Cashkaro, not both",
+        "Compare all-in fare vs Cashkaro Agoda 7% + BOB / Amazon 5%",
+      ],
+      rationale: `Visa Infinite × Agoda portal (~${discPct}% off) + card earn. Alternative to Cashkaro→Agoda when the Visa rate wins or Cashkaro tracking fails.`,
+      steps: [
+        offer?.link ? `Open ${offer.link}` : "Open Network perks → Agoda Visa offer",
+        "Tap Redeem Now → continue on Agoda",
+        `Book ${kind}`,
+        `Pay with ${payTravel.cardId === "bob_eterna" ? "BOB Eterna" : "HSBC Live+"} (Infinite)`,
+      ],
+    });
+  }
+
+  if (kind === "hotel") {
+    const isIhg = /ihg|intercontinental|holiday\s*inn|six\s*senses|crowne\s*plaza|kimpton|voco/.test(t);
+    const isItc = /\bitc\b/.test(t);
+    {
+      const offer = visaInfiniteOffer("inf-ihg");
+      const discPct = 20;
+      const discInr = amt * (discPct / 100);
+      const earnInr = amt * (payTravel.earnPct / 100);
+      add({
+        cardId: payTravel.cardId,
+        label: `Visa Infinite → IHG hotels (~${discPct}% flexible rates) + ${payTravel.cardId === "bob_eterna" ? "BOB" : "Live+"}`,
+        effectivePct: ((discInr + earnInr) / amt) * 100,
+        baseRewardInr: earnInr,
+        bonusRewardInr: discInr,
+        worstCasePct: payTravel.earnPct,
+        bestCasePct: discPct + payTravel.earnPct,
+        feasible: isIhg || !/(agoda|makemytrip|cleartrip|booking|amazon|marriott|hyatt|hilton|taj|oberai)/.test(t),
+        feasibilityNote: isIhg
+          ? undefined
+          : "Only if the stay is at a participating IHG property (InterContinental / Holiday Inn / Six Senses / etc.)",
+        pros: [
+          "Visa Infinite IHG portal — ~20% on flexible rates at participating hotels",
+          payTravel.earnNote,
+        ],
+        cons: [
+          "Must book via Visa IHG offer → Redeem Now",
+          "Flexible-rate base can still beat prepaid OTAs — compare all-in",
+        ],
+        rationale: "IHG via Visa Infinite portal is often the best route for InterContinental / Holiday Inn / Six Senses when the property participates.",
+        steps: [
+          offer?.link ? `Open ${offer.link}` : "Network perks → IHG",
+          "Redeem Now → book on IHG",
+          `Pay with ${payTravel.cardId === "bob_eterna" ? "BOB Eterna" : "HSBC Live+"}`,
+        ],
+      });
+    }
+    {
+      const offer = visaInfiniteOffer("inf-itc");
+      const discPct = 25;
+      const discInr = amt * (discPct / 100);
+      const earnInr = amt * (payTravel.earnPct / 100);
+      add({
+        cardId: payTravel.cardId,
+        label: `Visa Infinite → ITC Hotels (3rd night free / 50% off 2nd) + ${payTravel.cardId === "bob_eterna" ? "BOB" : "Live+"}`,
+        effectivePct: ((discInr + earnInr) / amt) * 100,
+        baseRewardInr: earnInr,
+        bonusRewardInr: discInr,
+        worstCasePct: payTravel.earnPct,
+        bestCasePct: 33 + payTravel.earnPct,
+        feasible: isItc || !/(agoda|makemytrip|cleartrip|booking|amazon|marriott|hyatt|hilton|taj|ihg|holiday)/.test(t),
+        feasibilityNote: isItc ? undefined : "Only for participating ITC Hotels stays — book via Visa ITC offer",
+        pros: [
+          "Complimentary 3rd night (2 paid) or 50% off 2nd night — modelled ~25% of stay value",
+          payTravel.earnNote,
+          "Redeem online on Visa ITC offer page",
+        ],
+        cons: [
+          "Must open Visa ITC offer → Redeem Now (online)",
+          "Participating hotels / stay length T&Cs apply — verify before booking",
+        ],
+        rationale: "ITC via Visa Infinite portal often beats OTA % when the free-night / 2nd-night deal applies.",
+        steps: [
+          offer?.link ? `Open ${offer.link}` : "Network perks → ITC Hotels",
+          "Redeem Now → complete ITC booking online",
+          `Pay with ${payTravel.cardId === "bob_eterna" ? "BOB Eterna" : "HSBC Live+"}`,
+        ],
+      });
+    }
+  }
+
+  if (kind === "car" || /avis|\bcar\s*rental\b/.test(t)) {
+    const offer = visaInfiniteOffer("inf-avis");
+    const discPct = 35;
+    const discInr = amt * (discPct / 100);
+    const earnInr = amt * (payTravel.earnPct / 100);
+    add({
+      cardId: payTravel.cardId,
+      label: `Visa Infinite → Avis (up to ${discPct}% + President’s Club)`,
+      effectivePct: ((discInr + earnInr) / amt) * 100,
+      baseRewardInr: earnInr,
+      bonusRewardInr: discInr,
+      worstCasePct: payTravel.earnPct,
+      bestCasePct: discPct + payTravel.earnPct,
+      pros: ["Up to 35% off standard Avis rates", "Complimentary Avis President’s Club", payTravel.earnNote],
+      cons: ["Must book via Visa Avis offer → Redeem Now", "Confirm discount % on the live offer"],
+      rationale: "Avis is a Visa Infinite portal play — large % off dwarfs card earn.",
+      steps: [
+        offer?.link ? `Open ${offer.link}` : "Network perks → Avis",
+        "Redeem Now → book Avis",
+        `Pay with ${payTravel.cardId === "bob_eterna" ? "BOB Eterna" : "HSBC Live+"}`,
+      ],
+    });
+  }
+
+  if (kind === "dining") {
+    const reserve = visaInfiniteOffer("inf-liveplus-reserve");
+    add({
+      cardId: "hsbc_live_plus",
+      label: "Live+ Reserve (DineWithTimesPrime) + Live+ 10% dining",
+      effectivePct: 10,
+      pros: [
+        "Curated fine dining from 1 Aug 2026 (chef menus + comps)",
+        "Still earns Live+ 10% dining toward ₹1,200/mo cap",
+      ],
+      cons: ["Live+ only — not BOB", "Restaurant list / comps are T&C bound"],
+      rationale: "For premium dining, book via Live+ Reserve then pay Live+ for 10% cashback.",
+      steps: [
+        reserve?.link ? `Open ${reserve.link}` : "Open dinewithtimesprime.com/hsbcliveplus",
+        "Book participating restaurant",
+        "Pay with HSBC Live+",
+      ],
+    });
+    const dine = visaInfiniteOffer("inf-dine-visa");
+    add({
+      cardId: "hsbc_live_plus",
+      label: "Visa Infinite Premium Dining (Dine with Visa) + Live+ 10%",
+      effectivePct: 10,
+      pros: ["Visa exclusive dining program", "Live+ 10% dining cashback"],
+      cons: ["Must use Visa dining offer flow", "Shared ₹1,200/mo 10% cap"],
+      rationale: "Dine with Visa portal + Live+ 10% when the restaurant is on the exclusive list.",
+      steps: [
+        dine?.link ? `Open ${dine.link}` : "Network perks → Dine with Visa",
+        "Redeem / book",
+        "Pay with HSBC Live+",
+      ],
+    });
+  }
+
+  if (kind === "shopping" || /sephora|ajio/.test(t)) {
+    if (/sephora/.test(t) || kind === "shopping") {
+      const offer = visaInfiniteOffer("inf-sephora");
+      const discPct = 10;
+      const discInr = amt * (discPct / 100);
+      const used = input.livePlusAccelCashbackUsedThisMonth ?? 0;
+      const headroom = Math.max(0, 1200 - used);
+      const liveCash = Math.min(amt * 0.1, headroom);
+      add({
+        cardId: "hsbc_live_plus",
+        label: /sephora/.test(t)
+          ? "Visa Infinite → Sephora (10% portal) + Live+ shopping"
+          : "Visa Infinite → Sephora (10% off online) — if shopping Sephora",
+        effectivePct: ((discInr + liveCash) / amt) * 100,
+        baseRewardInr: liveCash,
+        bonusRewardInr: discInr,
+        feasible: /sephora/.test(t),
+        feasibilityNote: /sephora/.test(t) ? undefined : "Only when buying at Sephora online",
+        pros: ["Visa Infinite Sephora 10% portal discount", "Live+ may also earn shopping 10% (shared monthly cap)"],
+        cons: ["Open Visa Sephora offer → Redeem Now", "Don't double-count if portal price already includes the 10%"],
+        rationale: "Sephora: Visa portal 10% off + Live+ shopping earn when eligible.",
+        steps: [
+          offer?.link ? `Open ${offer.link}` : "Network perks → Sephora",
+          "Redeem Now → shop Sephora",
+          "Pay with HSBC Live+",
+        ],
+      });
+    }
+    if (/ajio/.test(t)) {
+      const offer = visaInfiniteOffer("inf-ajio-luxe");
+      const discInr = Math.min(amt * 0.08, 4500);
+      const need = amt >= 10000;
+      add({
+        cardId: "hsbc_live_plus",
+        label: need
+          ? "Visa Infinite → Ajio Luxe (8% up to ₹4,500) + Live+"
+          : "Visa Infinite → Ajio Luxe (needs ≥₹10k for up to ₹4,500 off)",
+        effectivePct: need ? ((discInr + amt * 0.015) / amt) * 100 : 1.5,
+        baseRewardInr: amt * 0.015,
+        bonusRewardInr: need ? discInr : 0,
+        feasible: need,
+        feasibilityNote: need ? undefined : "Spend ≥₹10,000 in one booking to unlock up to ₹4,500 off",
+        pros: ["Instant discount up to ₹4,500 at ₹10k+", "Pay Infinite (Live+ / BOB)"],
+        cons: ["Ajio Luxe via Visa offer only", "Confirm live T&Cs"],
+        rationale: "Ajio Luxe Visa Infinite portal — strong when basket ≥₹10k.",
+        steps: [
+          offer?.link ? `Open ${offer.link}` : "Network perks → Ajio Luxe",
+          "Redeem Now → shop Ajio Luxe ≥₹10k",
+          "Pay with HSBC Live+ or BOB Eterna",
+        ],
+      });
+    }
+  }
+
+  if (kind === "spa" || /tattva/.test(t)) {
+    const offer = visaInfiniteOffer("inf-tattva");
+    const discPct = 20;
+    add({
+      cardId: "hsbc_live_plus",
+      label: `Visa Infinite → Tattva Spa (${discPct}% off select massages)`,
+      effectivePct: discPct + 1.5,
+      baseRewardInr: amt * 0.015,
+      bonusRewardInr: amt * (discPct / 100),
+      pros: ["Flat 20% off deep tissue / Abhyanga / Swedish"],
+      cons: ["Visa Tattva offer → Redeem Now"],
+      rationale: "Tattva Spa is a Visa Infinite portal discount.",
+      steps: [
+        offer?.link ? `Open ${offer.link}` : "Network perks → Tattva Spa",
+        "Redeem / book",
+        "Pay with HSBC Live+ or BOB Eterna",
+      ],
+    });
+  }
+
+  if (kind === "sports" || /district\s*play|pickleball|padel/.test(t)) {
+    const offer = visaInfiniteOffer("inf-district-play");
+    const discInr = Math.min(amt * 0.5, 300);
+    add({
+      cardId: "hsbc_live_plus",
+      label: "Visa Infinite → District Play (up to 50% / ₹300, first 3 bookings)",
+      effectivePct: (discInr / amt) * 100,
+      bonusRewardInr: discInr,
+      pros: ["Up to 50% off (max ₹300) on first 3 pickleball/padel/football/tennis bookings"],
+      cons: ["First 3 bookings only", "Visa District offer → Redeem Now"],
+      rationale: "District Play sports discount via Visa Infinite.",
+      steps: [
+        offer?.link ? `Open ${offer.link}` : "Network perks → District Play",
+        "Redeem Now → book in District Play",
+        "Pay with HSBC Live+",
+      ],
+    });
+  }
+}
+
 
 /** Exhaust OTA + Amazon + Scapia routes for hotel / flight / bus / train. */
 function addExhaustiveTravelRoutes(
@@ -747,6 +1040,9 @@ function addExhaustiveTravelRoutes(
       steps: ["Scapia → Travel → Bus"],
     });
   }
+  // Visa Infinite portal discounts (Agoda/IHG/ITC/Avis) from Live+ Know-more links
+  addVisaInfiniteBenefitRoutes(kind, input, amt, add, `${input.merchant || ""} ${input.category || ""}`);
+
 }
 
 function isMovieExpense(merchant: string, category: string): boolean {
@@ -1119,6 +1415,27 @@ export function recommend(input: RecommendInput): RecommendationResult {
   {
     const kind = travelKindOf(cat, merchant);
     const isIndiGo = cat.includes("indigo") || (merchant.includes("indigo") && !merchant.includes("amazon"));
+    // Car rental / Avis — Visa Infinite portal (not OTA travelKind)
+    if (/avis|\bcar\s*rental\b|\bhire\s*car\b/.test(`${cat} ${merchant}`)) {
+      addVisaInfiniteBenefitRoutes("car", input, amt, add, `${merchant} ${cat}`);
+      return finalize(options, input, amt, isForeign, ck);
+    }
+    if (/sephora/.test(`${cat} ${merchant}`)) {
+      addVisaInfiniteBenefitRoutes("shopping", input, amt, add, `${merchant} ${cat}`);
+      return finalize(options, input, amt, isForeign, ck);
+    }
+    if (/ajio/.test(`${cat} ${merchant}`)) {
+      addVisaInfiniteBenefitRoutes("shopping", input, amt, add, `${merchant} ${cat}`);
+      return finalize(options, input, amt, isForeign, ck);
+    }
+    if (/tattva/.test(`${cat} ${merchant}`)) {
+      addVisaInfiniteBenefitRoutes("spa", input, amt, add, `${merchant} ${cat}`);
+      return finalize(options, input, amt, isForeign, ck);
+    }
+    if (/district\s*play|pickleball|padel/.test(`${cat} ${merchant}`)) {
+      addVisaInfiniteBenefitRoutes("sports", input, amt, add, `${merchant} ${cat}`);
+      return finalize(options, input, amt, isForeign, ck);
+    }
     if (isIndiGo) {
       add({
         cardId: "idfc_indigo",
@@ -1706,6 +2023,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
   // ============ DINING (offline) ============
   if (cat.includes("dining") || cat.includes("restaurant")) {
     options.push(buildLivePlusOption(amt, "dining", input));
+    addVisaInfiniteBenefitRoutes("dining", input, amt, add, `${merchant} ${cat}`);
     add({ cardId: "bob_eterna", label: "BOB Eterna 5× dining (3.75%) — backup", effectivePct: 3.75,
       pros: ["5× dining"], cons: ["Cap 5K RP/cycle", "Worse than Live+ 10%"], rationale: "Live+ 10% dining is primary.",
       steps: ["Pay with BOB Eterna at the restaurant"] });
