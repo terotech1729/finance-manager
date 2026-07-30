@@ -15,9 +15,9 @@ const TIER_META: Record<VisaTier, { glow: string; chip: string }> = {
 
 function perkIcon(id: string) {
   if (/meet|lounge|concierge/.test(id)) return Icon.Lounge;
-  if (/mmt-seat|plane|travel|emergency|avis/.test(id)) return Icon.Plane;
-  if (/itc|hotel|mmt-hotel|dining/.test(id)) return Icon.Trophy;
-  if (/times|gift|offers/.test(id)) return Icon.Sparkles;
+  if (/avis|travel|emergency|agoda/.test(id)) return Icon.Plane;
+  if (/itc|hotel|ihg|mmt-hotel|dining|dine|reserve|tattva/.test(id)) return Icon.Trophy;
+  if (/times|gift|offers|sephora|ajio|district|play/.test(id)) return Icon.Sparkles;
   if (/protect|shield/.test(id)) return Icon.Shield;
   return Icon.Card;
 }
@@ -197,14 +197,17 @@ export default function NetworkPerksPage() {
 
           {activePerk.link && (
             <a href={activePerk.link} target="_blank" rel="noopener noreferrer" className="btn-primary inline-flex">
-              Open claim page <Icon.ArrowRight size={16} />
+              {/visa\.co\.in\/en_in\/visa-offers-and-perks/.test(activePerk.link)
+                ? "Open Visa offer → Redeem Now"
+                : "Open claim page"}{" "}
+              <Icon.ArrowRight size={16} />
             </a>
           )}
         </section>
       )}
 
       <p className="text-xs text-fg-subtle leading-relaxed pb-2">
-        Issuer lounges stay on each card page. Offers rotate — confirm on the claim link before travel.
+        Direct links match HSBC Live+ “Know more” Visa offers. Most redeem online via Redeem Now on that page — confirm T&Cs before booking. Issuer lounges stay on each card page.
       </p>
     </div>
   );
