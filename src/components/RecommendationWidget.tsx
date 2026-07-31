@@ -5,7 +5,7 @@ import Link from "next/link";
 import { recommend } from "@/lib/recommend";
 import { buildRecommendInputFromState } from "@/lib/recommendInput";
 import { detectCategory, ALL_CATEGORIES, ALL_CHANNELS, type ChannelType } from "@/lib/categorize";
-import { findWelcomeOffer } from "@/lib/stacking";
+import { findWelcomeOffer, findGiftCardDeals } from "@/lib/stacking";
 import { addTransaction, loadState, loadTransactions, saveState, onStorageChange, type AppState } from "@/lib/storage";
 import { applyCardSpend } from "@/lib/spendTracking";
 import { toast } from "./Toast";
@@ -118,11 +118,9 @@ export function RecommendationWidget({ onLogged }: Props) {
     );
   const isMovie =
     /movie|event|bookmyshow|\bbms\b|district|pvr|inox|cinepolis|cinema|imax|insignia|4dx|luxe/i.test(`${merchant} ${finalCategory}`);
-  const isCredGcCandidate =
-    isMovie ||
-    /amazon|flipkart|myntra|ajio|nykaa|swiggy|zomato|cleartrip|croma|shopping|fashion|electronics|online/i.test(
-      `${merchant} ${finalCategory}`
-    );
+  // Only show CRED/CheQ override when catalog actually has a GC for this brand (not Swiggy/food).
+  const hasCatalogGiftCard = findGiftCardDeals(merchant, finalCategory).length > 0;
+  const isCredGcCandidate = isMovie || hasCatalogGiftCard;
 
   const credPctHint =
     movieTheatre === "cinepolis" ? "28" :

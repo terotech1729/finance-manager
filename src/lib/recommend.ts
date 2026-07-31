@@ -2009,23 +2009,6 @@ export function recommend(input: RecommendInput): RecommendationResult {
         steps: ["Open ShopWise", "Buy Swiggy voucher ≥₹1k with Amex Gold (up to 6 separate days)", "Redeem in Swiggy for meals you'd buy anyway"],
       });
     }
-    // HDFC Platinum debit: 5% Swiggy (cap 150 pts/mo) — liquid points ≈ ₹1.
-    {
-      const debitCapLeft = 150; // monthly; portal doesn't track usage yet — soft cap note
-      const debitInr = Math.min(amt * 0.05, debitCapLeft);
-      if (debitInr >= 1) {
-        add({
-          cardId: "hdfc_visa_platinum_debit",
-          label: `HDFC Platinum debit — 5% Swiggy (~${inr(debitInr)}, cap 150 pts/mo)`,
-          effectivePct: (debitInr / amt) * 100,
-          baseRewardInr: debitInr,
-          pros: ["Debit points ≈ ₹1 in NetBanking", "Useful when Live+ accel cap is full"],
-          cons: ["Shared ~₹750/mo account cashback pool", "Usually behind Live+ 10% when accel headroom remains"],
-          rationale: "HDFC Visa Platinum debit pays 5% on Swiggy (up to 150 pts/mo). Ranked so debit isn't invisible to recommend.",
-          steps: ["Pay Swiggy with HDFC Platinum debit", "Cashback posts as points in NetBanking"],
-        });
-      }
-    }
     return finalize(options, input, amt, isForeign, ck);
   }
 
@@ -2288,22 +2271,6 @@ export function recommend(input: RecommendInput): RecommendationResult {
       rationale: "BookMyShow is an Amazon Pay partner merchant — paying via Amazon Pay with the ICICI card earns 2% (liquid cashback).",
       steps: ["At checkout choose Amazon Pay", "Pay with Amazon Pay ICICI", "2% back as Amazon Pay balance"],
     });
-    // HDFC Platinum debit: 25% BookMyShow (cap 250 pts/mo).
-    {
-      const debitInr = Math.min(amt * 0.25, 250);
-      if (debitInr >= 1 && (platformIsBms || /bookmyshow|\bbms\b/.test(`${merchant} ${cat}`))) {
-        add({
-          cardId: "hdfc_visa_platinum_debit",
-          label: `HDFC Platinum debit — 25% BookMyShow (~${inr(debitInr)}, cap 250 pts/mo)`,
-          effectivePct: (debitInr / amt) * 100,
-          baseRewardInr: debitInr,
-          pros: ["Strong BMS debit cashback when credit BOGOs are used", "Points ≈ ₹1"],
-          cons: ["Shared ~₹750/mo account cashback pool", "Confirm offer still live on your plastic"],
-          rationale: "HDFC Visa Platinum debit lists 25% on BookMyShow (up to 250 pts/mo). Useful after monthly BOGOs are spent.",
-          steps: ["Book on BookMyShow", "Pay with HDFC Platinum debit"],
-        });
-      }
-    }
     // SBI SimplyCLICK 10× on BookMyShow (~2.5%)
     {
       const ckBonus = ck && ck.zone !== "na" ? ck.mid * 0.85 : 0;
@@ -2904,51 +2871,37 @@ function finalize(
     }
   }
 
-  // ---- GyFTR balance — only when this merchant can actually redeem GyFTR ----
-  {
-    const gyftr = input.gyftrBalance ?? 0;
-    const openVouchers = (input.gyftrVouchers ?? []).filter((v) => !v.redeemed && (v.valueInr ?? 0) > 0);
-    const voucherSum = openVouchers.reduce((s, v) => s + (v.valueInr ?? 0), 0);
-    const bal = Math.max(gyftr, voucherSum);
-    const t = `${input.merchant} ${input.category}`.toLowerCase();
-    const gyftrEligible =
-      /\bgyftr\b/.test(t) ||
-      /myntra|pantaloons|lifestyle|shoppers\s*stop|westside|croma|reliance digital|vijay\s*sales|titan|fastrack|sony|samsung|apple|nike|adidas|puma|decathlon|nykaa|sephora|ajio|tata\s*cliq|brand\s*factory/.test(t);
-    if (bal >= 100 && gyftrEligible && !claimed(input, "hdfc_gyftr_spent")) {
-      const use = Math.min(amt, bal);
-      options.push(mkOption(amt, {
-        cardId: "hdfc_visa_platinum_debit",
-        label: `Spend GyFTR / HDFC debit voucher first (~${inr(use)} of ${inr(bal)} open)`,
-        effectivePct: (use / amt) * 100,
-        baseRewardInr: use,
-        pros: [`Open GyFTR ≈ ${inr(bal)} — burning idle voucher is ~100% on that slice`, "Separate from monthly debit cashback points"],
-        cons: ["Only covers up to voucher balance — pay the rest on your best card", "Confirm brand acceptance on GyFTR before checkout"],
-        rationale: "You have unspent GyFTR / HDFC debit campaign vouchers on a brand that typically accepts GyFTR. Prefer redeeming them before credit-card stacks.",
-        steps: [
-          "Open GyFTR / HDFC debit voucher email or gyftr.com",
-          `Redeem ~${inr(use)} toward this purchase`,
-          "Pay any remainder on the next-best credit route",
-        ],
-      }));
-    }
-  }
+  // ---- GyFTR / HDFC debit: tracked on /debit & claims — not ranked vs credit stacks ----
 
   // ---- Universal ANNUAL-milestone push (SBI, IDFC, Amex PT/MRCC, BOB ₹5L, Live+ ₹2L) ----
-  // Completing = full value; far = fair progress share; close-not-complete = thin (see annualMilestoneBonus).
+  // Fold progress into the best existing route for that card (avoids two Live+ rows).
+  // Completing = full value; far = fair progress share; close-not-complete = thin.
   if (!isForeign) {
     for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel", "amex_mrcc", "bob_eterna", "hsbc_live_plus"]) {
       if ((cardId === "amex_plat_travel" || cardId === "amex_mrcc") && amexExcluded(input.category || "")) continue;
-      // Skip if this card already has milestone/welcome bonus attributed on a route.
       if (options.some((o) => o.cardId === cardId && o.bonusRewardInr > 0)) continue;
       const mb = annualMilestoneBonus(cardId, input, amt);
       if (!mb || mb.inr < 0.5) continue;
-      // Don't double-count welcome thresholds that bobWelcomeBonus / livePlusWelcomeBonus already own.
       if (cardId === "bob_eterna" && mb.threshold === 50000) continue;
       if (cardId === "hsbc_live_plus" && mb.threshold === 25000) continue;
+
+      const existing = options
+        .filter((o) => o.cardId === cardId && o.feasible !== false)
+        .sort((a, b) => b.totalRewardInr - a.totalRewardInr)[0];
+      if (existing) {
+        existing.bonusRewardInr += mb.inr;
+        existing.totalRewardInr += mb.inr;
+        existing.effectivePct = amt > 0 ? (existing.totalRewardInr / amt) * 100 : existing.effectivePct;
+        existing.pros = [...existing.pros, mb.note];
+        if (!/milestone/i.test(existing.label)) {
+          existing.label = `${existing.label} · +${inr(mb.threshold)} milestone`;
+        }
+        continue;
+      }
+
       const baseEval = genericCardEval(cardId, input, false);
       const basePct = baseEval?.pct ?? 0;
       const eff = basePct + (mb.inr / amt) * 100;
-      // Always show completing / far progress; skip noise-level close thins under ~0.2pp.
       if (mb.kind === "close" && eff <= basePct + 0.2) continue;
       const short = getCardById(cardId)?.short ?? cardId;
       options.push(mkOption(amt, {

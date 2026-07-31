@@ -50,8 +50,7 @@ export const GIFT_CARD_DEALS: GiftCardDeal[] = [
   { store: "CRED", match: /nykaa/i, merchantLabel: "Nykaa", discountPct: 4, coinFunded: true, confidence: "typical", notes: "Nykaa GC ~3–5%." },
   { store: "CRED", match: /tata\s*cliq|tatacliq/i, merchantLabel: "Tata CLiQ", discountPct: 4, coinFunded: true, confidence: "typical", notes: "" },
   { store: "CRED", match: /cleartrip/i, merchantLabel: "Cleartrip", discountPct: 3, coinFunded: true, confidence: "typical", notes: "Travel GC, occasional." },
-  { store: "CRED", match: /\bswiggy\b/i, merchantLabel: "Swiggy", discountPct: 3, coinFunded: true, confidence: "typical", notes: "Swiggy money/GC on CRED." },
-  { store: "CRED", match: /\bzomato\b/i, merchantLabel: "Zomato", discountPct: 3, coinFunded: true, confidence: "typical", notes: "" },
+  // Swiggy / Zomato GCs are often absent in CRED/CheQ — don't catalog-rank them.
   { store: "CRED", match: /lenskart/i, merchantLabel: "Lenskart", discountPct: 11, coinFunded: true, confidence: "typical", notes: "Often ~11% on CRED; override if live differs." },
   { store: "CRED", match: /decathlon/i, merchantLabel: "Decathlon", discountPct: 5, coinFunded: true, confidence: "typical", notes: "" },
   { store: "CRED", match: /croma|reliance\s*digital|vijay\s*sales/i, merchantLabel: "Electronics store", discountPct: 2, coinFunded: true, confidence: "typical", notes: "Electronics GC ~2%." },
