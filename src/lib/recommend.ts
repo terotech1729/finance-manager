@@ -7,8 +7,6 @@ import { isBenefitClaimed } from "./benefitClaims";
 import { sbiFeeWaiverEligible } from "./spendTracking";
 import type { Card, RecommendationResult, RouteOption } from "./types";
 
-/** BOB Eterna domestic lounge unlock (raised mid-2026 from ₹40k). */
-const BOB_LOUNGE_PRIOR_QTR_INR = 75000;
 /** Scapia combined V+R monthly lounge unlock. */
 const SCAPIA_LOUNGE_MONTH_INR = 20000;
 
