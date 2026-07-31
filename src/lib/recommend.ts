@@ -77,6 +77,8 @@ export type RecommendInput = {
   bobYtdSpend?: number;
   bobCycleSpend5x?: number;
   sbiYtdSpend?: number;
+  /** SBI SimplyCLICK fee-waiver eligible spend (anniversary year) — separate from online voucher YTD. */
+  sbiFeeWaiverSpend?: number;
   idfcYtdSpend?: number;
   blckYtdSpend?: number; // legacy unused
   hsbcLivePlusYtdSpend?: number;
@@ -1237,21 +1239,52 @@ function ytdForCard(cardId: string, input: RecommendInput): number {
 
 /**
  * Marginal value of pushing THIS spend toward a card's next ANNUAL milestone.
- * Completing the milestone (crossing the threshold) attributes the FULL reward; partial
- * progress is pro-rata over the threshold. Reads thresholds from ANNUAL_MILESTONES.
+ * Only counts when this spend completes the threshold OR you're already close
+ * (within 10% of the goal or ≤₹15k remaining). Far-away pro-rata used to
+ * inflate every SBI/IDFC/PT spend (e.g. ₹740 toward a ₹63k gap still got ~₹15
+ * of "milestone" value) and falsely beat real routes like Amazon travel.
  */
 function annualMilestoneBonus(cardId: string, input: RecommendInput, amt: number): { inr: number; note: string; threshold: number } | null {
+  const short = getCardById(cardId)?.short ?? cardId;
+
+  // SBI fee waiver is a separate counter from online voucher YTD.
+  if (cardId === "sbi_simplyclick") {
+    const feeSpend = input.sbiFeeWaiverSpend ?? 0;
+    const feeThreshold = 100000;
+    const feeReward = 589; // ₹499 + 18% GST
+    if (feeSpend < feeThreshold) {
+      const remaining = feeThreshold - feeSpend;
+      const close = remaining <= Math.max(feeThreshold * 0.1, 15000);
+      if (amt >= remaining || close) {
+        const completes = amt >= remaining;
+        const value = completes ? feeReward : Math.min(feeReward, (amt / remaining) * feeReward);
+        return {
+          inr: value,
+          note: completes
+            ? `Completes SBI fee-waiver ₹1L eligible retail → ~${inr(feeReward)} fee saved`
+            : `Near SBI fee waiver — ${inr(remaining)} more to ₹1L eligible retail (~${inr(feeReward)} fee save)`,
+          threshold: feeThreshold,
+        };
+      }
+    }
+  }
+
   const ytd = ytdForCard(cardId, input);
   const ms = ANNUAL_MILESTONES.filter((m) => m.cardId === cardId).slice().sort((a, b) => a.threshold - b.threshold);
-  const next = ms.find((m) => !m.hit && ytd < m.threshold); // skip already-hit milestones
+  // Use live YTD only — ignore stale static `hit` flags in cards.ts.
+  const next = ms.find((m) => ytd < m.threshold);
   if (!next) return null;
   const remaining = next.threshold - ytd;
   const completes = amt >= remaining;
-  const value = completes ? next.rewardValueInr : (amt / next.threshold) * next.rewardValueInr;
-  const short = getCardById(cardId)?.short ?? cardId;
+  const close = remaining <= Math.max(next.threshold * 0.1, 15000);
+  if (!completes && !close) return null;
+
+  const value = completes
+    ? next.rewardValueInr
+    : Math.min(next.rewardValueInr, (amt / remaining) * next.rewardValueInr);
   const note = completes
     ? `Completes ${short}'s ${inr(next.threshold)} milestone → unlocks ${next.reward} (${inr(next.rewardValueInr)})`
-    : `Builds toward ${short}'s ${inr(next.threshold)} milestone — ${inr(remaining)} to go (${next.reward})`;
+    : `Near ${short}'s ${inr(next.threshold)} milestone — ${inr(remaining)} to go (${next.reward})`;
   return { inr: value, note, threshold: next.threshold };
 }
 
@@ -2593,9 +2626,9 @@ function finalize(
     }
   }
 
-  // ---- Universal ANNUAL-milestone push (SBI ₹1L/₹2L, IDFC BluChip tiers, Amex PT ₹4L/₹7L) ----
-  // Surfaces the marginal value of pushing a spend toward a card's next annual milestone —
-  // huge when you're close enough to COMPLETE it (e.g. SBI near ₹1L → ₹2,499 voucher).
+  // ---- Universal ANNUAL-milestone push (SBI fee/online, IDFC BluChip tiers, Amex PT) ----
+  // Only when this spend completes the next threshold OR you're already close (≤10% / ₹15k).
+  // Far-away pro-rata was removed — it made SBI win random spends with a fake ~2% "milestone".
   if (!isForeign) {
     for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel"]) {
       if (cardId === "amex_plat_travel" && amexExcluded(input.category || "")) continue;

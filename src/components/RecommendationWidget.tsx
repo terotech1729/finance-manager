@@ -94,6 +94,7 @@ export function RecommendationWidget({ onLogged }: Props) {
       bobYtdSpend: fresh.bobYtdSpend,
       bobCycleSpend5x: fresh.bobCycleSpend5x,
       sbiYtdSpend: fresh.sbiYtdSpend,
+      sbiFeeWaiverSpend: fresh.sbiFeeWaiverSpend,
       idfcYtdSpend: fresh.idfcYtdSpend,
       hsbcLivePlusYtdSpend: fresh.hsbcLivePlusYtdSpend,
       livePlusAccelCashbackUsedThisMonth: fresh.livePlusAccelCashbackUsedThisMonth,
