@@ -1389,13 +1389,13 @@ function ytdForCard(cardId: string, input: RecommendInput): number {
 /**
  * Marginal value of pushing THIS spend toward a card's next ANNUAL milestone.
  *
- * Hybrid (not completing-only, not naive near-miss pro-rata):
  *  1. Completing spend → full unlock value.
- *  2. Far from threshold → fair share of the remaining gap (reward × amt/remaining)
- *     so many small spends still steer toward long milestones (Amex PT ₹4L/₹7L).
- *  3. Close but not completing (remaining ≤ max(₹15k, 5% of threshold)) → thin
- *     credit only (reward × amt/threshold). Prevents the old bug where ₹500 Swiggy
- *     scored ~97% via SBI fee-waiver "almost there".
+ *  2. Otherwise → pro-rata of the FULL threshold (reward × amt/threshold).
+ *
+ * Never use reward×amt/remaining for non-completing spends: when ~₹16k is left on a
+ * ₹90k fee-waiver, that formula attributed ~16% on a ₹400 Swiggy order and beat Live+
+ * 10% statement cash. Pro-rata keeps a light steer (Amex PT / fee waivers) without
+ * outranking liquid category cashback.
  */
 function annualMilestoneBonus(
   cardId: string,
@@ -1421,11 +1421,10 @@ function annualMilestoneBonus(
         kind: "completing",
       };
     }
+    const thin = reward * (amt / threshold);
+    if (thin < 0.5) return null;
     const closeBand = Math.max(15000, threshold * 0.05);
     if (remaining <= closeBand) {
-      // Near the finish line but this txn doesn't finish it — don't nearly-full-value unlock.
-      const thin = reward * (amt / threshold);
-      if (thin < 0.5) return null;
       return {
         inr: thin,
         note: `Near ${short}'s ${inr(threshold)} (${inr(remaining)} left) — this spend doesn't finish it (+${inr(thin)} thin). Prefer a spend ≥${inr(remaining)} to unlock ${inr(reward)}.`,
@@ -1433,12 +1432,9 @@ function annualMilestoneBonus(
         kind: "close",
       };
     }
-    // Far: each rupee of progress is worth reward/remaining if you'll finish the year.
-    const progress = reward * (amt / remaining);
-    if (progress < 0.5) return null;
     return {
-      inr: progress,
-      note: `Builds ${short}'s ${inr(threshold)} (${inr(remaining)} left) → +${inr(progress)} of ${inr(reward)} — small spends still count`,
+      inr: thin,
+      note: `Builds ${short}'s ${inr(threshold)} (${inr(remaining)} left) → +${inr(thin)} of ${inr(reward)} pro-rata`,
       threshold,
       kind: "progress",
     };
@@ -2875,7 +2871,7 @@ function finalize(
 
   // ---- Universal ANNUAL-milestone push (SBI, IDFC, Amex PT/MRCC, BOB ₹5L, Live+ ₹2L) ----
   // Fold progress into the best existing route for that card (avoids two Live+ rows).
-  // Completing = full value; far = fair progress share; close-not-complete = thin.
+  // Completing = full unlock; otherwise thin pro-rata (see annualMilestoneBonus).
   if (!isForeign) {
     for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel", "amex_mrcc", "bob_eterna", "hsbc_live_plus"]) {
       if ((cardId === "amex_plat_travel" || cardId === "amex_mrcc") && amexExcluded(input.category || "")) continue;
