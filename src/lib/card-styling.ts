@@ -110,6 +110,14 @@ export const CARD_STYLES: Record<string, CardStyle> = {
     issuerLabel: "ICICI BANK · AMAZON PAY",
     topLabel: "AMAZON PAY",
   },
+  hdfc_visa_platinum_debit: {
+    bgClass: "bg-gradient-to-br from-blue-900 via-indigo-800 to-slate-900",
+    fgClass: "text-white",
+    network: "visa",
+    issuerLabel: "HDFC BANK · DEBIT",
+    topLabel: "PLATINUM",
+    patternClass: "card-pattern-platinum",
+  },
 };
 
 export function getCardStyle(id: string): CardStyle {

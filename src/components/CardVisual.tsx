@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { getCardStyle } from "@/lib/card-styling";
-import type { Card } from "@/lib/types";
+
+/** Minimal shape — works for credit Card and debit products. */
+type CardVisualInput = {
+  id: string;
+  short: string;
+  status: "active" | "applied" | "future";
+};
 
 type Props = {
-  card: Card;
+  card: CardVisualInput;
   href?: string;
   size?: "sm" | "md" | "lg";
 };

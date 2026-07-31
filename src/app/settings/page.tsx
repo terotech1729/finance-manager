@@ -39,6 +39,9 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "kiwiLifetimeEarned", label: "Kiwi lifetime earnings (₹)", group: "Reward balances", numeric: true },
   { key: "credCoins", label: "CRED coins balance", group: "Reward balances", numeric: true },
   { key: "cheqChips", label: "CheQ chips balance", group: "Reward balances", numeric: true },
+  { key: "gyftrBalance", label: "HDFC GyFTR balance (₹)", group: "Debit & GyFTR", numeric: true },
+  { key: "hdfcDebitCashbackPts", label: "HDFC Platinum debit cashback points", group: "Debit & GyFTR", numeric: true },
+  { key: "hdfcDebitIssueDate", label: "HDFC debit / account issue date (YYYY-MM-DD)", group: "Debit & GyFTR", numeric: false },
   { key: "ptccLoungesUsed", label: "PTCC lounges used (year)", group: "Lounge usage", numeric: true },
   { key: "ptccLoungesUsedThisQuarter", label: "PTCC lounges used (this quarter)", group: "Lounge usage", numeric: true },
 ];
@@ -48,6 +51,7 @@ const TOGGLES: { key: keyof AppState; label: string }[] = [
   { key: "primeMember", label: "Amazon Prime member" },
   { key: "bobWelcomeUnlocked", label: "BOB Eterna ₹50K welcome bonus already credited" },
   { key: "hsbcWelcomeClaimed", label: "HSBC Live+ ₹1k welcome cashback already credited" },
+  { key: "hdfcDebitWelcomeGyftrClaimed", label: "HDFC debit welcome GyFTR ₹500/₹750 already received" },
   // BOGO is now auto-derived from your logged District transactions — no manual toggle needed.
 ];
 

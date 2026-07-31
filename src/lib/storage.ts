@@ -83,11 +83,18 @@ export type AppState = {
   // Lounge usage YTD
   ptccLoungesUsed: number;
   ptccLoungesUsedThisQuarter: number;
+  // Debit / GyFTR (HDFC Visa Platinum debit — not credit)
+  hdfcDebitIssueDate: string;
+  gyftrBalance: number;
+  hdfcDebitCashbackPts: number; // NetBanking cashback points ≈ ₹1
+  hdfcDebitWelcomeGyftrClaimed: boolean; // ₹500/₹750 new-account GyFTR already received
+  gyftrVouchers: { id: string; description: string; valueInr: number; expires: string; redeemed?: boolean; source?: string }[];
 };
 
 export const DEFAULT_STATE: AppState = {
-  ptccEligibleSpend: 177707,
-  mrccCycleSpend: 33885,
+  // Amex app PT: 1,82,961. MRCC from activity.csv (fee 28 Nov 2025 → now), ex payments/fee/GST.
+  ptccEligibleSpend: 182961,
+  mrccCycleSpend: 70895,
   bobYtdSpend: 0,
   bobCycleSpend5x: 0,
   // From SBI Jul-2026 ONLINE SPENDS SUMMARY (voucher year starting ~22 May 2026).
@@ -122,7 +129,7 @@ export const DEFAULT_STATE: AppState = {
   sbiOnlineYearKey: "2026",
   sbiFeeYearKey: "2025",
   monthlyTxns: {},
-  amexMrPooled: 127710,
+  amexMrPooled: 128532,
   indigoBluChips: 14172,
   scapiaCoins: 7205,
   sbiRp: 2457,
@@ -136,6 +143,20 @@ export const DEFAULT_STATE: AppState = {
   milestonesHit: ["amex_plat_travel:190000", "idfc_indigo:200000", "idfc_indigo:500000"],
   ptccLoungesUsed: 1,
   ptccLoungesUsedThisQuarter: 1,
+  hdfcDebitIssueDate: "",
+  gyftrBalance: 750,
+  hdfcDebitCashbackPts: 0,
+  hdfcDebitWelcomeGyftrClaimed: true,
+  gyftrVouchers: [
+    {
+      id: "gyftr-hdfc-dc-750",
+      description: "HDFC Debit new-account campaign (5× ≥₹500 POS/ecom)",
+      valueInr: 750,
+      expires: "",
+      redeemed: false,
+      source: "hdfc_visa_platinum_debit",
+    },
+  ],
 };
 
 function isClient(): boolean {

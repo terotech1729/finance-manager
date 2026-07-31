@@ -52,7 +52,7 @@ export const CARDS: readonly Card[] = [
     pointValue: 0.58,
     baseRatePct: 0.78,
     bestRatePct: 4.7,
-    cycleEnd: "2026-11-27",
+    cycleEnd: "2026-11-27", // membership fee posted 28 Nov 2025 → waiver year through next fee
     statementDay: 28,
   },
   {

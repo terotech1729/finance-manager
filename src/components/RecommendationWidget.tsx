@@ -39,7 +39,7 @@ export function RecommendationWidget({ onLogged }: Props) {
   const [overrideChannel, setOverrideChannel] = useState<ChannelType | "">("");
   const [cashkaroOverride, setCashkaroOverride] = useState<string>("");
   const [amazonOrderCashback, setAmazonOrderCashback] = useState<string>("");
-  const [movieTheatre, setMovieTheatre] = useState<"pvr" | "cinepolis" | "inox" | "other" | "">("");
+  const [movieTheatre, setMovieTheatre] = useState<"pvr" | "cinepolis" | "inox" | "bms" | "district" | "other" | "">("");
   const [credGiftCardPct, setCredGiftCardPct] = useState<string>("");
   const [showAlts, setShowAlts] = useState(false);
   /** Which ranked route to log — 0 = best, 1+ = alternatives index + 1 conceptually; we store the route itself. */
@@ -142,8 +142,9 @@ export function RecommendationWidget({ onLogged }: Props) {
 
   const credPctHint =
     movieTheatre === "cinepolis" ? "28" :
-    movieTheatre === "pvr" || movieTheatre === "inox" ? "21" :
-    isMovie ? "21–28" :
+    movieTheatre === "pvr" || movieTheatre === "inox" ? "24" :
+    movieTheatre === "bms" || movieTheatre === "district" ? "3.75" :
+    isMovie ? "3.75–28" :
     "e.g. 5";
 
   const best = rec?.best;
@@ -327,14 +328,16 @@ export function RecommendationWidget({ onLogged }: Props) {
               Cinema chain + CRED gift card?
             </div>
             <div className="text-xs text-fg-muted">
-              CRED Store discounts differ by chain (often ~21% PVR, ~28% Cinepolis). On bigger bookings that % can beat BOB&apos;s District BOGO (₹250 cap). Pick the theatre, then enter the live % you see in CRED.
+              No live CRED API — defaults: Cinepolis ~28%, PVR/INOX ~24%, BMS/District ~3.75%. Custom-amount GCs match the ticket total. On bigger bookings the chain % often beats BOGO (₹250 cap). Pick the chain to lock the route; override with the live % from CRED Store if different.
             </div>
             <div className="flex flex-wrap gap-2">
               {([
-                ["pvr", "PVR"],
-                ["cinepolis", "Cinepolis"],
-                ["inox", "INOX"],
-                ["other", "Other / BMS only"],
+                ["cinepolis", "Cinepolis ~28%"],
+                ["pvr", "PVR ~24%"],
+                ["inox", "INOX ~24%"],
+                ["bms", "BMS ~3.75%"],
+                ["district", "District ~3.75%"],
+                ["other", "Not sure — show all"],
               ] as const).map(([value, label]) => (
                 <button
                   key={value}
@@ -346,9 +349,9 @@ export function RecommendationWidget({ onLogged }: Props) {
                   }`}
                   onClick={() => {
                     setMovieTheatre(value);
-                    // Always refresh the chain default so switching PVR→Cinepolis updates 21→28
                     if (value === "cinepolis") setCredGiftCardPct("28");
-                    else if (value === "pvr" || value === "inox") setCredGiftCardPct("21");
+                    else if (value === "pvr" || value === "inox") setCredGiftCardPct("24");
+                    else if (value === "bms" || value === "district") setCredGiftCardPct("3.75");
                     else setCredGiftCardPct("");
                   }}
                 >
@@ -359,13 +362,13 @@ export function RecommendationWidget({ onLogged }: Props) {
             <div className="grid sm:grid-cols-[180px_1fr] gap-2 items-center">
               <input
                 className="input"
-                inputMode="numeric"
+                inputMode="decimal"
                 placeholder={`CRED GC % (e.g. ${credPctHint})`}
                 value={credGiftCardPct}
                 onChange={(e) => setCredGiftCardPct(e.target.value)}
               />
               <span className="text-xs text-fg-muted">
-                Live % from CRED → Store. Leave blank to ignore the gift-card route.
+                Optional live % from CRED → Store. Leave blank to use the defaults above (still ranked).
               </span>
             </div>
           </div>
