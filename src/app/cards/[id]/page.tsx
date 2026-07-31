@@ -204,14 +204,24 @@ export default function CardDetailPage({ params }: { params: { id: string } }) {
               <div className="space-y-2 mt-2">
                 {sorted.map((m) => {
                   const hit = state.milestonesHit.includes(`${m.cardId}:${m.threshold}`) || cardYtdSpend >= m.threshold;
+                  const remaining = Math.max(0, Math.round(m.threshold - cardYtdSpend));
                   const close = !hit && cardYtdSpend >= m.threshold * 0.85;
                   return (
-                    <div key={m.threshold} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
+                    <div key={m.threshold} className="flex items-center justify-between text-sm gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         {hit ? <span className="pill-success">Hit</span> : close ? <span className="pill-warning">Close</span> : <span className="pill-neutral">Pending</span>}
-                        <span>{inrExact(m.threshold)} → {m.reward}</span>
+                        <span className="truncate">{inrExact(m.threshold)} → {m.reward}</span>
                       </div>
-                      <span className="text-fg-muted">{inrExact(m.rewardValueInr)}</span>
+                      <div className="shrink-0 text-right">
+                        {hit ? (
+                          <span className="text-success text-xs font-medium">Done</span>
+                        ) : (
+                          <span className={`text-xs font-semibold tabular-nums ${close ? "text-warning" : "text-fg"}`}>
+                            {inrExact(remaining)} more
+                          </span>
+                        )}
+                        <div className="text-[11px] text-fg-muted">{inrExact(m.rewardValueInr)}</div>
+                      </div>
                     </div>
                   );
                 })}

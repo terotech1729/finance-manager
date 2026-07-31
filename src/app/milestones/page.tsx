@@ -150,6 +150,7 @@ export default function MilestonesPage() {
                 <div className="space-y-1.5">
                   {sorted.map((m) => {
                     const hit = state.milestonesHit.includes(`${m.cardId}:${m.threshold}`) || spent >= m.threshold;
+                    const remaining = Math.max(0, Math.round(m.threshold - spent));
                     const close = !hit && spent >= m.threshold * 0.85;
                     return (
                       <div key={m.threshold} className="flex items-center justify-between text-sm gap-2">
@@ -159,7 +160,16 @@ export default function MilestonesPage() {
                            <span className="pill-neutral">Pending</span>}
                           <span className="truncate">{inrExact(m.threshold)} → {m.reward}</span>
                         </div>
-                        <span className="text-fg-muted shrink-0">{inrExact(m.rewardValueInr)}</span>
+                        <div className="shrink-0 text-right">
+                          {hit ? (
+                            <span className="text-success text-xs font-medium">Done</span>
+                          ) : (
+                            <span className={`text-xs font-semibold tabular-nums ${close ? "text-warning" : "text-fg"}`}>
+                              {inrExact(remaining)} more
+                            </span>
+                          )}
+                          <div className="text-[11px] text-fg-muted">{inrExact(m.rewardValueInr)}</div>
+                        </div>
                       </div>
                     );
                   })}
@@ -196,7 +206,7 @@ export default function MilestonesPage() {
                     <p className="text-xs text-fg-muted">
                       {(state.sbiFeeWaiverSpend || 0) >= 100000
                         ? "Hit — fee should reverse within ~10 days of the Oct levy."
-                        : `₹${Math.max(0, 100000 - Math.round(state.sbiFeeWaiverSpend || 0)).toLocaleString("en-IN")} short of ₹1L eligible retail (excl. tax/rent). Next fee ~21 Oct 2026.`}
+                        : `${inrExact(Math.max(0, 100000 - Math.round(state.sbiFeeWaiverSpend || 0)))} more to ₹1L eligible retail (excl. tax/rent). Next fee ~21 Oct 2026.`}
                     </p>
                   </div>
                 )}
@@ -230,6 +240,7 @@ export default function MilestonesPage() {
             <div className="space-y-1.5">
               {KIWI_NEON_MILESTONES.map((m) => {
                 const hit = kiwiSpend >= m.threshold;
+                const remaining = Math.max(0, Math.round(m.threshold - kiwiSpend));
                 const close = !hit && kiwiSpend >= m.threshold * 0.85;
                 return (
                   <div key={m.threshold} className="flex items-center justify-between text-sm gap-2">
@@ -240,6 +251,15 @@ export default function MilestonesPage() {
                       <span className="truncate">
                         {inrExact(m.threshold)} → {m.cashbackRate}% retro + {m.lounges} lounge{m.lounges > 1 ? "s" : ""}
                       </span>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {hit ? (
+                        <span className="text-success text-xs font-medium">Done</span>
+                      ) : (
+                        <span className={`text-xs font-semibold tabular-nums ${close ? "text-warning" : "text-fg"}`}>
+                          {inrExact(remaining)} more
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
