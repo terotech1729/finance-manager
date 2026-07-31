@@ -222,14 +222,14 @@ export function RecommendationWidget({ onLogged }: Props) {
           <div>
             <div className="font-semibold text-base">What are you about to spend on?</div>
             <div className="text-xs text-fg-muted mt-0.5">
-              Merchant + <b>total checkout amount</b> (not unit price). We compare every route and pick the best.
+              Merchant + total checkout ₹ (not unit price). We compare every route and pick the best.
             </div>
           </div>
         </div>
       </div>
 
       <div className="card-body space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_150px_auto] gap-3 items-stretch sm:items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_150px_auto] gap-3 items-end">
           <div className="min-w-0">
             <label className="label mb-1 block">What are you buying?</label>
             <input
@@ -242,19 +242,15 @@ export function RecommendationWidget({ onLogged }: Props) {
           </div>
           <div className="grid grid-cols-2 sm:contents gap-3">
             <div className="min-w-0">
-              <label className="label mb-1 block">Total amount (₹)</label>
+              <label className="label mb-1 block">Total ₹</label>
               <input
                 className="input"
-                placeholder={isMovie ? "e.g. 898 for 2 tickets" : "e.g. 899"}
+                placeholder={isMovie ? "e.g. 898" : "e.g. 899"}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 inputMode="decimal"
+                title="Full cart / checkout total for all items or tickets — not unit price"
               />
-              <div className="text-[11px] text-fg-muted mt-1 leading-snug">
-                {isMovie
-                  ? "Enter the full booking total for all tickets (not price per ticket). Ticket count is only for BOGO math."
-                  : "Always the full cart / checkout total — never a single unit price."}
-              </div>
             </div>
             <div className="min-w-0">
               <label className="label mb-1 block">Date</label>
@@ -324,7 +320,7 @@ export function RecommendationWidget({ onLogged }: Props) {
 
         {isMovie && !merchantTooShort && needsClarification && (
           <div className="text-xs text-fg-muted rounded-lg p-3 border border-dashed border-sky-300/60">
-            Answer how many tickets above first — amount is the <b>full booking total</b> for all of them (not per-ticket). Then pick the cinema chain so we can rank BOGO vs CRED correctly.
+            Answer how many tickets first — ₹ is the full booking total (not per ticket). Then pick the cinema chain.
           </div>
         )}
 
@@ -466,7 +462,7 @@ export function RecommendationWidget({ onLogged }: Props) {
 
         {merchantTooShort && noAmount && (
           <div className="text-sm text-fg-muted text-center py-4 border border-dashed border-border rounded-lg">
-            Type what you&apos;re buying (e.g. <em>hotel</em>, <em>flight</em>, <em>Agoda</em>, <em>Amazon</em>, <em>Airtel recharge</em>) and the <b>total checkout amount</b> (not unit price).
+            Type what you&apos;re buying (e.g. <em>hotel</em>, <em>flight</em>, <em>Agoda</em>, <em>Amazon</em>, <em>Airtel recharge</em>) and the amount.
           </div>
         )}
 
