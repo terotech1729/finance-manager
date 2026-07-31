@@ -221,7 +221,9 @@ export function RecommendationWidget({ onLogged }: Props) {
           </div>
           <div>
             <div className="font-semibold text-base">What are you about to spend on?</div>
-            <div className="text-xs text-fg-muted mt-0.5">Just tell us the merchant + amount. We compare every route and pick the best.</div>
+            <div className="text-xs text-fg-muted mt-0.5">
+              Merchant + <b>total checkout amount</b> (not unit price). We compare every route and pick the best.
+            </div>
           </div>
         </div>
       </div>
@@ -240,14 +242,19 @@ export function RecommendationWidget({ onLogged }: Props) {
           </div>
           <div className="grid grid-cols-2 sm:contents gap-3">
             <div className="min-w-0">
-              <label className="label mb-1 block">Amount (₹)</label>
+              <label className="label mb-1 block">Total amount (₹)</label>
               <input
                 className="input"
-                placeholder="e.g. 899"
+                placeholder={isMovie ? "e.g. 898 for 2 tickets" : "e.g. 899"}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 inputMode="decimal"
               />
+              <div className="text-[11px] text-fg-muted mt-1 leading-snug">
+                {isMovie
+                  ? "Enter the full booking total for all tickets (not price per ticket). Ticket count is only for BOGO math."
+                  : "Always the full cart / checkout total — never a single unit price."}
+              </div>
             </div>
             <div className="min-w-0">
               <label className="label mb-1 block">Date</label>
@@ -317,7 +324,7 @@ export function RecommendationWidget({ onLogged }: Props) {
 
         {isMovie && !merchantTooShort && needsClarification && (
           <div className="text-xs text-fg-muted rounded-lg p-3 border border-dashed border-sky-300/60">
-            Answer how many tickets above first — then pick the cinema chain and CRED gift-card % so we can rank BOGO vs CRED correctly.
+            Answer how many tickets above first — amount is the <b>full booking total</b> for all of them (not per-ticket). Then pick the cinema chain so we can rank BOGO vs CRED correctly.
           </div>
         )}
 
@@ -459,7 +466,7 @@ export function RecommendationWidget({ onLogged }: Props) {
 
         {merchantTooShort && noAmount && (
           <div className="text-sm text-fg-muted text-center py-4 border border-dashed border-border rounded-lg">
-            Type what you&apos;re buying (e.g. <em>hotel</em>, <em>flight</em>, <em>Agoda</em>, <em>Amazon</em>, <em>Airtel recharge</em>) and the amount.
+            Type what you&apos;re buying (e.g. <em>hotel</em>, <em>flight</em>, <em>Agoda</em>, <em>Amazon</em>, <em>Airtel recharge</em>) and the <b>total checkout amount</b> (not unit price).
           </div>
         )}
 

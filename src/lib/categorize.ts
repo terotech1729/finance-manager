@@ -155,7 +155,7 @@ const FALLBACK_RULES: Rule[] = [
     confidence: "medium",
     clarification: {
       id: "movie_tickets",
-      question: "How many tickets?",
+      question: "How many tickets? (Amount above = total for all tickets, not per ticket)",
       options: [
         { value: "one", label: "Just 1 ticket", category: "movies / events · 1 ticket", channel: "merchant_app" },
         { value: "two", label: "Exactly 2 tickets", category: "movies / events · 2 tickets", channel: "merchant_app" },
@@ -398,7 +398,7 @@ export function detectCategory(merchant: string): CategoryDetection {
       confidence: "medium",
       clarification: {
         id: "movie_tickets",
-        question: "How many tickets?",
+        question: "How many tickets? (Amount above = total for all tickets, not per ticket)",
         options: [
           { value: "one", label: "Just 1 ticket", category: "movies / events · 1 ticket", channel: "merchant_app" },
           { value: "two", label: "Exactly 2 tickets", category: "movies / events · 2 tickets", channel: "merchant_app" },
