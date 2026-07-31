@@ -1,6 +1,7 @@
 "use client";
 import { Callout } from "@/components/Callout";
 import { Icon } from "@/components/Icons";
+import Link from "next/link";
 
 type Offer = {
   source: string;
@@ -9,21 +10,25 @@ type Offer = {
   notes?: string;
 };
 
+/**
+ * Snapshot discounts — not live-scraped.
+ * CRED Store / Amazon brand voucher % rotate in-app; verify before buying.
+ */
 const OFFERS: Offer[] = [
-  // CRED Dreamplug
-  { source: "CRED Dreamplug", merchant: "Domino's", discountPct: 15, notes: "Pay with online card → +5% if SBI Cashback (effective 20%)" },
-  { source: "CRED Dreamplug", merchant: "Apollo 24/7", discountPct: 15 },
-  { source: "CRED Dreamplug", merchant: "Lenskart", discountPct: 11 },
-  { source: "CRED Dreamplug", merchant: "Uber", discountPct: 6.5 },
-  { source: "CRED Dreamplug", merchant: "Reliance Trends", discountPct: 6 },
-  { source: "CRED Dreamplug", merchant: "Decathlon", discountPct: 5 },
-  { source: "CRED Dreamplug", merchant: "Flipkart", discountPct: 4 },
-  { source: "CRED Dreamplug", merchant: "Myntra", discountPct: 4 },
-  { source: "CRED Dreamplug", merchant: "Zepto", discountPct: 3 },
-  { source: "CRED Dreamplug", merchant: "Croma", discountPct: 3 },
-  { source: "CRED Dreamplug", merchant: "Amazon Shopping", discountPct: 1.7 },
+  // CRED Store = gift-card section in the CRED app (Dreamplug is CRED's legal entity name)
+  { source: "CRED Store (gift cards)", merchant: "Domino's", discountPct: 15, notes: "Verify live % in CRED → Store / Gift cards" },
+  { source: "CRED Store (gift cards)", merchant: "Apollo 24/7", discountPct: 15 },
+  { source: "CRED Store (gift cards)", merchant: "Lenskart", discountPct: 11 },
+  { source: "CRED Store (gift cards)", merchant: "Uber", discountPct: 6.5 },
+  { source: "CRED Store (gift cards)", merchant: "Reliance Trends", discountPct: 6 },
+  { source: "CRED Store (gift cards)", merchant: "Decathlon", discountPct: 5 },
+  { source: "CRED Store (gift cards)", merchant: "Flipkart", discountPct: 4 },
+  { source: "CRED Store (gift cards)", merchant: "Myntra", discountPct: 4 },
+  { source: "CRED Store (gift cards)", merchant: "Zepto", discountPct: 3 },
+  { source: "CRED Store (gift cards)", merchant: "Croma", discountPct: 3 },
+  { source: "CRED Store (gift cards)", merchant: "Amazon Shopping", discountPct: 1.7 },
   // Amazon brand vouchers
-  { source: "Amazon Brand Vouchers", merchant: "Mainland China", discountPct: 20, notes: "Stack with Kiwi 5% via ASV = ~25% effective" },
+  { source: "Amazon Brand Vouchers", merchant: "Mainland China", discountPct: 20, notes: "Buy brand voucher on Amazon; pay ASV/balance — card earn is separate (see below)" },
   { source: "Amazon Brand Vouchers", merchant: "PVR INOX", discountPct: 17 },
   { source: "Amazon Brand Vouchers", merchant: "Aldo", discountPct: 12 },
   { source: "Amazon Brand Vouchers", merchant: "Jockey", discountPct: 12 },
@@ -31,11 +36,11 @@ const OFFERS: Offer[] = [
   { source: "Amazon Brand Vouchers", merchant: "Pantaloons", discountPct: 5 },
   { source: "Amazon Brand Vouchers", merchant: "Uber", discountPct: 3 },
   { source: "Amazon Brand Vouchers", merchant: "Google Play", discountPct: 2 },
-  // Kiwi (when active)
-  { source: "Kiwi (when active)", merchant: "Amazon Shopping", discountPct: 10, notes: "Cap ₹50/txn — periodic offer" },
-  { source: "Kiwi (when active)", merchant: "Swiggy", discountPct: 10, notes: "Cap ₹50/txn — periodic offer" },
-  { source: "Kiwi (when active)", merchant: "Zepto", discountPct: 10, notes: "Cap ₹50/txn — periodic offer" },
-  { source: "Kiwi (when active)", merchant: "Zomato", discountPct: 10, notes: "Cap ₹50/txn — periodic offer" },
+  // Kiwi merchant campaigns (separate from Neon milestone cashback)
+  { source: "Kiwi merchant campaigns (when live)", merchant: "Amazon Shopping", discountPct: 10, notes: "Periodic in-app campaign, often ~₹50/txn cap — activate first" },
+  { source: "Kiwi merchant campaigns (when live)", merchant: "Swiggy", discountPct: 10, notes: "Periodic campaign — not Neon milestone cashback" },
+  { source: "Kiwi merchant campaigns (when live)", merchant: "Zepto", discountPct: 10, notes: "Periodic campaign — not Neon milestone cashback" },
+  { source: "Kiwi merchant campaigns (when live)", merchant: "Zomato", discountPct: 10, notes: "Periodic campaign — not Neon milestone cashback" },
   // Scapia Store
   { source: "Scapia Store", merchant: "Travel apparel (50+ brands)", discountPct: 20, notes: "20% back as Scapia Coins, redeemable on travel" },
 ];
@@ -52,15 +57,39 @@ export default function VoucherStorePage() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Voucher Stores</h1>
-        <p className="text-fg-muted mt-1">Daily-rotating gift card discounts that stack on top of card rewards. Check daily before any planned spend.</p>
+        <p className="text-fg-muted mt-1 max-w-2xl text-sm leading-relaxed">
+          Reference snapshot of gift-card / brand-voucher discounts that can stack with card earn.
+          These % are <b>not auto-refreshed daily</b> — always confirm live rates in the app before buying.
+        </p>
       </div>
 
-      <Callout tone="success" title="🏆 Best stack: Amazon Brand Vouchers via Kiwi (5%) → 10–25% effective">
-        Buy <b>Amazon Shopping Voucher</b> (NOT gift card) on Amazon, paying with Kiwi RuPay (Neon = 5% cashback). Use the ASV to buy a brand voucher on Amazon (e.g., Mainland China at 20% off, PVR at 17% off). Net: 5% Kiwi + brand discount = up to 25% effective.
+      <Callout tone="warning" title="Kiwi Neon is not “5% on every txn”">
+        <ul className="list-disc pl-4 space-y-1.5">
+          <li>
+            <b>Instant:</b> Neon UPI scan &amp; pay earns <b>2%</b> as Kiwis (online redirect usually ~0.5%). Without Neon it’s 1.5% UPI.
+          </li>
+          <li>
+            <b>Milestones:</b> At ₹50k / ₹1L / ₹1.5L eligible cycle spend you get a <b>one-time top-up</b> (extra Kiwis)
+            so that year’s eligible spend is topped toward ~3% / ~4% / ~5% <em>effective</em> — credited later
+            (typically end of next month), not 5% on each purchase as you pay.
+          </li>
+          <li>
+            So “buy ASV with Kiwi for 5% + brand voucher 20% = 25%” on this page was wrong. Instant stack is closer to
+            <b> brand discount + 2% UPI</b> (if it’s truly Kiwi UPI), with milestone chips only if/when you hit Neon thresholds.
+          </li>
+        </ul>
       </Callout>
 
-      <Callout tone="info" title="🏆 Second best: CRED Dreamplug + best online card">
-        CRED's Dreamplug section sells discounted brand vouchers daily. Pay with your best online card (HSBC Live+ 10% when eligible, Amex Gold via ShopWise ≈ 4% net, BOB Eterna = 3.75%). Net: Dreamplug discount + card cashback.
+      <Callout tone="success" title="Useful stack (corrected): Amazon brand vouchers">
+        Buy the <b>brand voucher</b> on Amazon (Mainland China, PVR, etc.) using Amazon Shopping Voucher / balance when that fits.
+        Fund ASV with whatever card/route <Link href="/recommend" className="text-accent hover:underline">Recommend</Link> ranks —
+        do <b>not</b> assume Kiwi Neon pays 5% on that funding txn. Prefer Amazon Pay ICICI / Live+ / BOB when those beat Kiwi’s instant 2%.
+      </Callout>
+
+      <Callout tone="info" title="CRED Store = gift cards in the CRED app">
+        “Dreamplug” is CRED’s company name. In the app, discounted brand GCs live under <b>CRED Store / Gift cards</b>
+        (the section with Domino&apos;s, Lenskart, PVR, etc.). Pay with your best online card for that brand
+        (Live+ 10% when eligible, ShopWise Amex ~4% net, BOB 3.75%). Enter the live % in Recommend when ranking movies/shopping.
       </Callout>
 
       {Object.entries(grouped).map(([source, offers]) => (
@@ -97,11 +126,11 @@ export default function VoucherStorePage() {
 
       <Callout tone="warning" title="Keep in mind">
         <ul className="list-disc pl-4 space-y-1">
-          <li><b>CRED Dreamplug discounts rotate daily</b> — check the CRED app each morning before any planned spend.</li>
-          <li><b>Kiwi merchant offers are time-limited campaigns</b> (e.g., monthly seasonal). Activate in Kiwi rewards section first.</li>
-          <li><b>Amazon brand vouchers</b>: pay via Amazon Shopping Voucher (ASV), not Amazon Pay Gift Card — Amazon Pay GCs are excluded from Kiwi 5%.</li>
-          <li><b>Voucher expiries</b>: Amazon balance lasts 1 year; brand vouchers often 6 months. Don't hoard, only buy when you have a confirmed spend.</li>
-          <li><b>One-time use</b>: most brand vouchers (Domino's, Shoppers Stop) are one-time. Buy the exact amount you need.</li>
+          <li><b>CRED Store discounts rotate</b> — check the CRED app before any planned spend; this table is a snapshot.</li>
+          <li><b>Kiwi merchant 10% campaigns</b> are separate time-limited offers in Kiwi rewards — not the Neon milestone top-up.</li>
+          <li><b>Amazon brand vouchers</b>: ASV vs Amazon Pay Gift Card rules vary; confirm Kiwi/Amazon exclusions before funding.</li>
+          <li><b>Voucher expiries</b>: Amazon balance often ~1 year; brand vouchers often ~6 months. Buy for confirmed spend only.</li>
+          <li><b>One-time use</b>: most brand vouchers are one-time — buy the amount you need.</li>
         </ul>
       </Callout>
     </div>
