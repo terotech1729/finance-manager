@@ -133,7 +133,7 @@ export function RecommendationWidget({ onLogged }: Props) {
       `${merchant} ${finalCategory}`
     );
   const isMovie =
-    /movie|event|bookmyshow|\bbms\b|district|pvr|inox|cinepolis|cinema/i.test(`${merchant} ${finalCategory}`);
+    /movie|event|bookmyshow|\bbms\b|district|pvr|inox|cinepolis|cinema|imax|insignia|4dx|luxe/i.test(`${merchant} ${finalCategory}`);
   const isCredGcCandidate =
     isMovie ||
     /amazon|flipkart|myntra|ajio|nykaa|swiggy|zomato|cleartrip|croma|shopping|fashion|electronics|online/i.test(
@@ -331,7 +331,10 @@ export function RecommendationWidget({ onLogged }: Props) {
               Cinema chain + CRED gift card?
             </div>
             <div className="text-xs text-fg-muted">
-              No live CRED API — defaults: Cinepolis ~28%, PVR/INOX ~24%, BMS/District ~3.75%. Custom-amount GCs match the ticket total. On bigger bookings the chain % often beats BOGO (₹250 cap). Pick the chain to lock the route; override with the live % from CRED Store if different.
+              No live CRED API — defaults: Cinepolis ~28%, PVR/INOX ~24%, BMS/District ~3.75%. Custom-amount GCs match the ticket total.
+              <span className="block mt-1">
+                <b>Insignia / Luxe / Director&apos;s Cut</b> → PVR GC. <b>IMAX / 4DX</b> are formats on PVR <em>and</em> Cinepolis — pick the operator named on BMS (e.g. &quot;PVR: IMAX…&quot; vs &quot;Cinepolis: IMAX…&quot;).
+              </span>
             </div>
             <div className="flex flex-wrap gap-2">
               {([

@@ -118,7 +118,7 @@ function detectBrand(t: string): BrandHit | null {
   if (hasToken(t, "instamart") || hasToken(t, "blinkit") || hasToken(t, "zepto") || hasToken(t, "bigbasket") || hasToken(t, "dmart")) {
     return { id: "grocery", pretty: "Groceries", channel: "merchant_app" };
   }
-  if (hasToken(t, "bookmyshow") || hasToken(t, "district") || hasToken(t, "pvr") || hasToken(t, "inox") || hasToken(t, "cinepolis")) {
+  if (hasToken(t, "bookmyshow") || hasToken(t, "district") || hasToken(t, "pvr") || hasToken(t, "inox") || hasToken(t, "cinepolis") || hasToken(t, "imax") || hasToken(t, "insignia")) {
     return { id: "movies", pretty: "Movie / event tickets", channel: "merchant_app" };
   }
   return null;
@@ -148,7 +148,7 @@ function travelClarification(id: string, prefix: string): Clarification {
 /** Fallback regex rules for non-travel / when brand+intent composition doesn't apply. */
 const FALLBACK_RULES: Rule[] = [
   {
-    match: /\bdistrict\b|\bbookmyshow\b|movie|cinema|\bpvr\b|\binox\b|\bcinepolis\b/i,
+    match: /\bdistrict\b|\bbookmyshow\b|movie|cinema|\bpvr\b|\binox\b|\bcinepolis\b|\bimax\b|\binsignia\b/i,
     category: "movies / events",
     prettyLabel: "Movie / event tickets",
     channel: "merchant_app",

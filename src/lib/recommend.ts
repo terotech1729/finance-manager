@@ -1064,11 +1064,14 @@ function movieTicketCount(category: string): number {
 function theatreFromInput(input: RecommendInput, merchant: string, cat: string): RecommendInput["movieTheatre"] {
   if (input.movieTheatre) return input.movieTheatre;
   const t = `${merchant} ${cat}`;
-  if (/\bcinepolis\b/i.test(t)) return "cinepolis";
+  // Premium hall brands → operator (not the screen format)
+  if (/\binsignia\b|\bdirector'?s\s*cut\b|\bluxe\b|\bp\[?xl\]?\b|\bplayhouse\b/i.test(t)) return "pvr";
+  if (/\bcinepolis\b|\bmacro\s*xe\b/i.test(t)) return "cinepolis";
   if (/\bpvr\b/i.test(t)) return "pvr";
   if (/\binox\b/i.test(t)) return "inox";
   if (/\bdistrict\b/i.test(t)) return "district";
   if (/bookmyshow|\bbms\b/i.test(t)) return "bms";
+  // IMAX / 4DX / ScreenX are formats on PVR, Cinepolis, Miraj, etc. — do NOT guess the chain
   return undefined;
 }
 
