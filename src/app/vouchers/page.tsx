@@ -58,8 +58,9 @@ export default function VoucherStorePage() {
       <div>
         <h1 className="page-title">Voucher Stores</h1>
         <p className="text-fg-muted mt-1 max-w-2xl text-sm leading-relaxed">
-          Reference snapshot of gift-card / brand-voucher discounts that can stack with card earn.
-          These % are <b>not auto-refreshed daily</b> — always confirm live rates in the app before buying.
+          Reference snapshot of gift-card / brand-voucher discounts.{" "}
+          <b>Recommend does not use these snapshot % for ranking</b> — it asks you for the live CRED/CheQ %
+          before comparing gift-card stacks. CashKaro rates refresh daily via scrape.
         </p>
       </div>
 

@@ -1,8 +1,8 @@
-name: Scrape Cashkaro rates weekly
+name: Scrape Cashkaro rates daily
 
 on:
   schedule:
-    - cron: "0 3 * * 1"  # Mondays 03:00 UTC
+    - cron: "0 2 * * *"  # Daily 02:00 UTC (~07:30 IST)
   workflow_dispatch:
 
 jobs:

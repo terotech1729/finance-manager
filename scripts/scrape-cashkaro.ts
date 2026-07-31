@@ -1,6 +1,6 @@
 /**
  * Scrapes Cashkaro merchant store pages for current cashback rates.
- * Runs via GitHub Actions weekly OR via /api/scrape-cashkaro Vercel Cron.
+ * Runs via GitHub Actions daily OR via /api/scrape-cashkaro Vercel Cron (daily 02:00 UTC).
  *
  * Output: src/data/cashkaro-rates.generated.json
  * The runtime imports from src/lib/cashkaro.ts which can be regenerated from this.

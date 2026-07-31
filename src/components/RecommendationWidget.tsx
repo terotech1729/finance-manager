@@ -312,22 +312,23 @@ export function RecommendationWidget({ onLogged }: Props) {
           <div className="bg-sky-50 dark:bg-sky-950/20 rounded-lg p-3 border border-sky-300/60 dark:border-sky-700/40 space-y-3">
             <div className="text-sm font-semibold flex items-center gap-1.5">
               <Icon.Sparkles size={14} className="text-sky-600" />
-              Cinema chain + CRED gift card?
+              Cinema chain + live CRED gift-card %
             </div>
             <div className="text-xs text-fg-muted">
-              No live CRED API — defaults: Cinepolis ~28%, PVR/INOX ~24%, BMS/District ~3.75%. Custom-amount GCs match the ticket total.
+              CRED Store rates rotate and aren&apos;t scraped. Pick the chain, open CRED → Store, then enter the <b>live %</b> —
+              we only rank gift-card stacks after that. BOGO / card / Cashkaro still rank without it.
               <span className="block mt-1">
-                <b>Insignia / Luxe / Director&apos;s Cut</b> → PVR GC. <b>IMAX / 4DX</b> are formats on PVR <em>and</em> Cinepolis — pick the operator named on BMS (e.g. &quot;PVR: IMAX…&quot; vs &quot;Cinepolis: IMAX…&quot;).
+                <b>Insignia / Luxe</b> → PVR. <b>IMAX / 4DX</b> = format — pick the operator on BMS.
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
               {([
-                ["cinepolis", "Cinepolis ~28%"],
-                ["pvr", "PVR ~24%"],
-                ["inox", "INOX ~24%"],
-                ["bms", "BMS ~3.75%"],
-                ["district", "District ~3.75%"],
-                ["other", "Not sure — show all"],
+                ["cinepolis", "Cinepolis"],
+                ["pvr", "PVR"],
+                ["inox", "INOX"],
+                ["bms", "BMS"],
+                ["district", "District"],
+                ["other", "Not sure"],
               ] as const).map(([value, label]) => (
                 <button
                   key={value}
@@ -337,13 +338,7 @@ export function RecommendationWidget({ onLogged }: Props) {
                       ? "border-sky-500 bg-sky-100 dark:bg-sky-900/40 font-medium"
                       : "border-border hover:border-sky-400"
                   }`}
-                  onClick={() => {
-                    setMovieTheatre(value);
-                    if (value === "cinepolis") setCredGiftCardPct("28");
-                    else if (value === "pvr" || value === "inox") setCredGiftCardPct("24");
-                    else if (value === "bms" || value === "district") setCredGiftCardPct("3.75");
-                    else setCredGiftCardPct("");
-                  }}
+                  onClick={() => setMovieTheatre(value)}
                 >
                   {label}
                 </button>
@@ -353,39 +348,50 @@ export function RecommendationWidget({ onLogged }: Props) {
               <input
                 className="input"
                 inputMode="decimal"
-                placeholder={`CRED GC % (e.g. ${credPctHint})`}
+                placeholder={`Live CRED GC % (e.g. ${credPctHint})`}
                 value={credGiftCardPct}
                 onChange={(e) => setCredGiftCardPct(e.target.value)}
               />
               <span className="text-xs text-fg-muted">
-                Optional live % from CRED → Store. Leave blank to use the defaults above (still ranked).
+                Required to compare CRED GC vs BOGO. Hint only: Cinepolis ~28%, PVR/INOX ~24%, BMS/District ~3.75%.
               </span>
             </div>
           </div>
         )}
 
-        {isCredGcCandidate && !isMovie && !merchantTooShort && (
-          <div className="bg-sky-50 dark:bg-sky-950/20 rounded-lg p-3 border border-sky-300/60 dark:border-sky-700/40 space-y-2">
+        {((isCredGcCandidate && !isMovie) || (!!rec?.askLiveRates?.giftCard && !isMovie)) && !merchantTooShort && (
+          <div className="bg-sky-50 dark:bg-sky-950/20 rounded-lg p-3 border border-sky-400/70 dark:border-sky-600/50 space-y-2">
             <div className="text-sm font-semibold flex items-center gap-1.5">
               <Icon.Sparkles size={14} className="text-sky-600" />
-              Buying via a CRED gift card?
+              Enter live CRED / CheQ gift-card % to compare that stack
             </div>
             <div className="text-xs text-fg-muted">
-              If CRED Store has a discounted gift card for this brand, enter the live % — the recommender will rank that route against card + Cashkaro stacks.
+              {rec?.askLiveRates?.giftCard?.message ??
+                "CRED/CheQ Store % rotate in-app and aren't auto-scraped. Enter the live discount you see — until then we rank card + Cashkaro only."}
             </div>
             <div className="grid sm:grid-cols-[180px_1fr] gap-2 items-center">
               <input
                 className="input"
-                inputMode="numeric"
-                placeholder="CRED GC % (e.g. 5)"
+                inputMode="decimal"
+                placeholder={`Live GC % (e.g. ${rec?.askLiveRates?.giftCard?.hintPct ?? "5"})`}
                 value={credGiftCardPct}
                 onChange={(e) => setCredGiftCardPct(e.target.value)}
               />
-              <span className="text-xs text-fg-muted">Leave blank if you&apos;re not using a CRED gift card.</span>
+              <span className="text-xs text-fg-muted">
+                {rec?.askLiveRates?.giftCard?.label
+                  ? `Looking at: ${rec.askLiveRates.giftCard.label}`
+                  : "Leave blank to skip gift-card routes."}
+              </span>
             </div>
           </div>
         )}
 
+        {isMovie && rec?.askLiveRates?.giftCard && !credGiftCardPct.trim() && !merchantTooShort && !needsClarification && (
+          <div className="text-xs rounded-lg p-2.5 border border-warning/40 bg-warning/10 text-fg-muted">
+            <span className="font-medium text-warning">Gift-card stack paused — </span>
+            {rec.askLiveRates.giftCard.message}
+          </div>
+        )}
         {needsClarification && detection.clarification && (
           <div className="bg-bg-chrome rounded-lg p-3 border border-warning/40">
             <div className="text-sm font-semibold mb-2 flex items-center gap-1.5">

@@ -173,4 +173,11 @@ export type RecommendationResult = {
   };
   /** Open claim / activate reminders from Benefit claims + live card rules. */
   claimTips?: string[];
+  /**
+   * App-gated rates (CRED/CheQ Store, Kiwi campaigns) — do not rank GC stacks until the user
+   * enters the live % they see. Cashkaro is refreshed daily separately.
+   */
+  askLiveRates?: {
+    giftCard?: { label: string; hintPct?: string; message: string };
+  };
 };

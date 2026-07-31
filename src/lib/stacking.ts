@@ -60,6 +60,28 @@ export function giftCardKey(d: { store: GiftCardStore; merchantLabel: string }):
   return `${d.store}:${d.merchantLabel}`;
 }
 
+/**
+ * Live / user-confirmed gift-card % only.
+ * CRED widget override OR Settings override — never silent table defaults for ranking.
+ */
+export function resolvedGiftCardPct(
+  store: GiftCardStore,
+  merchantLabel: string,
+  overrides: Record<string, number> = {},
+  credLivePct?: number
+): number | null {
+  if (store === "CRED" && credLivePct != null && credLivePct > 0) return credLivePct;
+  const ov = overrides[giftCardKey({ store, merchantLabel })];
+  if (ov != null && Number.isFinite(ov) && ov > 0) return ov;
+  return null;
+}
+
+/** Brands where a CRED/CheQ GC stack is often relevant — prompt for live % before ranking. */
+export function isGiftCardPromptCandidate(merchant: string, category: string): boolean {
+  const t = `${merchant} ${category}`.toLowerCase();
+  return /movie|event|bookmyshow|\bbms\b|district|pvr|inox|cinepolis|cinema|amazon|flipkart|myntra|ajio|nykaa|swiggy|zomato|cleartrip|croma|lenskart|shopping|fashion|electronics|online|apparel/.test(t);
+}
+
 export function findGiftCardDeals(
   merchant: string,
   category: string,
