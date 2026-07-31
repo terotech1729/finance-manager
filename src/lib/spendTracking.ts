@@ -1,11 +1,34 @@
 import type { AppState } from "./storage";
 
 /**
+ * SBI SimplyCLICK annual-fee waiver: eligible retail only.
+ * Typically excludes fuel, rent, tax/govt, wallets/GCs, EMI, insurance, cash advances.
+ */
+export function sbiFeeWaiverEligible(category = "", merchant = ""): boolean {
+  const c = `${category} ${merchant}`.toLowerCase();
+  if (/fuel|petrol|diesel|hpcl|bpcl|iocl|indian\s*oil/.test(c)) return false;
+  if (/\brent\b|landlord|nobroker|redgirraffe/.test(c)) return false;
+  if (/\btax\b|govt|government|income\s*tax|gst\s*payment|municipality|property\s*tax/.test(c)) return false;
+  if (/wallet|gift\s*card|gyftr|smartbuy\s*gc/.test(c)) return false;
+  if (/\bemi\b|loan\s*repay|balance\s*transfer|cash\s*advance/.test(c)) return false;
+  if (/insurance|policybazaar|\blic\b/.test(c)) return false;
+  return true;
+}
+
+/**
  * Apply a real card spend to the milestone/cycle counters for that card.
  * Shared by the manual transaction logger and the bill-reconciliation tool.
  * UPI / cash / gift-card / "other" are independent and pass through with no effect.
  */
-export function applyCardSpend(next: AppState, cardId: string, amt: number, rewardInr: number, effectivePct?: number): void {
+export function applyCardSpend(
+  next: AppState,
+  cardId: string,
+  amt: number,
+  rewardInr: number,
+  effectivePct?: number,
+  category?: string,
+  merchant?: string
+): void {
   if (cardId === "amex_plat_travel") next.ptccEligibleSpend += amt;
   if (cardId === "amex_mrcc") {
     next.mrccCycleSpend += amt;
@@ -19,7 +42,7 @@ export function applyCardSpend(next: AppState, cardId: string, amt: number, rewa
   }
   if (cardId === "sbi_simplyclick") {
     next.sbiYtdSpend += amt;
-    next.sbiFeeWaiverSpend += amt;
+    if (sbiFeeWaiverEligible(category, merchant)) next.sbiFeeWaiverSpend += amt;
   }
   if (cardId === "idfc_indigo") next.idfcYtdSpend += amt;
   if (cardId === "hsbc_live_plus") {
@@ -41,11 +64,16 @@ const clamp0 = (n: number) => (n < 0 ? 0 : n);
 
 /**
  * Undo the milestone/cycle effect of a previously-applied card spend.
- * Used when a logged card transaction is edited or deleted so counters stay accurate.
- * Counters are clamped at 0 (the txn-count milestones can't perfectly invert across a
- * month reset, but clamping keeps them sane and never negative).
  */
-export function reverseCardSpend(next: AppState, cardId: string, amt: number, rewardInr: number, effectivePct?: number): void {
+export function reverseCardSpend(
+  next: AppState,
+  cardId: string,
+  amt: number,
+  rewardInr: number,
+  effectivePct?: number,
+  category?: string,
+  merchant?: string
+): void {
   if (cardId === "amex_plat_travel") next.ptccEligibleSpend = clamp0(next.ptccEligibleSpend - amt);
   if (cardId === "amex_mrcc") {
     next.mrccCycleSpend = clamp0(next.mrccCycleSpend - amt);
@@ -59,7 +87,9 @@ export function reverseCardSpend(next: AppState, cardId: string, amt: number, re
   }
   if (cardId === "sbi_simplyclick") {
     next.sbiYtdSpend = clamp0(next.sbiYtdSpend - amt);
-    next.sbiFeeWaiverSpend = clamp0(next.sbiFeeWaiverSpend - amt);
+    if (sbiFeeWaiverEligible(category, merchant)) {
+      next.sbiFeeWaiverSpend = clamp0(next.sbiFeeWaiverSpend - amt);
+    }
   }
   if (cardId === "idfc_indigo") next.idfcYtdSpend = clamp0(next.idfcYtdSpend - amt);
   if (cardId === "hsbc_live_plus") {

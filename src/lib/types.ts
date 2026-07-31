@@ -171,4 +171,6 @@ export type RecommendationResult = {
     note: string;
     giveUpPct: number; // how much raw return you'd sacrifice vs the top pick
   };
+  /** Open claim / activate reminders from Benefit claims + live card rules. */
+  claimTips?: string[];
 };

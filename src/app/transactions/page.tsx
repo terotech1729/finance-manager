@@ -96,7 +96,7 @@ export default function TransactionsPage() {
     setTxns(addTransaction(t));
     if (modeIsCard(v.mode)) {
       const next = { ...loadState() };
-      applyCardSpend(next, v.mode, amt, rwd, amt > 0 ? (rwd / amt) * 100 : 0);
+      applyCardSpend(next, v.mode, amt, rwd, amt > 0 ? (rwd / amt) * 100 : 0, v.category, v.merchant.trim());
       saveState(next);
     }
     setAdding(false);
@@ -113,8 +113,8 @@ export default function TransactionsPage() {
     const newIsCard = modeIsCard(v.mode);
     if (oldWasCard || newIsCard) {
       const next = { ...loadState() };
-      if (oldWasCard) reverseCardSpend(next, editing.cardId, editing.amount, editing.rewardInr, editing.effectivePct);
-      if (newIsCard) applyCardSpend(next, v.mode, amt, rwd, amt > 0 ? (rwd / amt) * 100 : 0);
+      if (oldWasCard) reverseCardSpend(next, editing.cardId, editing.amount, editing.rewardInr, editing.effectivePct, editing.category, editing.merchant);
+      if (newIsCard) applyCardSpend(next, v.mode, amt, rwd, amt > 0 ? (rwd / amt) * 100 : 0, v.category, v.merchant.trim());
       saveState(next);
     }
     const channel: Transaction["channel"] =
@@ -138,7 +138,7 @@ export default function TransactionsPage() {
     if (!confirm(`Delete this ${inrExact(t.amount)} transaction at ${t.merchant}?`)) return;
     if (modeIsCard(t.cardId)) {
       const next = { ...loadState() };
-      reverseCardSpend(next, t.cardId, t.amount, t.rewardInr, t.effectivePct);
+      reverseCardSpend(next, t.cardId, t.amount, t.rewardInr, t.effectivePct, t.category, t.merchant);
       saveState(next);
     }
     setTxns(deleteTransaction(t.id));

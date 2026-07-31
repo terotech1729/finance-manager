@@ -1,5 +1,6 @@
 import type { Transaction, Investment, Holding, Contribution } from "./types";
 import { thisMonthKey, newId } from "./utils";
+import { sbiFeeWaiverEligible } from "./spendTracking";
 
 const KEYS = {
   TXNS: "ccm.transactions.v1",
@@ -27,6 +28,7 @@ export type AppState = {
   mrccThisCycleAmount: number;
   goldShopwiseUsedThisMonth: number;
   bobBogoUsedThisMonth: boolean; // BOB Eterna District BOGO movie used this calendar month
+  livePlusBogoUsedThisMonth: boolean; // HSBC Live+ District/BMS cinema BOGO used this calendar month
   // Welcome windows
   bobEternaIssueDate: string;
   bobWelcomeUnlocked: boolean;
@@ -89,6 +91,8 @@ export type AppState = {
   hdfcDebitCashbackPts: number; // NetBanking cashback points ≈ ₹1
   hdfcDebitWelcomeGyftrClaimed: boolean; // ₹500/₹750 new-account GyFTR already received
   gyftrVouchers: { id: string; description: string; valueInr: number; expires: string; redeemed?: boolean; source?: string }[];
+  /** Manual claim checklist (/claims) — benefit id → claimed. */
+  benefitClaims: Record<string, boolean>;
 };
 
 export const DEFAULT_STATE: AppState = {
@@ -111,6 +115,7 @@ export const DEFAULT_STATE: AppState = {
   mrccThisCycleAmount: 9600,
   goldShopwiseUsedThisMonth: 0,
   bobBogoUsedThisMonth: false,
+  livePlusBogoUsedThisMonth: false,
   bobEternaIssueDate: "2026-05-27",
   bobWelcomeUnlocked: false,
   amazonPayIciciIssueDate: "2026-05-25",
@@ -157,21 +162,31 @@ export const DEFAULT_STATE: AppState = {
       source: "hdfc_visa_platinum_debit",
     },
   ],
+  benefitClaims: {},
 };
 
 function isClient(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-// Change notification — cloud sync registers here to push after any local write.
-let onChangeCb: (() => void) | null = null;
+// Change notification — cloud sync + UI (Recommend) subscribe after any local write.
+const changeListeners = new Set<() => void>();
 let suppressChange = false;
+/** @deprecated Prefer onStorageChange — kept for cloudSync start/stop. */
 export function setStorageOnChange(fn: (() => void) | null): void {
-  onChangeCb = fn;
+  changeListeners.clear();
+  if (fn) changeListeners.add(fn);
+}
+/** Subscribe to localStorage state/txn writes. Returns unsubscribe. */
+export function onStorageChange(fn: () => void): () => void {
+  changeListeners.add(fn);
+  return () => { changeListeners.delete(fn); };
 }
 function fireChange(): void {
   if (suppressChange) return;
-  try { onChangeCb?.(); } catch { /* ignore */ }
+  for (const fn of [...changeListeners]) {
+    try { fn(); } catch { /* ignore */ }
+  }
 }
 
 // ----- Membership-period keys (drive automatic counter resets) -----
@@ -204,6 +219,7 @@ export function loadState(): AppState {
   let st: AppState;
   try {
     st = { ...DEFAULT_STATE, ...JSON.parse(raw) };
+    if (!st.benefitClaims || typeof st.benefitClaims !== "object") st.benefitClaims = {};
   } catch {
     return DEFAULT_STATE;
   }
@@ -361,7 +377,7 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
         break;
       case "sbi_simplyclick":
         if (inSbiOnline) next.sbiYtdSpend += amt;
-        if (inSbiFee) next.sbiFeeWaiverSpend += amt;
+        if (inSbiFee && sbiFeeWaiverEligible(t.category || "", t.merchant || "")) next.sbiFeeWaiverSpend += amt;
         break;
       case "idfc_indigo": if (inYear) next.idfcYtdSpend += amt; break;
       case "hsbc_live_plus": {

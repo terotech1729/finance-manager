@@ -1,5 +1,5 @@
 import { getSupabase, isSupabaseConfigured } from "./supabase";
-import { exportAll, importAll, setStorageOnChange } from "./storage";
+import { exportAll, importAll, onStorageChange } from "./storage";
 
 /**
  * Cloud sync against a single Supabase table `finance_data`:
@@ -14,6 +14,7 @@ import { exportAll, importAll, setStorageOnChange } from "./storage";
 const TABLE = "finance_data";
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let started = false;
+let unsubStorage: (() => void) | null = null;
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error" | "offline";
 let status: SyncStatus = isSupabaseConfigured ? "idle" : "offline";
@@ -95,12 +96,13 @@ export async function startCloudSync(): Promise<void> {
     // First time on this account — seed the cloud with current local data.
     await pushToCloud();
   }
-  setStorageOnChange(schedulePush);
+  unsubStorage = onStorageChange(schedulePush);
 }
 
 export function stopCloudSync(): void {
   started = false;
-  setStorageOnChange(null);
+  unsubStorage?.();
+  unsubStorage = null;
   if (pushTimer) clearTimeout(pushTimer);
   setStatus(isSupabaseConfigured ? "idle" : "offline");
 }

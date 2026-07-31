@@ -3,7 +3,14 @@ import { findCashkaro } from "./cashkaro";
 import { findGiftCardDeals, findWelcomeOffer } from "./stacking";
 import { findRedemption } from "./redemptions";
 import { VISA_TIER_GUIDES } from "./visaBenefits";
+import { isBenefitClaimed } from "./benefitClaims";
+import { sbiFeeWaiverEligible } from "./spendTracking";
 import type { Card, RecommendationResult, RouteOption } from "./types";
+
+/** BOB Eterna domestic lounge unlock (raised mid-2026 from ₹40k). */
+const BOB_LOUNGE_PRIOR_QTR_INR = 75000;
+/** Scapia combined V+R monthly lounge unlock. */
+const SCAPIA_LOUNGE_MONTH_INR = 20000;
 
 function visaInfiniteOffer(id: string): { title: string; link?: string; howToClaim?: string } | null {
   const perk = VISA_TIER_GUIDES.find((g) => g.tier === "infinite")?.perks.find((p) => p.id === id);
@@ -88,6 +95,8 @@ export type RecommendInput = {
   mrccThisCycleAmount?: number;
   goldShopwiseUsedThisMonth?: number;
   bobBogoUsedThisMonth?: boolean;
+  /** HSBC Live+ District / BookMyShow cinema BOGO already used this calendar month. */
+  livePlusBogoUsedThisMonth?: boolean;
   scapiaMonthlySpend?: number;
   kiwiNeonCycleSpend?: number;
   swiggyBlckIssued?: boolean; // legacy — always treat as false (card not obtained)
@@ -108,6 +117,20 @@ export type RecommendInput = {
   hsbcWelcomeClaimed?: boolean;
   /** Live+ spend inside the 30-day welcome window (from txn log). Falls back to YTD if unset. */
   hsbcLivePlusWelcomeSpend?: number;
+  /** Hit milestones as `${cardId}:${threshold}` — skip already-unlocked annual rewards. */
+  milestonesHit?: string[];
+  /** /claims checklist — same source of truth as portal Benefit claims page. */
+  benefitClaims?: Record<string, boolean>;
+  hdfcDebitWelcomeGyftrClaimed?: boolean;
+  gyftrBalance?: number;
+  gyftrVouchers?: { id: string; redeemed?: boolean; valueInr?: number }[];
+  /**
+   * Amex MRCC ₹20k/mo bonus: true = confirmed enrolled on /claims;
+   * false = marked not enrolled; undefined = unknown (still count toward amount with a tip).
+   */
+  mrcc20kEnrolled?: boolean;
+  ptccLoungesUsed?: number;
+  ptccLoungesUsedThisQuarter?: number;
   today?: string; // ISO; used for calendar-month milestone feasibility
   // legacy aliases
   goldMonthlyTxnsDone?: number;
@@ -255,7 +278,7 @@ function buildLivePlusOption(
 
 /** Welcome: ₹1,000 cashback when HSBC app login + ₹25k spend within 30 days of issue. */
 function livePlusWelcomeBonus(input: RecommendInput, amt: number): { inr: number; note: string } | null {
-  if (input.hsbcWelcomeClaimed) return null;
+  if (input.hsbcWelcomeClaimed || claimed(input, "hsbc_welcome_1k")) return null;
   const issue = input.hsbcLivePlusIssueDate;
   if (!issue) return null;
   const today = input.today ? new Date(input.today) : new Date();
@@ -266,14 +289,14 @@ function livePlusWelcomeBonus(input: RecommendInput, amt: number): { inr: number
   const spent = input.hsbcLivePlusWelcomeSpend ?? input.hsbcLivePlusYtdSpend ?? 0;
   if (spent >= LIVE_PLUS_WELCOME_SPEND) return null;
   const remaining = LIVE_PLUS_WELCOME_SPEND - spent;
-  const progress = Math.min(amt, remaining) / LIVE_PLUS_WELCOME_SPEND;
-  const inrVal = 1000 * progress;
   const completes = spent + amt >= LIVE_PLUS_WELCOME_SPEND;
+  // Completing spend unlocks the full ₹1,000; partial builds stay thin pro-rata.
+  const inrVal = completes ? 1000 : 1000 * (Math.min(amt, remaining) / LIVE_PLUS_WELCOME_SPEND);
   const spentLabel = inr(spent + Math.min(amt, remaining));
   return {
     inr: inrVal,
     note: completes
-      ? `Completes ₹25k/30-day welcome → unlocks ₹1,000 cashback (also need HSBC app login)`
+      ? `Completes ₹25k/30-day welcome → unlocks full ₹1,000 cashback (also need HSBC app login)`
       : `Builds welcome ₹25k/30d (${spentLabel}/₹25k) → +${inr(inrVal)} marginal of ₹1k bonus`,
   };
 }
@@ -293,11 +316,101 @@ function inr(n: number): string {
   return `₹${Math.round(n).toLocaleString("en-IN")}`;
 }
 
-function daysSince(iso?: string): number {
+function daysSince(iso?: string, todayIso?: string): number {
   if (!iso) return 9999;
   const then = new Date(iso).getTime();
   if (!Number.isFinite(then)) return 9999;
-  return Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24));
+  const now = todayIso ? new Date(todayIso).getTime() : Date.now();
+  if (!Number.isFinite(now)) return 9999;
+  return Math.floor((now - then) / (1000 * 60 * 60 * 24));
+}
+
+function claimStateOf(input: RecommendInput) {
+  return {
+    benefitClaims: input.benefitClaims,
+    bobWelcomeUnlocked: input.bobWelcomeUnlocked,
+    hsbcWelcomeClaimed: input.hsbcWelcomeClaimed,
+    hdfcDebitWelcomeGyftrClaimed: input.hdfcDebitWelcomeGyftrClaimed,
+    amazonWelcomeClaimed: input.amazonWelcomeClaimed,
+    gyftrVouchers: input.gyftrVouchers,
+    gyftrBalance: input.gyftrBalance,
+  };
+}
+
+function claimed(input: RecommendInput, id: string): boolean {
+  return isBenefitClaimed(id, claimStateOf(input));
+}
+
+/** Open claim / activate nudges tied to this recommendation (portal /claims). */
+function buildClaimTips(input: RecommendInput, best: RouteOption, ranked: RouteOption[]): string[] {
+  const tips: string[] = [];
+  const has = (id: string) => ranked.some((o) => o.cardId === id) || best.cardId === id;
+
+  if (has("hsbc_live_plus") && !claimed(input, "hsbc_welcome_1k") && !input.hsbcWelcomeClaimed) {
+    const days = daysSince(input.hsbcLivePlusIssueDate, input.today);
+    if (days >= 0 && days <= 30) {
+      tips.push("Live+ welcome still open: ₹25k/30d + HSBC app login → ₹1,000 (mark on Benefit claims when credited).");
+    }
+  }
+  if (has("hsbc_live_plus") && !claimed(input, "hsbc_activate_750")) {
+    tips.push("Confirm Live+ ₹750 activate voucher (≥₹300 txn) — claim via SMS/email if not marked on Benefit claims.");
+  }
+  if (has("hsbc_live_plus") && !claimed(input, "hsbc_vkyc_250")) {
+    tips.push("If you applied Live+ online with VKYC, confirm ₹250 Amazon e-gift (Benefit claims).");
+  }
+  if (has("hsbc_live_plus") && !claimed(input, "hsbc_times_prime")) {
+    tips.push("Activate Times Prime / Live+ Reserve when dining — see Benefit claims + Network perks.");
+  }
+  if (has("bob_eterna") && !claimed(input, "bob_fitpass")) {
+    tips.push("BOB FITPASS Pro: activate within ~60 days of issuance if still open (Benefit claims).");
+  }
+  if (has("bob_eterna")) {
+    tips.push(`BOB lounge unlock is ₹${BOB_LOUNGE_PRIOR_QTR_INR.toLocaleString("en-IN")} spend in the prior calendar quarter (not ₹40k).`);
+  }
+  if (has("amex_plat_travel") && !claimed(input, "amex_pt_priority_pass")) {
+    tips.push("Amex PT: enroll Priority Pass once if not done — intl visits are usually paid (Benefit claims).");
+  }
+  if (has("amex_mrcc") && input.mrcc20kEnrolled !== true && !claimed(input, "amex_mrcc_20k_enroll")) {
+    tips.push("Confirm Amex MRCC ₹20k/mo bonus is still enrolled in the Amex app (tick Benefit claims when verified).");
+  }
+  if (has("scapia")) {
+    const spent = input.scapiaMonthlySpend ?? 0;
+    if (spent < SCAPIA_LOUNGE_MONTH_INR) {
+      tips.push(`Scapia lounge / airport dining-spa unlock: ${inr(spent)} / ${inr(SCAPIA_LOUNGE_MONTH_INR)} this month.`);
+    } else if (!claimed(input, "scapia_airport_alt")) {
+      tips.push("Scapia unlock active — you can pick lounge OR airport dining/shop/spa coin-back (Benefit claims).");
+    }
+  }
+  if ((input.idfcYtdSpend ?? 0) >= 200000 && !claimed(input, "idfc_bluchip_2l")) {
+    tips.push("IDFC ₹2L BluChip milestone voucher — redeem in IndiGo wallet before expiry (Benefit claims).");
+  }
+  if ((input.idfcYtdSpend ?? 0) >= 500000 && !claimed(input, "idfc_bluchip_5l")) {
+    tips.push("IDFC ₹5L BluChip milestone voucher — redeem before expiry (Benefit claims).");
+  }
+  if (has("idfc_indigo") && !claimed(input, "idfc_golf")) {
+    tips.push("IDFC Mastercard golf (4 rounds + 12 lessons/yr) unused until marked on Benefit claims.");
+  }
+  if (!claimed(input, "hdfc_gyftr_spent") && (claimed(input, "hdfc_gyftr_received") || (input.gyftrBalance ?? 0) > 0)) {
+    tips.push(`GyFTR ~${inr(input.gyftrBalance && input.gyftrBalance > 0 ? input.gyftrBalance : 750)} still to spend — redeem before expiry (Debit & Benefit claims).`);
+  }
+  if (has("yes_kiwi")) {
+    const k = input.kiwiNeonCycleSpend ?? 0;
+    if (k < 50000 && !claimed(input, "kiwi_lounge_50k")) {
+      tips.push(`Kiwi Neon: ${inr(k)} toward ₹50k lounge unlock this cycle.`);
+    }
+  }
+
+  // Checkout layers the engine can't auto-price — nudge manual compare.
+  const merchCat = `${input.merchant} ${input.category}`.toLowerCase();
+  if (/amazon|flipkart|myntra|ajio|reliance|croma|vijay|electronics|flight|hotel/.test(merchCat)) {
+    tips.push("Also check bank Instant Discount / EMI offers at checkout (and GoPaisa vs Cashkaro if the brand is listed) — not auto-scored.");
+  }
+  if (/dining|restaurant|offline|pos|swiggy|zomato/.test(merchCat) && input.channel !== "online") {
+    tips.push("Offline: magicpin / Club Corra receipt cashback can stack after card pay — confirm live % before assuming.");
+  }
+
+  // Dedupe / cap
+  return tips.slice(0, 6);
 }
 
 /** Days remaining in the current calendar month (Amex Gold/MRCC milestones reset on the 1st). */
@@ -313,21 +426,24 @@ function daysLeftInMonth(iso?: string): number {
  * Returns an extra reward amount attributable to THIS transaction.
  */
 function bobWelcomeBonus(input: RecommendInput, amt: number): { inr: number; note: string } | null {
-  if (input.bobWelcomeUnlocked) return null;
-  const within60 = daysSince(input.bobEternaIssueDate) <= 60;
+  if (input.bobWelcomeUnlocked || claimed(input, "bob_welcome_50k")) return null;
+  const within60 = daysSince(input.bobEternaIssueDate, input.today) <= 60;
   if (!within60) return null;
   const ytd = input.bobYtdSpend ?? 0;
   const target = 50000;
   if (ytd >= target) return null;
-  // 10,000 RP = ₹2,500 on hitting ₹50K. Attribute pro-rata to the portion of this
-  // spend that fills the remaining gap.
   const remaining = target - ytd;
   const fillsGap = Math.min(amt, remaining);
-  const bonusValue = (fillsGap / target) * 2500;
-  const daysLeft = 60 - daysSince(input.bobEternaIssueDate);
+  const completes = amt >= remaining;
+  // Welcome is all-or-nothing: completing spend unlocks the full ₹2,500; partial spends
+  // get thin pro-rata so they don't drown Live+ 10% on tiny carts.
+  const bonusValue = completes ? 2500 : (fillsGap / target) * 2500;
+  const daysLeft = 60 - daysSince(input.bobEternaIssueDate, input.today);
   return {
     inr: bonusValue,
-    note: `Fills ${inr(fillsGap)} of the ₹50K BOB welcome (${inr(remaining)} left, ~${daysLeft}d remaining) → +${inr(bonusValue)} pro-rata welcome value`,
+    note: completes
+      ? `Completes ₹50K BOB welcome → unlocks full ₹2,500 (10k RP); ~${daysLeft}d left in window`
+      : `Fills ${inr(fillsGap)} of the ₹50K BOB welcome (${inr(remaining)} left, ~${daysLeft}d remaining) → +${inr(bonusValue)} pro-rata`,
   };
 }
 
@@ -347,12 +463,12 @@ function goldMilestoneBonus(input: RecommendInput, amt: number): { inr: number; 
     };
   }
   const completing = done === 5;
-  // Completing the 6th unlocks the full 1,000 MR ≈ ₹500; earlier txns pro-rata.
-  const perTxn = completing ? 500 : 500 / remainingTxns;
+  // Completing the 6th unlocks 1,000 MR ≈ ₹580 @ ₹0.58; earlier txns pro-rata.
+  const perTxn = completing ? 580 : 580 / remainingTxns;
   return {
     inr: perTxn,
     note: completing
-      ? `Completes the 6-txn Amex Gold milestone → +₹500 (1,000 MR). ${daysLeft}d left.`
+      ? `Completes the 6-txn Amex Gold milestone → +₹580 (1,000 MR). ${daysLeft}d left.`
       : `Counts as txn ${done + 1}/6 of Amex Gold milestone (${daysLeft}d left) → +${inr(perTxn)} marginal`,
   };
 }
@@ -365,21 +481,25 @@ function mrccMilestoneBonus(input: RecommendInput, amt: number): { inr: number; 
   let bonus = 0;
   const notes: string[] = [];
   const txnOpen = amt >= 1500 && txnsDone < 4;
-  const amtOpen = amtDone < 20000;
+  // ₹20k amount bonus needs enrollment — false = not enrolled; undefined/true = count it.
+  const enrolledOk = input.mrcc20kEnrolled !== false;
+  const amtOpen = enrolledOk && amtDone < 20000;
 
   if (txnOpen) {
     const remaining = 4 - txnsDone;
     if (remaining > daysLeft + 1) {
       notes.push(`4-txn part unreachable (${remaining} more ≥₹1.5K needed, ${daysLeft}d left)`);
     } else {
-      bonus += remaining === 1 ? 500 : 500 / remaining;
-      notes.push(remaining === 1 ? `completes 4-txn part (+₹500)` : `txn ${txnsDone + 1}/4 (≥₹1.5K)`);
+      bonus += remaining === 1 ? 580 : 580 / remaining;
+      notes.push(remaining === 1 ? `completes 4-txn part (+₹580)` : `txn ${txnsDone + 1}/4 (≥₹1.5K)`);
     }
   }
   if (amtOpen) {
     const fills = Math.min(amt, 20000 - amtDone);
-    bonus += (fills / 20000) * 500;
+    bonus += (fills / 20000) * 580;
     notes.push(`fills ${inr(fills)} of ₹20K amount`);
+  } else if (input.mrcc20kEnrolled === false && amtDone < 20000) {
+    notes.push("₹20K amount bonus skipped — mark enrollment on Benefit claims if still active");
   } else if (txnOpen) {
     notes.push("₹20K amount already hit — a big prior spend only counted as 1 txn");
   }
@@ -426,10 +546,13 @@ function ckInrForStore(
     return { inr: r.flatInr, note: `Cashkaro flat ${inr(r.flatInr)} on ${store}`, zone: r.zone };
   }
   if (r.mid <= 0) return null;
-  const haircut = r.zone === "try" ? 0.7 : 0.85;
+  // Fixed published rates (Agoda flat 7%, etc.) must match Visa portal apples-to-apples —
+  // do not apply the variable-rate tracking haircut. Try-zone still haircuts.
+  const fixedPct = r.min === r.max && r.mid > 0;
+  const haircut = r.zone === "try" ? 0.7 : fixedPct ? 1.0 : 0.85;
   return {
     inr: amt * (r.mid / 100) * haircut,
-    note: `Cashkaro ~${r.mid}% on ${store}${r.zone === "try" ? " (tracking try-zone)" : ""}`,
+    note: `Cashkaro ~${r.mid}% on ${store}${r.zone === "try" ? " (tracking try-zone)" : fixedPct ? " (flat published rate)" : ""}`,
     zone: r.zone,
   };
 }
@@ -655,24 +778,24 @@ function addVisaInfiniteBenefitRoutes(
   }
 
   if (kind === "shopping" || /sephora|ajio/.test(t)) {
-    if (/sephora/.test(t) || kind === "shopping") {
+    // Only attach Sephora portal when the merchant is actually Sephora —
+    // kind==="shopping" alone used to inject an infeasible Sephora row that
+    // stole the Live+ cardId slot from Ajio / other shopping (bestByCard).
+    if (/sephora/.test(t)) {
       const offer = visaInfiniteOffer("inf-sephora");
       const discPct = 10;
       const discInr = amt * (discPct / 100);
       const used = input.livePlusAccelCashbackUsedThisMonth ?? 0;
-      const headroom = Math.max(0, 1200 - used);
-      const liveCash = Math.min(amt * 0.1, headroom);
+      const headroom = Math.max(0, LIVE_PLUS_ACCEL_CAP_INR - used);
+      const liveCash = Math.min(amt * (LIVE_PLUS_ACCEL_PCT / 100), headroom);
       add({
         cardId: "hsbc_live_plus",
-        label: /sephora/.test(t)
-          ? "Visa Infinite → Sephora (10% portal) + Live+ shopping"
-          : "Visa Infinite → Sephora (10% off online) — if shopping Sephora",
+        label: "Visa Infinite → Sephora (10% portal) + Live+ shopping",
         effectivePct: ((discInr + liveCash) / amt) * 100,
         baseRewardInr: liveCash,
         bonusRewardInr: discInr,
-        feasible: /sephora/.test(t),
-        feasibilityNote: /sephora/.test(t) ? undefined : "Only when buying at Sephora online",
-        pros: ["Visa Infinite Sephora 10% portal discount", "Live+ may also earn shopping 10% (shared monthly cap)"],
+        feasible: true,
+        pros: ["Visa Infinite Sephora 10% portal discount", "Live+ shopping 10% (shared monthly cap)"],
         cons: ["Open Visa Sephora offer → Redeem Now", "Don't double-count if portal price already includes the 10%"],
         rationale: "Sephora: Visa portal 10% off + Live+ shopping earn when eligible.",
         steps: [
@@ -686,24 +809,35 @@ function addVisaInfiniteBenefitRoutes(
       const offer = visaInfiniteOffer("inf-ajio-luxe");
       const discInr = Math.min(amt * 0.08, 4500);
       const need = amt >= 10000;
+      const used = input.livePlusAccelCashbackUsedThisMonth ?? 0;
+      const headroom = Math.max(0, LIVE_PLUS_ACCEL_CAP_INR - used);
+      const liveCash = Math.min(amt * (LIVE_PLUS_ACCEL_PCT / 100), headroom);
       add({
         cardId: "hsbc_live_plus",
         label: need
-          ? "Visa Infinite → Ajio Luxe (8% up to ₹4,500) + Live+"
-          : "Visa Infinite → Ajio Luxe (needs ≥₹10k for up to ₹4,500 off)",
-        effectivePct: need ? ((discInr + amt * 0.015) / amt) * 100 : 1.5,
-        baseRewardInr: amt * 0.015,
+          ? "Visa Infinite → Ajio Luxe (8% up to ₹4,500) + Live+ shopping"
+          : "HSBC Live+ 10% shopping on Ajio (Visa Luxe needs ≥₹10k)",
+        effectivePct: need ? ((discInr + liveCash) / amt) * 100 : (liveCash / amt) * 100,
+        baseRewardInr: liveCash,
         bonusRewardInr: need ? discInr : 0,
-        feasible: need,
-        feasibilityNote: need ? undefined : "Spend ≥₹10,000 in one booking to unlock up to ₹4,500 off",
-        pros: ["Instant discount up to ₹4,500 at ₹10k+", "Pay Infinite (Live+ / BOB)"],
-        cons: ["Ajio Luxe via Visa offer only", "Confirm live T&Cs"],
-        rationale: "Ajio Luxe Visa Infinite portal — strong when basket ≥₹10k.",
-        steps: [
-          offer?.link ? `Open ${offer.link}` : "Network perks → Ajio Luxe",
-          "Redeem Now → shop Ajio Luxe ≥₹10k",
-          "Pay with HSBC Live+ or BOB Eterna",
-        ],
+        feasible: true,
+        feasibilityNote: need
+          ? undefined
+          : "Visa Ajio Luxe portal discount needs ≥₹10k — below that, Live+ shopping 10% still applies",
+        pros: need
+          ? ["Instant discount up to ₹4,500 at ₹10k+", "Live+ shopping 10% (shared monthly cap)"]
+          : ["Live+ shopping 10% on Ajio without needing Visa Luxe gate", "Still open Visa Luxe if basket hits ₹10k"],
+        cons: ["Confirm Live+ shopping MCC / accel headroom", "Ajio Luxe Visa offer only when ≥₹10k"],
+        rationale: need
+          ? "Ajio Luxe Visa portal + Live+ shopping earn when basket ≥₹10k."
+          : "Under ₹10k, skip Visa Luxe and use Live+ shopping 10% (plus Cashkaro if available).",
+        steps: need
+          ? [
+              offer?.link ? `Open ${offer.link}` : "Network perks → Ajio Luxe",
+              "Redeem Now → shop Ajio Luxe ≥₹10k",
+              "Pay with HSBC Live+",
+            ]
+          : ["Open Ajio", `Pay ${inr(amt)} with HSBC Live+ for ~10% shopping cashback`],
       });
     }
   }
@@ -932,7 +1066,7 @@ function addExhaustiveTravelRoutes(
       worstCasePct: 2.0,
       bestCasePct: 4.0,
       pros: ["4% when booked inside Scapia app/store", "Coins redeemable only for Scapia travel"],
-      cons: ["Need Scapia inventory; coins travel-locked", "Maintain ₹20k/mo for lounge if you care"],
+      cons: ["Need Scapia inventory; coins travel-locked", `Maintain ₹${(SCAPIA_LOUNGE_MONTH_INR / 1000)}k/mo for lounge / airport dining-spa if you care`],
       rationale: "If the hotel is on Scapia travel, 4% locked coins can beat Amazon 5% only when you will burn Scapia coins — otherwise Amazon/Agoda cash stacks win.",
       steps: ["Open Scapia → Travel", "Book hotel if listed", "Pay with Scapia"],
     });
@@ -1202,6 +1336,28 @@ function dedupeGiftCardOptions(options: RouteOption[]): RouteOption[] {
   return out;
 }
 
+/** Platform / stack family so multiple routes on the same card stay visible. */
+function routeFamilyKey(label: string): string {
+  const l = label.toLowerCase();
+  if (/visa infinite|visa portal|agoda portal|dine with visa|sephora|ajio luxe|ihg|itc|avis|tattva|district play/.test(l)) return "visa-portal";
+  if (/agoda/.test(l)) return "agoda";
+  if (/booking\.com|booking\.|booking\b/.test(l)) return "booking";
+  if (/makemytrip|\bmmt\b/.test(l)) return "mmt";
+  if (/cleartrip/.test(l)) return "cleartrip";
+  if (/cinepolis/.test(l)) return "cred-cinepolis";
+  if (/\bpvr\b/.test(l)) return "cred-pvr";
+  if (/\binox\b/.test(l)) return "cred-inox";
+  if (/bookmyshow|\bbms\b|district/.test(l) && /cred|gift/.test(l)) return "cred-bms";
+  if (/bogo/.test(l)) return "bogo";
+  if (/shopwise/.test(l)) return "shopwise";
+  if (/cashkaro/.test(l)) return "cashkaro";
+  if (/amazon/.test(l)) return "amazon";
+  if (/gyftr|hdfc.*debit|debit/.test(l)) return "debit";
+  if (/annual milestone|push to/.test(l)) return "annual-push";
+  if (/welcome/.test(l)) return "welcome";
+  return "default";
+}
+
 function sbiSimplyClickPartner(merchant: string, category: string): boolean {
   return /bookmyshow|\bbms\b|myntra|cleartrip|yatra|apollo|netmeds|domino|tata\s*cliq|tatacliq/.test(
     `${merchant} ${category}`.toLowerCase()
@@ -1239,53 +1395,44 @@ function ytdForCard(cardId: string, input: RecommendInput): number {
 
 /**
  * Marginal value of pushing THIS spend toward a card's next ANNUAL milestone.
- * Only counts when this spend completes the threshold OR you're already close
- * (within 10% of the goal or ≤₹15k remaining). Far-away pro-rata used to
- * inflate every SBI/IDFC/PT spend (e.g. ₹740 toward a ₹63k gap still got ~₹15
- * of "milestone" value) and falsely beat real routes like Amazon travel.
+ *
+ * CRITICAL: only attribute reward INR when this spend COMPLETES the threshold.
+ * The old "close" pro-rata (within 10%/₹15k) inflated every small txn — e.g. ₹500
+ * Swiggy scored ~97% via SBI fee-waiver "near miss", and Amex PT scored ~54% on
+ * every spend while ₹7k short of ₹1.9L. Near-misses belong in milestoneTip only.
  */
 function annualMilestoneBonus(cardId: string, input: RecommendInput, amt: number): { inr: number; note: string; threshold: number } | null {
   const short = getCardById(cardId)?.short ?? cardId;
+  const hit = new Set(input.milestonesHit ?? []);
 
   // SBI fee waiver is a separate counter from online voucher YTD.
   if (cardId === "sbi_simplyclick") {
+    if (!sbiFeeWaiverEligible(input.category || "", input.merchant || "")) return null;
     const feeSpend = input.sbiFeeWaiverSpend ?? 0;
     const feeThreshold = 100000;
     const feeReward = 589; // ₹499 + 18% GST
-    if (feeSpend < feeThreshold) {
-      const remaining = feeThreshold - feeSpend;
-      const close = remaining <= Math.max(feeThreshold * 0.1, 15000);
-      if (amt >= remaining || close) {
-        const completes = amt >= remaining;
-        const value = completes ? feeReward : Math.min(feeReward, (amt / remaining) * feeReward);
-        return {
-          inr: value,
-          note: completes
-            ? `Completes SBI fee-waiver ₹1L eligible retail → ~${inr(feeReward)} fee saved`
-            : `Near SBI fee waiver — ${inr(remaining)} more to ₹1L eligible retail (~${inr(feeReward)} fee save)`,
-          threshold: feeThreshold,
-        };
-      }
+    if (feeSpend < feeThreshold && amt >= feeThreshold - feeSpend) {
+      return {
+        inr: feeReward,
+        note: `Completes SBI fee-waiver ₹1L eligible retail → ~${inr(feeReward)} fee saved`,
+        threshold: feeThreshold,
+      };
     }
   }
 
   const ytd = ytdForCard(cardId, input);
   const ms = ANNUAL_MILESTONES.filter((m) => m.cardId === cardId).slice().sort((a, b) => a.threshold - b.threshold);
-  // Use live YTD only — ignore stale static `hit` flags in cards.ts.
-  const next = ms.find((m) => ytd < m.threshold);
+  // Live YTD + explicit hit flags (portal milestonesHit / static hit on cards).
+  const next = ms.find((m) => ytd < m.threshold && !hit.has(`${cardId}:${m.threshold}`) && !m.hit);
   if (!next) return null;
   const remaining = next.threshold - ytd;
-  const completes = amt >= remaining;
-  const close = remaining <= Math.max(next.threshold * 0.1, 15000);
-  if (!completes && !close) return null;
+  if (amt < remaining) return null; // near-miss → no score inflation
 
-  const value = completes
-    ? next.rewardValueInr
-    : Math.min(next.rewardValueInr, (amt / remaining) * next.rewardValueInr);
-  const note = completes
-    ? `Completes ${short}'s ${inr(next.threshold)} milestone → unlocks ${next.reward} (${inr(next.rewardValueInr)})`
-    : `Near ${short}'s ${inr(next.threshold)} milestone — ${inr(remaining)} to go (${next.reward})`;
-  return { inr: value, note, threshold: next.threshold };
+  return {
+    inr: next.rewardValueInr,
+    note: `Completes ${short}'s ${inr(next.threshold)} milestone → unlocks ${next.reward} (${inr(next.rewardValueInr)})`,
+    threshold: next.threshold,
+  };
 }
 
 /**
@@ -1397,37 +1544,62 @@ function buildKiwiOption(input: RecommendInput, amt: number): RouteOption {
   }
 
   // In-person / merchant-app / explicit UPI → scan & pay 2%, with milestone upside
+  // only when THIS spend completes the next Neon tier OR you're within ₹10k of it.
+  // Early-cycle (e.g. ₹0 of ₹50k) must not score every UPI at ~3% EV.
   const k = input.kiwiNeonCycleSpend ?? 0;
-  let marginal = 2;
+  let nextThreshold = 0;
+  let targetMarginal = 2;
   let mileNote = "";
-  if (k < 50000) { marginal = 3; mileNote = `Counts toward Neon ₹50K milestone (₹${Math.round(k).toLocaleString("en-IN")}/₹50K this cycle). Hitting ₹50K retroactively lifts all eligible spends to 3%.`; }
-  else if (k < 100000) { marginal = 5; mileNote = `Past ₹50K — the next ₹${(100000 - k).toLocaleString("en-IN")} toward ₹1L earns ~5% effective once milestone 2 credits.`; }
-  else if (k < 150000) { marginal = 7; mileNote = `Past ₹1L — the next ₹${(150000 - k).toLocaleString("en-IN")} toward ₹1.5L earns ~7% effective once milestone 3 credits.`; }
-  else { marginal = 2; mileNote = "All three Neon milestones cleared this cycle → flat 2%."; }
+  if (k < 50000) {
+    nextThreshold = 50000;
+    targetMarginal = 3;
+    mileNote = `Counts toward Neon ₹50K milestone (₹${Math.round(k).toLocaleString("en-IN")}/₹50K this cycle). Hitting ₹50K retroactively lifts eligible spends to 3%.`;
+  } else if (k < 100000) {
+    nextThreshold = 100000;
+    targetMarginal = 5;
+    mileNote = `Past ₹50K — next ₹${(100000 - k).toLocaleString("en-IN")} toward ₹1L unlocks ~5% effective once milestone 2 credits.`;
+  } else if (k < 150000) {
+    nextThreshold = 150000;
+    targetMarginal = 7;
+    mileNote = `Past ₹1L — next ₹${(150000 - k).toLocaleString("en-IN")} toward ₹1.5L unlocks ~7% effective once milestone 3 credits.`;
+  } else {
+    mileNote = "All three Neon milestones cleared this cycle → flat 2%.";
+  }
 
-  // Like the BOB welcome, reflect the Neon milestone marginal in the effective %:
-  // 2% lands immediately; the retroactive top-up lifts it to ~3/5/7% as you march to the
-  // next threshold. Worst case (if you stall before the milestone) is the guaranteed 2%.
+  const remaining = nextThreshold > 0 ? nextThreshold - k : 0;
+  const upliftPct = Math.max(0, targetMarginal - 2);
+  const completing = nextThreshold > 0 && amt >= remaining;
+  const close = nextThreshold > 0 && remaining > 0 && remaining <= 10000;
+  const creditedUplift = completing ? upliftPct : close ? upliftPct * (amt / remaining) : 0;
+  const effective = 2 + creditedUplift;
   const baseInr = amt * 0.02;
-  const milestoneInr = amt * ((marginal - 2) / 100);
+  const milestoneInr = amt * (creditedUplift / 100);
+
   return opt({
-    label: marginal > 2
-      ? `YES Bank Kiwi — UPI scan & pay (~${marginal}% with Neon milestone)`
+    label: creditedUplift > 0
+      ? `YES Bank Kiwi — UPI scan & pay (~${effective.toFixed(1)}% with Neon ${completing ? "completing" : "near"} milestone)`
       : "YES Bank Kiwi — UPI scan & pay (2%)",
-    effectivePct: marginal,
+    effectivePct: +effective.toFixed(2),
     baseRewardInr: baseInr,
     bonusRewardInr: milestoneInr,
     worstCasePct: 2.0,
-    bestCasePct: marginal,
-    pros: [`2% instant${marginal > 2 ? ` + Neon milestone top-up → ~${marginal}% effective` : ""} (1 Kiwi = ₹0.25, cashable)`, mileNote],
-    cons: amt < 100 ? ["Kiwis accrue per ₹100 slab; sub-₹100 rounds down"] : (marginal > 2 ? ["The extra above 2% credits only when you actually hit the next Neon milestone"] : []),
+    bestCasePct: targetMarginal,
+    pros: [
+      `2% instant${creditedUplift > 0 ? ` + Neon uplift → ~${effective.toFixed(1)}% on this spend` : ""} (1 Kiwi = ₹0.25, cashable)`,
+      mileNote,
+    ],
+    cons: amt < 100
+      ? ["Kiwis accrue per ₹100 slab; sub-₹100 rounds down"]
+      : (targetMarginal > 2 && creditedUplift === 0
+        ? [`Next Neon uplift (~${targetMarginal}%) only ranks once you're within ₹10k of the threshold or this spend completes it`]
+        : (creditedUplift > 0 && !completing ? ["Near-miss uplift is pro-rata — full ~" + targetMarginal + "% only when the milestone actually credits"] : [])),
     steps: [
       "Open the Kiwi app",
       "Scan the merchant's UPI QR (or enter UPI ID)",
       `Pay ${inr(amt)} via Kiwi (RuPay credit card on UPI)`,
-      `Earn 2% now; the spend counts toward Neon milestones (retroactive ~${marginal}% once the next threshold credits)`,
+      `Earn 2% now; the spend counts toward Neon milestones (best case ~${targetMarginal}% once the next threshold credits)`,
     ],
-    rationale: `Kiwi turns an in-person UPI payment into 2% now, and — like the BOB welcome — the Neon milestone top-up lifts it to ~${marginal}% as you march to the next threshold. ${mileNote}`,
+    rationale: `Kiwi UPI scan & pay guarantees 2% cashable. ${mileNote}${creditedUplift > 0 ? ` This spend is credited with Neon uplift in ranking because you're ${completing ? "completing" : "near"} the next threshold.` : " Ranking uses 2% until you're near / completing the next Neon tier (best-case column shows the uplift)."}`,
   });
 }
 
@@ -1507,7 +1679,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
       bestCasePct: 3.5 + (ckUsable ? ck!.max : 0),
       cashkaroSuggested: !!ckUsable,
       pros: ["0% forex markup — saves ~3.5% vs Amex / ~2% vs IDFC abroad", "Best card you hold for non-INR"],
-      cons: ["Scapia earns no coins on forex spends (excluded) — the win is purely the 0% markup", "Maintain ≥₹20K/mo for lounge"],
+      cons: ["Scapia earns no coins on forex spends (excluded) — the win is purely the 0% markup", `Maintain ≥₹${(SCAPIA_LOUNGE_MONTH_INR / 1000)}K/mo for lounge`],
       rationale: "Scapia has 0% forex — unbeatable for non-INR. (Visa Infinite Meet & Greet needs ~$1k intl POS on Live+/BOB — don't use those abroad for markup; use Scapia, then push a deliberate Infinite POS only if hunting Meet & Assist eligibility — see Network perks.)",
       steps: [
         ckUsable ? "If on Cashkaro (Booking/Agoda), open via Cashkaro first" : `Pay with Scapia at the foreign merchant / POS`,
@@ -1541,10 +1713,37 @@ export function recommend(input: RecommendInput): RecommendationResult {
     }
     if (/sephora/.test(`${cat} ${merchant}`)) {
       addVisaInfiniteBenefitRoutes("shopping", input, amt, add, `${merchant} ${cat}`);
+      // Also rank plain Live+ shopping + Cashkaro (don't Visa-only finalize).
+      {
+        const ckInr = ck && ck.zone === "reliable" ? amt * (ck.mid / 100) * 0.85 : 0;
+        options.push(buildLivePlusOption(amt, "shopping", input, {
+          cashkaroInr: ckInr,
+          cashkaroNote: ckInr > 0 ? `Cashkaro ~${ck!.mid}%` : undefined,
+        }));
+      }
       return finalize(options, input, amt, isForeign, ck);
     }
     if (/ajio/.test(`${cat} ${merchant}`)) {
       addVisaInfiniteBenefitRoutes("shopping", input, amt, add, `${merchant} ${cat}`);
+      {
+        const ckInr = ck && ck.zone === "reliable" ? amt * (ck.mid / 100) * 0.85 : 0;
+        options.push(buildLivePlusOption(amt, "shopping", input, {
+          cashkaroInr: ckInr,
+          cashkaroNote: ckInr > 0 ? `Cashkaro ~${ck!.mid}%` : undefined,
+        }));
+        if (ck && ck.zone === "reliable") {
+          add({
+            cardId: "bob_eterna",
+            label: "Cashkaro → BOB Eterna 5× online (3.75%)",
+            effectivePct: 3.75 + ck.mid * 0.85,
+            cashkaroSuggested: true,
+            pros: ["BOB 5× online + Cashkaro"],
+            cons: ["Worse than Live+ 10% when accel headroom remains"],
+            rationale: "Backup if Live+ shopping cap is full.",
+            steps: ["Cashkaro → Ajio", "Pay with BOB Eterna"],
+          });
+        }
+      }
       return finalize(options, input, amt, isForeign, ck);
     }
     if (/tattva/.test(`${cat} ${merchant}`)) {
@@ -1756,21 +1955,48 @@ export function recommend(input: RecommendInput): RecommendationResult {
       rationale: "Backup if Live+'s shared ₹1,200/mo accelerated cap is already used this month.",
       steps: ["Open Swiggy", "Pay with BOB Eterna"],
     });
-    add({
-      cardId: "amex_gold",
-      label: `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) — Gold 6×₹1k milestone`,
-      effectivePct: SHOPWISE_NET_PCT,
-      pros: [
-        `~${SHOPWISE_NET_PCT}% net + counts as a Gold ≥₹1k txn`,
-        "Uses Swiggy spend you already make — no Amazon Pay pile-up",
-      ],
-      cons: [
-        "Worse yield than HSBC Live+ 10%",
-        "Only use this slice for Gold milestone; put leftover Swiggy on Live+",
-      ],
-      rationale: "Amex Gold milestone fuel should be ShopWise Swiggy vouchers (meals you already order), NOT Amazon Pay vouchers.",
-      steps: ["Open ShopWise", "Buy Swiggy voucher ≥₹1k with Amex Gold (up to 6 separate days)", "Redeem in Swiggy for meals you'd buy anyway"],
-    });
+    {
+      const goldB = goldMilestoneBonus(input, amt);
+      const goldInr = goldB?.inr ?? 0;
+      const netPct = SHOPWISE_NET_PCT + (goldInr / amt) * 100;
+      add({
+        cardId: "amex_gold",
+        label: goldB
+          ? `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) + Gold milestone`
+          : `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) — Gold 6×₹1k milestone`,
+        effectivePct: netPct,
+        baseRewardInr: amt * (SHOPWISE_NET_PCT / 100),
+        bonusRewardInr: goldInr,
+        pros: [
+          `~${SHOPWISE_NET_PCT}% net + counts as a Gold ≥₹1k txn`,
+          "Uses Swiggy spend you already make — no Amazon Pay pile-up",
+          goldB ? goldB.note : "",
+        ].filter(Boolean),
+        cons: [
+          "Worse yield than HSBC Live+ 10% unless milestone value tips it",
+          "Only use this slice for Gold milestone; put leftover Swiggy on Live+",
+        ],
+        rationale: "Amex Gold milestone fuel should be ShopWise Swiggy vouchers (meals you already order), NOT Amazon Pay vouchers.",
+        steps: ["Open ShopWise", "Buy Swiggy voucher ≥₹1k with Amex Gold (up to 6 separate days)", "Redeem in Swiggy for meals you'd buy anyway"],
+      });
+    }
+    // HDFC Platinum debit: 5% Swiggy (cap 150 pts/mo) — liquid points ≈ ₹1.
+    {
+      const debitCapLeft = 150; // monthly; portal doesn't track usage yet — soft cap note
+      const debitInr = Math.min(amt * 0.05, debitCapLeft);
+      if (debitInr >= 1) {
+        add({
+          cardId: "hdfc_visa_platinum_debit",
+          label: `HDFC Platinum debit — 5% Swiggy (~${inr(debitInr)}, cap 150 pts/mo)`,
+          effectivePct: (debitInr / amt) * 100,
+          baseRewardInr: debitInr,
+          pros: ["Debit points ≈ ₹1 in NetBanking", "Useful when Live+ accel cap is full"],
+          cons: ["Shared ~₹750/mo account cashback pool", "Usually behind Live+ 10% when accel headroom remains"],
+          rationale: "HDFC Visa Platinum debit pays 5% on Swiggy (up to 150 pts/mo). Ranked so debit isn't invisible to recommend.",
+          steps: ["Pay Swiggy with HDFC Platinum debit", "Cashback posts as points in NetBanking"],
+        });
+      }
+    }
     return finalize(options, input, amt, isForeign, ck);
   }
 
@@ -1995,32 +2221,35 @@ export function recommend(input: RecommendInput): RecommendationResult {
     }
     if (!oneTicket) {
       // Live+ cinema BOGO on District + BookMyShow (issuer perk, refreshed Jul 2026).
-      const lpSavings = Math.min(amt / ticketCount, 250);
-      add({
-        cardId: "hsbc_live_plus",
-        label: platformIsBms
-          ? "HSBC Live+ BOGO — BookMyShow (2nd ticket free; also 10% off live events)"
-          : "HSBC Live+ BOGO — District or BookMyShow (2nd ticket free)",
-        effectivePct: (lpSavings / amt) * 100,
-        baseRewardInr: lpSavings,
-        worstCasePct: 0,
-        bestCasePct: (250 / Math.max(amt, 1)) * 100,
-        pros: [
-          `Buy-1-Get-1 ≈ ${inr(lpSavings)} off (capped ~₹250 — confirm in-app)`,
-          platformIsBms ? "Works on BookMyShow with Live+ (unlike BOB which is District-only)" : "District or BookMyShow both listed for Live+",
-          "Also counts toward Live+ ₹2L fee-waiver / welcome spend",
-        ],
-        cons: [
-          "Once per calendar month — confirm unused in District / BMS offer before booking",
-          "Needs 2+ tickets; T&Cs / cap may vary by theatre",
-        ],
-        rationale: "HSBC Live+ now advertises cinema BOGO on District and BookMyShow (plus 10% off BMS live events). Prefer Live+ when BOB BOGO is used or you're already on BMS.",
-        steps: [
-          platformIsBms ? "Stay on BookMyShow (or open District)" : "Open District or BookMyShow",
-          `Select ${ticketCount}+ tickets`,
-          "Pay with HSBC Live+ and apply the BOGO offer",
-        ],
-      });
+      const livePlusBogoAvailable = input.livePlusBogoUsedThisMonth !== true;
+      if (livePlusBogoAvailable) {
+        const lpSavings = Math.min(amt / ticketCount, 250);
+        add({
+          cardId: "hsbc_live_plus",
+          label: platformIsBms
+            ? "HSBC Live+ BOGO — BookMyShow (2nd ticket free; also 10% off live events)"
+            : "HSBC Live+ BOGO — District or BookMyShow (2nd ticket free)",
+          effectivePct: (lpSavings / amt) * 100,
+          baseRewardInr: lpSavings,
+          worstCasePct: 0,
+          bestCasePct: (250 / Math.max(amt, 1)) * 100,
+          pros: [
+            `Buy-1-Get-1 ≈ ${inr(lpSavings)} off (capped ~₹250 — confirm in-app)`,
+            platformIsBms ? "Works on BookMyShow with Live+ (unlike BOB which is District-only)" : "District or BookMyShow both listed for Live+",
+            "Also counts toward Live+ ₹2L fee-waiver / welcome spend",
+          ],
+          cons: [
+            "Once per calendar month — confirm unused in District / BMS offer before booking",
+            "Needs 2+ tickets; T&Cs / cap may vary by theatre",
+          ],
+          rationale: "HSBC Live+ now advertises cinema BOGO on District and BookMyShow (plus 10% off BMS live events). Prefer Live+ when BOB BOGO is used or you're already on BMS.",
+          steps: [
+            platformIsBms ? "Stay on BookMyShow (or open District)" : "Open District or BookMyShow",
+            `Select ${ticketCount}+ tickets`,
+            "Pay with HSBC Live+ and apply the BOGO offer",
+          ],
+        });
+      }
     }
     add({
       cardId: "amazon_pay_icici",
@@ -2031,6 +2260,22 @@ export function recommend(input: RecommendInput): RecommendationResult {
       rationale: "BookMyShow is an Amazon Pay partner merchant — paying via Amazon Pay with the ICICI card earns 2% (liquid cashback).",
       steps: ["At checkout choose Amazon Pay", "Pay with Amazon Pay ICICI", "2% back as Amazon Pay balance"],
     });
+    // HDFC Platinum debit: 25% BookMyShow (cap 250 pts/mo).
+    {
+      const debitInr = Math.min(amt * 0.25, 250);
+      if (debitInr >= 1 && (platformIsBms || /bookmyshow|\bbms\b/.test(`${merchant} ${cat}`))) {
+        add({
+          cardId: "hdfc_visa_platinum_debit",
+          label: `HDFC Platinum debit — 25% BookMyShow (~${inr(debitInr)}, cap 250 pts/mo)`,
+          effectivePct: (debitInr / amt) * 100,
+          baseRewardInr: debitInr,
+          pros: ["Strong BMS debit cashback when credit BOGOs are used", "Points ≈ ₹1"],
+          cons: ["Shared ~₹750/mo account cashback pool", "Confirm offer still live on your plastic"],
+          rationale: "HDFC Visa Platinum debit lists 25% on BookMyShow (up to 250 pts/mo). Useful after monthly BOGOs are spent.",
+          steps: ["Book on BookMyShow", "Pay with HDFC Platinum debit"],
+        });
+      }
+    }
     // SBI SimplyCLICK 10× on BookMyShow (~2.5%)
     {
       const ckBonus = ck && ck.zone !== "na" ? ck.mid * 0.85 : 0;
@@ -2626,20 +2871,52 @@ function finalize(
     }
   }
 
-  // ---- Universal ANNUAL-milestone push (SBI fee/online, IDFC BluChip tiers, Amex PT) ----
-  // Only when this spend completes the next threshold OR you're already close (≤10% / ₹15k).
-  // Far-away pro-rata was removed — it made SBI win random spends with a fake ~2% "milestone".
+  // ---- GyFTR balance — only when this merchant can actually redeem GyFTR ----
+  {
+    const gyftr = input.gyftrBalance ?? 0;
+    const openVouchers = (input.gyftrVouchers ?? []).filter((v) => !v.redeemed && (v.valueInr ?? 0) > 0);
+    const voucherSum = openVouchers.reduce((s, v) => s + (v.valueInr ?? 0), 0);
+    const bal = Math.max(gyftr, voucherSum);
+    const t = `${input.merchant} ${input.category}`.toLowerCase();
+    const gyftrEligible =
+      /\bgyftr\b/.test(t) ||
+      /myntra|pantaloons|lifestyle|shoppers\s*stop|westside|croma|reliance digital|vijay\s*sales|titan|fastrack|sony|samsung|apple|nike|adidas|puma|decathlon|nykaa|sephora|ajio|tata\s*cliq|brand\s*factory/.test(t);
+    if (bal >= 100 && gyftrEligible && !claimed(input, "hdfc_gyftr_spent")) {
+      const use = Math.min(amt, bal);
+      options.push(mkOption(amt, {
+        cardId: "hdfc_visa_platinum_debit",
+        label: `Spend GyFTR / HDFC debit voucher first (~${inr(use)} of ${inr(bal)} open)`,
+        effectivePct: (use / amt) * 100,
+        baseRewardInr: use,
+        pros: [`Open GyFTR ≈ ${inr(bal)} — burning idle voucher is ~100% on that slice`, "Separate from monthly debit cashback points"],
+        cons: ["Only covers up to voucher balance — pay the rest on your best card", "Confirm brand acceptance on GyFTR before checkout"],
+        rationale: "You have unspent GyFTR / HDFC debit campaign vouchers on a brand that typically accepts GyFTR. Prefer redeeming them before credit-card stacks.",
+        steps: [
+          "Open GyFTR / HDFC debit voucher email or gyftr.com",
+          `Redeem ~${inr(use)} toward this purchase`,
+          "Pay any remainder on the next-best credit route",
+        ],
+      }));
+    }
+  }
+
+  // ---- Universal ANNUAL-milestone push (SBI, IDFC, Amex PT/MRCC, BOB ₹5L, Live+ ₹2L) ----
+  // Only when this spend completes the next threshold. Far-away pro-rata was removed.
   if (!isForeign) {
-    for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel"]) {
-      if (cardId === "amex_plat_travel" && amexExcluded(input.category || "")) continue;
-      // One row per card — skip if this card already has any option.
-      if (options.some((o) => o.cardId === cardId)) continue;
+    for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel", "amex_mrcc", "bob_eterna", "hsbc_live_plus"]) {
+      if ((cardId === "amex_plat_travel" || cardId === "amex_mrcc") && amexExcluded(input.category || "")) continue;
+      // Skip welcome-only BOB ₹50k / Live+ ₹25k here — those have dedicated welcome helpers.
+      // annualMilestoneBonus still finds the next incomplete threshold (fee waiver / RP / etc.).
+      if (options.some((o) => o.cardId === cardId && o.bonusRewardInr > 0)) continue;
       const mb = annualMilestoneBonus(cardId, input, amt);
       if (!mb || mb.inr < 1) continue;
+      // Don't double-count welcome thresholds that bobWelcomeBonus / livePlusWelcomeBonus already own.
+      if (cardId === "bob_eterna" && mb.threshold === 50000) continue;
+      if (cardId === "hsbc_live_plus" && mb.threshold === 25000) continue;
       const baseEval = genericCardEval(cardId, input, false);
       const basePct = baseEval?.pct ?? 0;
       const eff = basePct + (mb.inr / amt) * 100;
-      if (eff <= basePct + 0.05) continue; // negligible — skip noise
+      if (eff <= basePct + 0.05) continue;
       const short = getCardById(cardId)?.short ?? cardId;
       options.push(mkOption(amt, {
         cardId,
@@ -2722,15 +2999,17 @@ function finalize(
   // score so travel-locked coins (Scapia/BluChips) don't out-rank equal-nominal liquid cash.
   const LIQ_WEIGHT: Record<string, number> = { cash: 1.0, flexible: 0.9, locked: 0.7 };
   const unique = dedupeGiftCardOptions(options);
-  // One best row per card (prevents e.g. two Amex PT rows: generic + annual push).
-  const bestByCard = new Map<string, RouteOption>();
+  // Keep distinct stacks per card (Agoda vs Booking vs Visa portal; CRED PVR vs Cinepolis).
+  // Old bestByCard hid runner-up OTAs / GCs that share a cardId.
+  const bestByRoute = new Map<string, RouteOption>();
   for (const o of unique) {
-    const prev = bestByCard.get(o.cardId);
+    const key = `${o.cardId}::${routeFamilyKey(o.label)}`;
+    const prev = bestByRoute.get(key);
     if (!prev || o.totalRewardInr > prev.totalRewardInr || (o.totalRewardInr === prev.totalRewardInr && o.bonusRewardInr > prev.bonusRewardInr)) {
-      bestByCard.set(o.cardId, o);
+      bestByRoute.set(key, o);
     }
   }
-  const deduped = [...bestByCard.values()];
+  const deduped = [...bestByRoute.values()];
   for (const o of deduped) {
     o.liquidity = liquidityOf(o.cardId, o.label);
     const rng = pointsRange(o.cardId, o.label, o.totalRewardInr, o.effectivePct, amt);
@@ -2773,6 +3052,7 @@ function finalize(
   }
 
   const effectiveRange = pointsRange(best.cardId, best.label, best.totalRewardInr, best.effectivePct, amt) ?? undefined;
+  const claimTips = buildClaimTips(input, best, ranked);
 
   return {
     card,
@@ -2788,5 +3068,6 @@ function finalize(
     alternatives,
     effectiveRange,
     milestoneTip,
+    claimTips: claimTips.length ? claimTips : undefined,
   };
 }

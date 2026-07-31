@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { DEFAULT_STATE, exportAll, importAll, loadState, saveState, clearAll, recomputeCounters, type AppState } from "@/lib/storage";
 import { Callout } from "@/components/Callout";
@@ -76,7 +77,10 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold mb-1">Settings</h1>
-        <p className="text-fg-muted text-sm">Update card balances, milestone progress, and card-issuance status. Stored locally.</p>
+        <p className="text-fg-muted text-sm">
+          Update card balances, milestone progress, and card-issuance status. Stored locally.{" "}
+          <Link href="/claims" className="text-accent hover:underline">Benefit claims checklist →</Link>
+        </p>
       </div>
 
       <Callout tone="info">
@@ -89,7 +93,7 @@ export default function SettingsPage() {
           <li><b>SBI online vouchers</b> — separate year (statement reset ~22 May); not the Oct fee year</li>
           <li><b>Kiwi Neon</b> — 1 Apr → 31 Mar</li>
           <li><b>IDFC / Live+ fee YTD</b> — tracked as calendar year here (confirm on issuer app if unsure)</li>
-          <li><b>Scapia lounge</b> — calendar month ₹20k · <b>BOB welcome</b> — 60 days from issue</li>
+          <li><b>Scapia lounge</b> — calendar month ₹20k · <b>BOB lounge</b> — ₹75k prior quarter · <b>BOB welcome</b> — 60 days from issue</li>
         </ul>
       </Callout>
 

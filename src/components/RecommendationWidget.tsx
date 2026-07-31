@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { recommend, type RecommendInput } from "@/lib/recommend";
+import { recommend } from "@/lib/recommend";
+import { buildRecommendInputFromState } from "@/lib/recommendInput";
 import { detectCategory, ALL_CATEGORIES, ALL_CHANNELS, type ChannelType } from "@/lib/categorize";
 import { findWelcomeOffer } from "@/lib/stacking";
-import { addTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
+import { addTransaction, loadState, loadTransactions, saveState, onStorageChange, type AppState } from "@/lib/storage";
 import { applyCardSpend } from "@/lib/spendTracking";
 import { toast } from "./Toast";
 import { getCardById } from "@/lib/cards";
@@ -17,6 +18,7 @@ function routeName(cardId: string): string {
   if (cardId === "upi") return "UPI (PhonePe/GPay)";
   if (cardId === "cash") return "Cash";
   if (cardId === "amazon_pay_balance") return "Amazon Pay balance";
+  if (cardId === "hdfc_visa_platinum_debit") return "HDFC Platinum Debit";
   return cardId;
 }
 import { inr, newId, todayLocal, localDateToISO } from "@/lib/utils";
@@ -46,8 +48,9 @@ export function RecommendationWidget({ onLogged }: Props) {
   const [selectedRoute, setSelectedRoute] = useState<RouteOption | null>(null);
 
   useEffect(() => {
-    // Always start from saved milestone counters (Milestones / Settings) — past truth for Recommend.
+    // Always start from saved milestone counters (Milestones / Settings / Claims).
     setStateLocal(loadState());
+    return onStorageChange(() => setStateLocal(loadState()));
   }, []);
   useEffect(() => {
     setClarificationAnswer(null);
@@ -81,50 +84,30 @@ export function RecommendationWidget({ onLogged }: Props) {
 
   const rec = useMemo(() => {
     if (!state || noAmount || merchantTooShort || needsClarification) return null;
-    // Past first: re-read saved counters every ranking (edits on Milestones apply immediately).
+    // Past first: re-read saved counters every ranking (edits on Milestones / Claims apply immediately).
     const fresh = loadState();
-    const input: RecommendInput = {
+    const bobBogoUsedThisMonth = loadTransactions().some(
+      (t) => t.cardId === "bob_eterna" && t.date.slice(0, 7) === date.slice(0, 7) &&
+        (t.path === "district" || /district|bogo/i.test(`${t.merchant} ${t.category}`))
+    );
+    const livePlusBogoUsedThisMonth = loadTransactions().some(
+      (t) => t.cardId === "hsbc_live_plus" && t.date.slice(0, 7) === date.slice(0, 7) &&
+        /bogo|district|bookmyshow|\bbms\b|movie|cinema/i.test(`${t.path ?? ""} ${t.merchant} ${t.category}`)
+    );
+    const input = buildRecommendInputFromState(fresh, {
       merchant: merchant.trim(),
       category: finalCategory,
       amount: amt,
       channel: finalChannel,
       isForeign: finalChannel === "foreign" || detection.forex,
-      ptccEligibleSpend: fresh.ptccEligibleSpend,
-      mrccCycleSpend: fresh.mrccCycleSpend,
-      bobYtdSpend: fresh.bobYtdSpend,
-      bobCycleSpend5x: fresh.bobCycleSpend5x,
-      sbiYtdSpend: fresh.sbiYtdSpend,
-      sbiFeeWaiverSpend: fresh.sbiFeeWaiverSpend,
-      idfcYtdSpend: fresh.idfcYtdSpend,
-      hsbcLivePlusYtdSpend: fresh.hsbcLivePlusYtdSpend,
-      livePlusAccelCashbackUsedThisMonth: fresh.livePlusAccelCashbackUsedThisMonth,
-      goldThisMonthTxnsAt1k: fresh.goldThisMonthTxnsAt1k,
-      mrccThisCycleTxnsAt1500: fresh.mrccThisCycleTxnsAt1500,
-      mrccThisCycleAmount: fresh.mrccThisCycleAmount,
-      goldShopwiseUsedThisMonth: fresh.goldShopwiseUsedThisMonth,
-      scapiaMonthlySpend: fresh.scapiaMonthlySpend,
-      kiwiNeonCycleSpend: fresh.kiwiNeonCycleSpend,
-      bobBogoUsedThisMonth: loadTransactions().some(
-        (t) => t.cardId === "bob_eterna" && t.date.slice(0, 7) === date.slice(0, 7) &&
-          (t.path === "district" || /district|bogo/i.test(`${t.merchant} ${t.category}`))
-      ),
-      amazonPayIciciIssued: fresh.amazonPayIciciIssued,
-      primeMember: fresh.primeMember,
-      amazonPayBalance: fresh.amazonPayBalance,
-      amazonWelcomeClaimed: fresh.amazonWelcomeClaimed,
-      giftCardRateOverrides: fresh.giftCardRateOverrides,
+      today: localDateToISO(date),
       cashkaroPctOverride: Number((cashkaroOverride || "").replace(/[^0-9.]/g, "")) || undefined,
       amazonOrderCashbackInr: Number((amazonOrderCashback || "").replace(/[^0-9.]/g, "")) || undefined,
       credGiftCardPctOverride: Number((credGiftCardPct || "").replace(/[^0-9.]/g, "")) || undefined,
       movieTheatre: movieTheatre || undefined,
-      bobEternaIssueDate: fresh.bobEternaIssueDate,
-      bobWelcomeUnlocked: fresh.bobWelcomeUnlocked,
-      hsbcLivePlusIssueDate: fresh.hsbcLivePlusIssueDate,
-      hsbcWelcomeClaimed: fresh.hsbcWelcomeClaimed,
-      // Welcome progress = edited Live+ YTD (set on Milestones to your real ₹25k-window spend).
-      hsbcLivePlusWelcomeSpend: fresh.hsbcLivePlusYtdSpend,
-      today: localDateToISO(date),
-    };
+      bobBogoUsedThisMonth,
+      livePlusBogoUsedThisMonth,
+    });
     return recommend(input);
   }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride, amazonOrderCashback, credGiftCardPct, movieTheatre]);
 
@@ -183,7 +166,7 @@ export function RecommendationWidget({ onLogged }: Props) {
     addTransaction(t);
     // Past counters are manual (Milestones) — bump them for this new spend, don't wipe from log.
     const next: AppState = { ...loadState() };
-    applyCardSpend(next, chosen.cardId, amt, chosen.totalRewardInr, chosen.effectivePct);
+    applyCardSpend(next, chosen.cardId, amt, chosen.totalRewardInr, chosen.effectivePct, finalCategory, merchant.trim());
     if (chosen.cardId === "amex_gold" && chosen.label.toLowerCase().includes("shopwise")) {
       next.goldShopwiseUsedThisMonth += amt;
     }
@@ -482,6 +465,17 @@ export function RecommendationWidget({ onLogged }: Props) {
                   <div className="text-sm text-fg-muted">{getCardById(routeToLog.cardId)?.name}</div>
                 </div>
                 <div className="text-sm font-medium text-accent mt-1">{routeToLog.label}</div>
+                {routeToLog.feasibilityNote && (
+                  <div className="text-xs text-danger mt-1">{routeToLog.feasibilityNote}</div>
+                )}
+                {routeToLog.liquidity && (
+                  <div className="text-xs text-fg-muted mt-1">
+                    Liquidity:{" "}
+                    <span className="font-medium text-fg">
+                      {routeToLog.liquidity === "cash" ? "cash / statement" : routeToLog.liquidity === "flexible" ? "flexible points (Amex MR)" : "travel-locked"}
+                    </span>
+                  </div>
+                )}
                 {selectedRoute && selectedRoute !== best && (
                   <button type="button" className="text-xs text-accent hover:underline mt-1" onClick={() => setSelectedRoute(null)}>
                     Reset to #1 recommendation
@@ -550,6 +544,25 @@ export function RecommendationWidget({ onLogged }: Props) {
                   <div className="text-sm">
                     <span className="font-semibold text-info">Milestone tip — </span>
                     consider <b>{routeName(rec.milestoneTip.cardId)}</b> instead ({rec.milestoneTip.effectivePct.toFixed(2)}%): {rec.milestoneTip.note}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {rec.claimTips && rec.claimTips.length > 0 && (
+              <div className="rounded-lg p-3 border border-warning/40 bg-warning/10">
+                <div className="flex items-start gap-2">
+                  <Icon.Sparkles size={16} className="text-warning shrink-0 mt-0.5" />
+                  <div className="text-sm space-y-1.5">
+                    <div className="font-semibold text-warning">
+                      Benefit claims —{" "}
+                      <Link href="/claims" className="underline hover:no-underline">mark what’s done</Link>
+                    </div>
+                    <ul className="list-disc pl-4 text-fg-muted space-y-0.5">
+                      {rec.claimTips.map((t, i) => (
+                        <li key={i}>{t}</li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               </div>

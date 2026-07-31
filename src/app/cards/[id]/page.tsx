@@ -39,7 +39,7 @@ const CARD_TIPS: Record<string, { useFor: string[]; dontUseFor: string[]; primar
     dontUseFor: ["UPI / insurance / utility / fuel / rent / wallet (only 0.5 BluChip/₹100 ≈ 0.23%)", "Cash / EMI (zero BluChips)", "Other spends earn 3 BluChips/₹100 ≈ 1.35% — better cards exist"],
   },
   bob_eterna: {
-    primaryRole: "5× categories backup (dining/online/travel) + Cashkaro stacks + lounge (₹40K/qtr)",
+    primaryRole: "5× categories backup (dining/online/travel) + Cashkaro stacks + lounge (₹75K prior qtr)",
     useFor: ["Cleartrip / Agoda / online when Cashkaro stacks", "Overflow after Live+ ₹1,200/mo 10% cap", "Welcome ₹50K → 10K RP within 60 days"],
     dontUseFor: ["Beyond 5K RP/cycle cap (drops to 0.75%)", "Fuel (no rewards)", "Tax / govt MCC (excluded)", "Swiggy while Live+ 10% has room"],
   },

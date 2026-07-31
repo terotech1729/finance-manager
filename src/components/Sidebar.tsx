@@ -34,7 +34,10 @@ const groups: NavGroup[] = [
     title: "Reference",
     items: [
       { href: "/cards", label: "Cards", icon: Icon.Card },
+      { href: "/claims", label: "Benefit claims", icon: Icon.Sparkles },
       { href: "/debit", label: "Debit & GyFTR", icon: Icon.Trophy },
+      { href: "/vouchers", label: "Vouchers & GCs", icon: Icon.Trophy },
+      { href: "/cashkaro", label: "Cashkaro rates", icon: Icon.Zap },
       { href: "/milestones", label: "Milestones", icon: Icon.Sparkles },
       { href: "/network-perks", label: "Network perks", icon: Icon.Plane },
       { href: "/redemptions", label: "Redemptions", icon: Icon.Plane },
