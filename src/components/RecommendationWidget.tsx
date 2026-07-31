@@ -312,23 +312,23 @@ export function RecommendationWidget({ onLogged }: Props) {
           <div className="bg-sky-50 dark:bg-sky-950/20 rounded-lg p-3 border border-sky-300/60 dark:border-sky-700/40 space-y-3">
             <div className="text-sm font-semibold flex items-center gap-1.5">
               <Icon.Sparkles size={14} className="text-sky-600" />
-              Cinema chain + live CRED gift-card %
+              Cinema chain (CRED gift card uses catalog rates)
             </div>
             <div className="text-xs text-fg-muted">
-              CRED Store rates rotate and aren&apos;t scraped. Pick the chain, open CRED → Store, then enter the <b>live %</b> —
-              we only rank gift-card stacks after that. BOGO / card / Cashkaro still rank without it.
+              We rank CRED GCs with stable catalog rates (Cinepolis ~28%, PVR/INOX ~24%, BMS/District ~3.75%).
+              Optionally enter a live % if CRED shows something different.
               <span className="block mt-1">
                 <b>Insignia / Luxe</b> → PVR. <b>IMAX / 4DX</b> = format — pick the operator on BMS.
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
               {([
-                ["cinepolis", "Cinepolis"],
-                ["pvr", "PVR"],
-                ["inox", "INOX"],
-                ["bms", "BMS"],
-                ["district", "District"],
-                ["other", "Not sure"],
+                ["cinepolis", "Cinepolis ~28%"],
+                ["pvr", "PVR ~24%"],
+                ["inox", "INOX ~24%"],
+                ["bms", "BMS ~3.75%"],
+                ["district", "District ~3.75%"],
+                ["other", "Not sure — show all"],
               ] as const).map(([value, label]) => (
                 <button
                   key={value}
@@ -338,7 +338,13 @@ export function RecommendationWidget({ onLogged }: Props) {
                       ? "border-sky-500 bg-sky-100 dark:bg-sky-900/40 font-medium"
                       : "border-border hover:border-sky-400"
                   }`}
-                  onClick={() => setMovieTheatre(value)}
+                  onClick={() => {
+                    setMovieTheatre(value);
+                    if (value === "cinepolis") setCredGiftCardPct("28");
+                    else if (value === "pvr" || value === "inox") setCredGiftCardPct("24");
+                    else if (value === "bms" || value === "district") setCredGiftCardPct("3.75");
+                    else setCredGiftCardPct("");
+                  }}
                 >
                   {label}
                 </button>
@@ -348,51 +354,56 @@ export function RecommendationWidget({ onLogged }: Props) {
               <input
                 className="input"
                 inputMode="decimal"
-                placeholder={`Live CRED GC % (e.g. ${credPctHint})`}
+                placeholder={`Override live % (optional)`}
                 value={credGiftCardPct}
                 onChange={(e) => setCredGiftCardPct(e.target.value)}
               />
               <span className="text-xs text-fg-muted">
-                Required to compare CRED GC vs BOGO. Hint only: Cinepolis ~28%, PVR/INOX ~24%, BMS/District ~3.75%.
+                Pre-filled from catalog when you pick a chain — change only if CRED differs.
               </span>
             </div>
           </div>
         )}
 
-        {((isCredGcCandidate && !isMovie) || (!!rec?.askLiveRates?.giftCard && !isMovie)) && !merchantTooShort && (
+        {rec?.askLiveRates?.giftCard && !isMovie && !merchantTooShort && (
           <div className="bg-sky-50 dark:bg-sky-950/20 rounded-lg p-3 border border-sky-400/70 dark:border-sky-600/50 space-y-2">
             <div className="text-sm font-semibold flex items-center gap-1.5">
               <Icon.Sparkles size={14} className="text-sky-600" />
-              Enter live CRED / CheQ gift-card % to compare that stack
+              Live gift-card % needed
             </div>
+            <div className="text-xs text-fg-muted">{rec.askLiveRates.giftCard.message}</div>
+            <div className="grid sm:grid-cols-[180px_1fr] gap-2 items-center">
+              <input
+                className="input"
+                inputMode="decimal"
+                placeholder={`Live GC % (e.g. ${rec.askLiveRates.giftCard.hintPct ?? "5"})`}
+                value={credGiftCardPct}
+                onChange={(e) => setCredGiftCardPct(e.target.value)}
+              />
+              <span className="text-xs text-fg-muted">
+                {rec.askLiveRates.giftCard.label}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {isCredGcCandidate && !isMovie && !rec?.askLiveRates?.giftCard && !merchantTooShort && (
+          <div className="bg-bg-chrome rounded-lg p-3 border border-border space-y-2">
             <div className="text-xs text-fg-muted">
-              {rec?.askLiveRates?.giftCard?.message ??
-                "CRED/CheQ Store % rotate in-app and aren't auto-scraped. Enter the live discount you see — until then we rank card + Cashkaro only."}
+              Optional: override CRED/CheQ gift-card % if the catalog rate looks wrong (Advanced also has Cashkaro override).
             </div>
             <div className="grid sm:grid-cols-[180px_1fr] gap-2 items-center">
               <input
                 className="input"
                 inputMode="decimal"
-                placeholder={`Live GC % (e.g. ${rec?.askLiveRates?.giftCard?.hintPct ?? "5"})`}
+                placeholder="Override CRED GC %"
                 value={credGiftCardPct}
                 onChange={(e) => setCredGiftCardPct(e.target.value)}
               />
-              <span className="text-xs text-fg-muted">
-                {rec?.askLiveRates?.giftCard?.label
-                  ? `Looking at: ${rec.askLiveRates.giftCard.label}`
-                  : "Leave blank to skip gift-card routes."}
-              </span>
+              <span className="text-xs text-fg-muted">Leave blank to use catalog.</span>
             </div>
           </div>
-        )}
-
-        {isMovie && rec?.askLiveRates?.giftCard && !credGiftCardPct.trim() && !merchantTooShort && !needsClarification && (
-          <div className="text-xs rounded-lg p-2.5 border border-warning/40 bg-warning/10 text-fg-muted">
-            <span className="font-medium text-warning">Gift-card stack paused — </span>
-            {rec.askLiveRates.giftCard.message}
-          </div>
-        )}
-        {needsClarification && detection.clarification && (
+        )}        {needsClarification && detection.clarification && (
           <div className="bg-bg-chrome rounded-lg p-3 border border-warning/40">
             <div className="text-sm font-semibold mb-2 flex items-center gap-1.5">
               <Icon.Sparkles size={14} className="text-warning" />

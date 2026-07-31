@@ -1,6 +1,6 @@
 import { CARDS, getCardById, ANNUAL_MILESTONES } from "./cards";
 import { findCashkaro } from "./cashkaro";
-import { findGiftCardDeals, findWelcomeOffer, resolvedGiftCardPct, isGiftCardPromptCandidate } from "./stacking";
+import { findGiftCardDeals, findWelcomeOffer, rankingGiftCardPct, isUnknownGiftCardBrand } from "./stacking";
 import { findRedemption } from "./redemptions";
 import { VISA_TIER_GUIDES } from "./visaBenefits";
 import { isBenefitClaimed } from "./benefitClaims";
@@ -1212,20 +1212,20 @@ function theatreLabelOf(theatre: RecommendInput["movieTheatre"] | undefined): st
   return "cinema";
 }
 
-/** Typical CRED Store movie GC brands — % must come from live input / Settings, not silent defaults. */
-const MOVIE_CRED_GC_DEFAULTS: { id: NonNullable<RecommendInput["movieTheatre"]>; label: string; hintPct: number }[] = [
-  { id: "cinepolis", label: "Cinepolis", hintPct: 28 },
-  { id: "pvr", label: "PVR", hintPct: 24 },
-  { id: "inox", label: "INOX", hintPct: 24 },
-  { id: "bms", label: "BookMyShow", hintPct: 3.75 },
-  { id: "district", label: "District", hintPct: 3.75 },
+/** CRED Store movie GC brands — catalog % is stable enough to rank; live override optional. */
+const MOVIE_CRED_GC_DEFAULTS: { id: NonNullable<RecommendInput["movieTheatre"]>; label: string; pct: number }[] = [
+  { id: "cinepolis", label: "Cinepolis", pct: 28 },
+  { id: "pvr", label: "PVR", pct: 24 },
+  { id: "inox", label: "INOX", pct: 24 },
+  { id: "bms", label: "BookMyShow", pct: 3.75 },
+  { id: "district", label: "District", pct: 3.75 },
 ];
 
 function resolveMovieCredPct(
   brand: (typeof MOVIE_CRED_GC_DEFAULTS)[number],
   input: RecommendInput,
   selected: RecommendInput["movieTheatre"] | undefined
-): { pct: number; live: boolean } | null {
+): { pct: number; source: "live" | "settings" | "catalog" } {
   const live = input.credGiftCardPctOverride && input.credGiftCardPctOverride > 0
     ? input.credGiftCardPctOverride
     : undefined;
@@ -1235,64 +1235,59 @@ function resolveMovieCredPct(
     (selected === "pvr" && brand.id === "inox") ||
     !selected ||
     selected === "other";
-  if (live != null && selectedMatches) return { pct: live, live: true };
-  const ov = resolvedGiftCardPct("CRED", brand.label, input.giftCardRateOverrides || {});
-  if (ov != null) return { pct: ov, live: false };
-  return null; // no silent default — ask in the widget first
+  if (live != null && selectedMatches) return { pct: live, source: "live" };
+  const ov = input.giftCardRateOverrides?.[`CRED:${brand.label}`];
+  if (ov != null && Number.isFinite(ov) && ov > 0) return { pct: ov, source: "settings" };
+  return { pct: brand.pct, source: "catalog" };
 }
 
-/** CRED cinema GCs — only when user entered live % or Settings override. */
+/** CRED cinema GCs — ranked from catalog; live % upgrades when entered. */
 function addMovieCredGiftCardRoutes(
   input: RecommendInput,
   amt: number,
   add: (o: Partial<RouteOption> & { cardId: string; label: string; effectivePct: number }) => void,
   bogoSavingsCap: number
-): { asked: boolean; hintPct?: string } {
+) {
   const selected = theatreFromInput(input, input.merchant || "", input.category || "");
   const brands =
     selected && selected !== "other"
       ? MOVIE_CRED_GC_DEFAULTS.filter((b) => b.id === selected || (selected === "inox" && b.id === "inox") || (selected === "pvr" && b.id === "pvr"))
       : MOVIE_CRED_GC_DEFAULTS.filter((b) => b.id !== "inox");
 
-  let added = 0;
-  let hintPct: string | undefined;
   for (const brand of brands) {
-    if (!hintPct) hintPct = String(brand.hintPct);
-    const resolved = resolveMovieCredPct(brand, input, selected);
-    if (!resolved || resolved.pct <= 0) continue;
-    const { pct, live } = resolved;
+    const { pct, source } = resolveMovieCredPct(brand, input, selected);
+    if (pct <= 0) continue;
     const saveInr = amt * (pct / 100);
     const beatsBogo = saveInr > bogoSavingsCap;
-    added++;
+    const liveTag = source === "live" ? " · live" : source === "catalog" ? "" : " · saved";
     add({
       cardId: "giftcard",
-      label: `CRED ${brand.label} gift card (${pct}% off${live ? " · live" : ""}) → pay tickets with GC`,
+      label: `CRED ${brand.label} gift card (${pct}% off${liveTag}) → pay tickets with GC`,
       effectivePct: pct,
       baseRewardInr: saveInr,
       worstCasePct: pct,
       bestCasePct: pct,
       pros: [
-        `${pct}% off face value via CRED Store ${brand.label} gift card${live ? " (rate you entered)" : " (Settings override)"}`,
+        `${pct}% off via CRED Store ${brand.label}${source === "live" ? " (you entered)" : source === "catalog" ? " (catalog)" : " (Settings)"}`,
         `≈ ${inr(saveInr)} saved on this ${inr(amt)} booking`,
-        "Custom amount / open denomination — buy GC for the exact ticket total",
+        "Custom amount — buy GC for the exact ticket total",
         beatsBogo
           ? `Beats BOB/Live+ BOGO (cap ~₹${bogoSavingsCap}) on this amount`
           : "Compare vs BOGO (~₹250 cap) — GC % wins on larger bookings",
       ],
       cons: [
-        "Buy the gift card in CRED Store first, then pay at BMS / District / theatre with the GC balance",
-        "Gift-card balance is brand-locked (PVR GC ≠ Cinepolis ≠ BMS)",
-      ],
-      rationale: `CRED Store ${brand.label} at ${pct}% off (you confirmed). Custom amount matches the ticket total. Saves ${inr(saveInr)} (${pct}%).`,
+        "Buy GC in CRED Store first, then pay BMS / District / theatre with the balance",
+        "Brand-locked (PVR ≠ Cinepolis ≠ BMS)",
+        source === "catalog" ? "Optional: enter live % if CRED shows a different number" : "",
+      ].filter(Boolean),
+      rationale: `CRED Store ${brand.label} at ${pct}% off${source === "catalog" ? " (stable catalog rate)" : ""}. Custom amount matches tickets. Saves ${inr(saveInr)}.`,
       steps: [
         `Open CRED → Store → ${brand.label} gift card`,
-        `Buy a custom-amount GC for ~${inr(amt)} at ${pct}% off (pay via UPI)`,
-        "Book on BookMyShow / District / theatre app and pay with the gift-card balance",
-        "Keep the CRED purchase receipt",
+        `Buy a custom-amount GC for ~${inr(amt)} at ${pct}% off`,
+        "Book and pay with the gift-card balance",
       ],
     });
   }
-  return { asked: added === 0, hintPct };
 }
 
 /** Live CRED % applies only to the deal that matches the selected theatre / merchant — not every CRED row. */
@@ -2217,7 +2212,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
       const credSave = (() => {
         const brand = MOVIE_CRED_GC_DEFAULTS.find((b) => b.id === theatre) ?? MOVIE_CRED_GC_DEFAULTS[0];
         const resolved = resolveMovieCredPct(brand, input, theatre);
-        return resolved ? amt * (resolved.pct / 100) : 0;
+        return amt * (resolved.pct / 100);
       })();
       add({
         cardId: "bob_eterna",
@@ -2695,8 +2690,8 @@ function finalize(
     }
   }
 
-  // ---- Gift-card funding stacks (CRED / CheQ) — LIVE % REQUIRED ----
-  // App-gated rates rotate; never rank silent table defaults. Ask in the widget first.
+  // ---- Gift-card funding stacks (CRED / CheQ / Brand) ----
+  // Rank catalog stable/typical rates. Ask only for volatile deals or unknown brands.
   const theatre = theatreFromInput(input, input.merchant || "", input.category || "");
   const gcMatchText = [
     input.merchant || "",
@@ -2714,96 +2709,92 @@ function finalize(
     options.some((o) => o.cardId === "giftcard" && /cred/i.test(o.label));
   const merchLabel = input.merchant?.trim() || "this store";
   let giftCardAsk: { label: string; hintPct?: string; message: string } | undefined;
-
-  const promptCandidate = isGiftCardPromptCandidate(input.merchant || "", input.category || "");
   let rankedAnyGc = moviesAlreadyHasCredGc;
 
   for (const d of gcDeals) {
     if (moviesAlreadyHasCredGc && d.store === "CRED") continue;
-    const pct = resolvedGiftCardPct(d.store, d.merchantLabel, input.giftCardRateOverrides || {}, liveCredPct);
-    if (pct == null) {
-      if (!giftCardAsk && (d.store === "CRED" || d.store === "CheQ")) {
+    const applies = d.store !== "CRED" || credLivePctAppliesToDeal(d.merchantLabel, input, input.merchant || "", input.category || "") || !liveCredPct;
+    // When user entered a live CRED % for a specific theatre, don't apply it to unrelated CRED brands.
+    const credApplies = d.store === "CRED"
+      ? (!liveCredPct || credLivePctAppliesToDeal(d.merchantLabel, input, input.merchant || "", input.category || ""))
+      : true;
+    const ranked = rankingGiftCardPct(d, input.giftCardRateOverrides || {}, liveCredPct, credApplies);
+    if (!ranked) {
+      if (!giftCardAsk && d.confidence === "volatile") {
         giftCardAsk = {
           label: `${d.store} → ${d.merchantLabel}`,
           hintPct: String(d.discountPct),
-          message: `Open ${d.store === "CRED" ? "CRED → Store" : "CheQ → Gift cards"} and enter the live % off for ${d.merchantLabel} before we rank a gift-card stack.`,
+          message: `${d.merchantLabel} gift-card % rotates — open ${d.store === "CRED" ? "CRED → Store" : d.store} and enter the live % to rank that stack.`,
         };
       }
       continue;
     }
-    const applyLive = d.store === "CRED" && liveCredPct != null &&
-      credLivePctAppliesToDeal(d.merchantLabel, input, input.merchant || "", input.category || "");
-    // If CRED live % was entered but applies to a different deal, skip mis-applying.
-    if (d.store === "CRED" && liveCredPct != null && !applyLive &&
-      resolvedGiftCardPct("CRED", d.merchantLabel, input.giftCardRateOverrides || {}) == null) {
-      continue;
-    }
-    const usePct = applyLive ? liveCredPct! : pct;
+    if (!applies && d.store === "CRED" && liveCredPct) continue;
+
+    const { pct: usePct, source } = ranked;
     const ckBonus = ck && ck.zone === "reliable" ? (ck.min === ck.max ? ck.mid : ck.mid * 0.85) : 0;
     const eff = usePct + ckBonus;
     rankedAnyGc = true;
+    const srcTag = source === "live" ? " · live" : source === "catalog" ? "" : " · saved";
     options.push(mkOption(amt, {
       cardId: "giftcard",
-      label: `${d.store} gift card (${usePct}% off${applyLive ? " · live" : ""}) → ${ckBonus > 0 ? "Cashkaro → " : ""}${d.merchantLabel}`,
+      label: `${d.store} gift card (${usePct}% off${srcTag}) → ${ckBonus > 0 ? "Cashkaro → " : ""}${d.merchantLabel}`,
       effectivePct: eff,
       cashkaroSuggested: ckBonus > 0,
       worstCasePct: usePct,
       bestCasePct: eff + (ckBonus > 0 ? (ck!.max - ck!.mid) * 0.85 : 0),
       pros: [
-        `${usePct}% off face value via ${d.store} (confirmed)`,
+        `${usePct}% off via ${d.store}${source === "catalog" ? " (catalog)" : source === "live" ? " (you entered)" : " (Settings)"}`,
         ckBonus > 0 ? `+ ~${ck!.mid}% Cashkaro at ${d.merchantLabel}` : "",
-        d.coinFunded ? "Can boost using CRED coins / CheQ chips on select drops" : "",
+        d.coinFunded ? "Coins/chips can boost on select drops" : "",
       ],
       cons: [
-        "Pay for the gift card via UPI or a card that rewards GC purchases for a little extra",
+        source === "catalog" && d.confidence === "typical"
+          ? "Optional: enter live % in Recommend if CRED/CheQ shows a different number"
+          : "Pay for the GC via UPI / a card that rewards GC purchases",
       ],
-      rationale: `Buy a ${d.merchantLabel} gift card at ${usePct}% off on ${d.store}${ckBonus > 0 ? `, click through Cashkaro (~${ck!.mid}%)` : ""}, then pay at ${d.merchantLabel} with the gift-card balance.`,
+      rationale: `Buy a ${d.merchantLabel} gift card at ${usePct}% off on ${d.store}${ckBonus > 0 ? `, then Cashkaro (~${ck!.mid}%)` : ""}, pay with the GC balance.`,
       steps: [
-        `Open ${d.store} → buy a ${d.merchantLabel} gift card (${usePct}% off${d.coinFunded ? "; apply coins/chips to boost" : ""})`,
-        ckBonus > 0 ? `Open Cashkaro → click through to ${d.merchantLabel}` : `Go to ${d.merchantLabel}`,
-        "Add items, pay using the gift-card balance",
-        ckBonus > 0 ? "Screenshot the order for Cashkaro tracking" : "Keep the receipt",
-      ],
-    }));
-  }
-
-  // Live CRED % entered but no table deal — rank that confirmed route.
-  if (liveCredPct != null && !moviesAlreadyHasCredGc && !rankedAnyGc && !isForeign) {
-    const ckBonus = ck && ck.zone === "reliable" ? (ck.min === ck.max ? ck.mid : ck.mid * 0.85) : 0;
-    rankedAnyGc = true;
-    options.push(mkOption(amt, {
-      cardId: "giftcard",
-      label: `CRED gift card (${liveCredPct}% off) → ${ckBonus > 0 ? "Cashkaro → " : ""}${merchLabel}`,
-      effectivePct: liveCredPct + ckBonus,
-      cashkaroSuggested: ckBonus > 0,
-      worstCasePct: liveCredPct,
-      bestCasePct: liveCredPct + ckBonus,
-      pros: [`${liveCredPct}% off via CRED Store (rate you entered)`, ckBonus > 0 ? `+ Cashkaro at ${merchLabel}` : ""].filter(Boolean),
-      cons: ["Confirm the gift card works at this merchant before buying"],
-      rationale: `You entered ${liveCredPct}% off on CRED for ${merchLabel}. Ranked against card + Cashkaro routes.`,
-      steps: [
-        `Open CRED → Store → buy a ${merchLabel} gift card at ${liveCredPct}% off`,
-        ckBonus > 0 ? `Open Cashkaro → click through to ${merchLabel}` : `Go to ${merchLabel}`,
+        `Open ${d.store} → buy ${d.merchantLabel} GC (${usePct}% off)`,
+        ckBonus > 0 ? `Cashkaro → ${d.merchantLabel}` : `Shop at ${d.merchantLabel}`,
         "Pay with the gift-card balance",
       ],
     }));
   }
 
-  if (!rankedAnyGc && promptCandidate && !isForeign && !giftCardAsk) {
-    const hint =
-      theatre === "cinepolis" ? "28" :
-      theatre === "pvr" || theatre === "inox" ? "24" :
-      theatre === "bms" || theatre === "district" ? "3.75" :
-      isMovieExpense(input.merchant || "", input.category || "") ? "3.75–28" :
-      "5";
+  // Live CRED % for a brand not in catalog.
+  if (liveCredPct != null && !moviesAlreadyHasCredGc && !isForeign) {
+    const alreadyCred = options.some((o) => o.cardId === "giftcard" && /cred/i.test(o.label) && o.label.includes(`${liveCredPct}%`));
+    if (!alreadyCred && gcDeals.every((d) => d.store !== "CRED" || rankingGiftCardPct(d, input.giftCardRateOverrides || {}, liveCredPct) == null)) {
+      const ckBonus = ck && ck.zone === "reliable" ? (ck.min === ck.max ? ck.mid : ck.mid * 0.85) : 0;
+      rankedAnyGc = true;
+      options.push(mkOption(amt, {
+        cardId: "giftcard",
+        label: `CRED gift card (${liveCredPct}% off · live) → ${ckBonus > 0 ? "Cashkaro → " : ""}${merchLabel}`,
+        effectivePct: liveCredPct + ckBonus,
+        cashkaroSuggested: ckBonus > 0,
+        worstCasePct: liveCredPct,
+        bestCasePct: liveCredPct + ckBonus,
+        pros: [`${liveCredPct}% off via CRED (you entered)`, ckBonus > 0 ? `+ Cashkaro` : ""].filter(Boolean),
+        cons: ["Confirm the GC works at this merchant"],
+        rationale: `Live CRED ${liveCredPct}% for ${merchLabel}.`,
+        steps: [`CRED → Store → ${merchLabel} GC at ${liveCredPct}%`, "Pay with GC balance"],
+      }));
+    }
+  }
+
+  // Ask only when brand is unknown OR a volatile deal matched without live %.
+  if (!giftCardAsk && !rankedAnyGc && isUnknownGiftCardBrand(input.merchant || "", input.category || "") && !isForeign) {
     giftCardAsk = {
       label: `CRED Store → ${merchLabel}`,
-      hintPct: hint,
-      message: `CRED/CheQ gift-card % rotate in-app. Enter the live % you see for ${merchLabel} to compare a gift-card stack — until then we only rank card / Cashkaro / BOGO routes.`,
+      hintPct: "5",
+      message: `No catalog rate for ${merchLabel}. If CRED/CheQ has a gift card, enter the live % to compare that stack.`,
     };
   }
-  // Don't keep nagging for CheQ/other stores once a confirmed GC route is ranked.
-  if (rankedAnyGc) giftCardAsk = undefined;
+  // If we already ranked a catalog/live GC, drop unknown-brand asks (keep volatile asks).
+  if (rankedAnyGc && giftCardAsk && !/rotates/i.test(giftCardAsk.message)) {
+    giftCardAsk = undefined;
+  }
 
   // ---- Universal Amazon Pay rail (Amazon ICICI stacks) ----
   // Amazon Pay accepts many payments (bills/recharges/Amazon/insurance/partner merchants like
@@ -3109,17 +3100,6 @@ function finalize(
 
   const effectiveRange = pointsRange(best.cardId, best.label, best.totalRewardInr, best.effectivePct, amt) ?? undefined;
   const claimTips = buildClaimTips(input, best, ranked);
-
-  // Movies that early-return via finalize still need the GC ask when no live % was ranked.
-  if (!giftCardAsk && !rankedAnyGc && isMovieExpense(input.merchant || "", input.category || "") && !isForeign) {
-    const th = theatreFromInput(input, input.merchant || "", input.category || "");
-    const hintBrand = MOVIE_CRED_GC_DEFAULTS.find((b) => b.id === th) ?? MOVIE_CRED_GC_DEFAULTS[0];
-    giftCardAsk = {
-      label: `CRED Store → ${hintBrand.label}`,
-      hintPct: String(hintBrand.hintPct),
-      message: `Open CRED → Store → ${hintBrand.label} and enter the live gift-card % before we rank that stack. Card / BOGO / Cashkaro routes are ranked without it.`,
-    };
-  }
 
   return {
     card,

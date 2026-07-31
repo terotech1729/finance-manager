@@ -1,69 +1,103 @@
 /**
  * Gift-card / voucher "funding layer" and Amazon Pay ICICI one-time welcome coupons.
  *
- * These are STACKABLE layers the recommender tries on top of card + Cashkaro:
- *   buy a discounted gift card (CRED / CheQ / ShopWise / brand store)
- *   → [click through Cashkaro] → shop at the merchant → pay with the gift card.
- *
- * NOTE: CRED/CheQ gift-card rates are app-dynamic and login-gated, so the values
- * below are typical/representative defaults. Verify the live rate in-app before
- * relying on a specific number. Update these as offers change.
+ * STACKABLE: buy discounted GC (CRED / CheQ / Amazon brand) → [Cashkaro] → shop → pay with GC.
  *
  * Rate precedence:
- *  1. Recommend widget live CRED % (credGiftCardPctOverride) — scoped to the
- *     selected theatre / matching merchant deal only
+ *  1. Recommend widget live CRED % (credGiftCardPctOverride) — matching merchant/theatre only
  *  2. Settings giftCardRateOverrides keyed by "STORE:Merchant"
- *  3. Defaults in GIFT_CARD_DEALS below
+ *  3. Catalog defaults below (stable / typical) — used for ranking without asking
+ *
+ * Only "volatile" deals or unknown brands require a live % prompt.
  */
 
 export type GiftCardStore = "CRED" | "CheQ" | "ShopWise" | "Brand";
+
+/** How confidently we can rank without asking the user. */
+export type GiftCardConfidence = "stable" | "typical" | "volatile";
 
 export type GiftCardDeal = {
   store: GiftCardStore;
   match: RegExp;
   merchantLabel: string;
-  discountPct: number; // typical % off face value
-  coinFunded?: boolean; // uses CRED coins / CheQ chips to boost discount
+  discountPct: number;
+  coinFunded?: boolean;
+  /**
+   * stable  = long-standing rates (cinema GCs) — rank freely
+   * typical = usual in-app band — rank freely; optional live override
+   * volatile = rotates hard — ask before ranking
+   */
+  confidence: GiftCardConfidence;
   notes: string;
 };
 
 /**
- * Representative gift-card discounts. Ranges seen in-app:
- *  - CRED store: 2–6% on popular brands (higher with "coins" boosts on select drops)
- *  - CheQ store: 1–5% (chips can add a little)
- *  - ShopWise (Amex Reward Multiplier): not a discount but 5× MR (handled separately as 5.8%)
- *  - Brand stores (Amazon Pay, Flipkart Gift, Myntra): occasional 2–5% drops
+ * Catalog of gift-card discounts we trust enough to rank.
+ * Cinema CRED GCs are especially sticky; shopping GC % sits in a usable band.
  */
 export const GIFT_CARD_DEALS: GiftCardDeal[] = [
-  { store: "CRED", match: /amazon/i, merchantLabel: "Amazon", discountPct: 2, coinFunded: true, notes: "CRED store Amazon Pay GC; coins can boost on select drops." },
-  { store: "CRED", match: /flipkart/i, merchantLabel: "Flipkart", discountPct: 3, coinFunded: true, notes: "CRED Flipkart GC drops 2–5%." },
-  { store: "CRED", match: /myntra/i, merchantLabel: "Myntra", discountPct: 5, coinFunded: true, notes: "Myntra GC often 5% on CRED." },
-  { store: "CRED", match: /ajio/i, merchantLabel: "AJIO", discountPct: 5, coinFunded: true, notes: "AJIO GC ~5% on CRED." },
-  { store: "CRED", match: /nykaa/i, merchantLabel: "Nykaa", discountPct: 4, coinFunded: true, notes: "Nykaa GC ~3–5%." },
-  { store: "CRED", match: /tata\s*cliq|tatacliq/i, merchantLabel: "Tata CLiQ", discountPct: 4, coinFunded: true, notes: "" },
-  { store: "CRED", match: /cleartrip/i, merchantLabel: "Cleartrip", discountPct: 3, coinFunded: true, notes: "Travel GC on CRED, occasional." },
-  { store: "CRED", match: /\bswiggy\b/i, merchantLabel: "Swiggy", discountPct: 3, coinFunded: true, notes: "Swiggy money/GC on CRED." },
-  { store: "CRED", match: /\bzomato\b/i, merchantLabel: "Zomato", discountPct: 3, coinFunded: true, notes: "" },
-  { store: "CRED", match: /bookmyshow|\bbms\b/i, merchantLabel: "BookMyShow", discountPct: 3.75, coinFunded: true, notes: "BMS GC ~3.75%; custom amount OK. Prefer PVR/Cinepolis chain GCs when you know the theatre." },
-  { store: "CRED", match: /\bdistrict\b/i, merchantLabel: "District", discountPct: 3.75, coinFunded: true, notes: "District GC ~3.75%; custom amount OK. Prefer chain GCs (Cinepolis/PVR) when booking those theatres." },
-  { store: "CRED", match: /\bpvr\b/i, merchantLabel: "PVR", discountPct: 24, coinFunded: true, notes: "CRED Store PVR GC — typically ~24%; custom denomination available. Often beats District BOGO (₹250 cap) on larger bookings." },
-  { store: "CRED", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 28, coinFunded: true, notes: "CRED Store Cinepolis GC — typically ~28%; custom denomination available. Usually the best movie stack vs BOGO on multi-ticket bookings." },
-  { store: "CRED", match: /\binox\b/i, merchantLabel: "INOX", discountPct: 24, coinFunded: true, notes: "INOX / PVR INOX GC on CRED — treat like PVR (~24%); verify live %." },
-  { store: "CRED", match: /reliance\s*digital|croma|vijay\s*sales/i, merchantLabel: "Electronics store", discountPct: 2, coinFunded: true, notes: "Electronics GC ~2%." },
-  { store: "CheQ", match: /amazon/i, merchantLabel: "Amazon", discountPct: 2, coinFunded: true, notes: "CheQ chips can add a small boost." },
-  { store: "CheQ", match: /flipkart/i, merchantLabel: "Flipkart", discountPct: 3, coinFunded: true, notes: "" },
-  { store: "CheQ", match: /myntra/i, merchantLabel: "Myntra", discountPct: 4, coinFunded: true, notes: "" },
+  // CRED — cinema (stable)
+  { store: "CRED", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 28, coinFunded: true, confidence: "stable", notes: "CRED Store Cinepolis GC — long-standing ~28%; custom denomination." },
+  { store: "CRED", match: /\bpvr\b/i, merchantLabel: "PVR", discountPct: 24, coinFunded: true, confidence: "stable", notes: "CRED Store PVR GC — long-standing ~24%." },
+  { store: "CRED", match: /\binox\b/i, merchantLabel: "INOX", discountPct: 24, coinFunded: true, confidence: "stable", notes: "INOX / PVR INOX GC ~24% like PVR." },
+  { store: "CRED", match: /bookmyshow|\bbms\b/i, merchantLabel: "BookMyShow", discountPct: 3.75, coinFunded: true, confidence: "stable", notes: "BMS GC ~3.75%; prefer chain GCs when theatre known." },
+  { store: "CRED", match: /\bdistrict\b/i, merchantLabel: "District", discountPct: 3.75, coinFunded: true, confidence: "stable", notes: "District GC ~3.75%." },
+  // CRED — shopping / food (typical band)
+  { store: "CRED", match: /amazon/i, merchantLabel: "Amazon", discountPct: 2, coinFunded: true, confidence: "typical", notes: "CRED Amazon Pay GC ~2%." },
+  { store: "CRED", match: /flipkart/i, merchantLabel: "Flipkart", discountPct: 3, coinFunded: true, confidence: "typical", notes: "Flipkart GC usually 2–5%." },
+  { store: "CRED", match: /myntra/i, merchantLabel: "Myntra", discountPct: 5, coinFunded: true, confidence: "typical", notes: "Myntra GC often ~5%." },
+  { store: "CRED", match: /ajio/i, merchantLabel: "AJIO", discountPct: 5, coinFunded: true, confidence: "typical", notes: "AJIO GC ~5%." },
+  { store: "CRED", match: /nykaa/i, merchantLabel: "Nykaa", discountPct: 4, coinFunded: true, confidence: "typical", notes: "Nykaa GC ~3–5%." },
+  { store: "CRED", match: /tata\s*cliq|tatacliq/i, merchantLabel: "Tata CLiQ", discountPct: 4, coinFunded: true, confidence: "typical", notes: "" },
+  { store: "CRED", match: /cleartrip/i, merchantLabel: "Cleartrip", discountPct: 3, coinFunded: true, confidence: "typical", notes: "Travel GC, occasional." },
+  { store: "CRED", match: /\bswiggy\b/i, merchantLabel: "Swiggy", discountPct: 3, coinFunded: true, confidence: "typical", notes: "Swiggy money/GC on CRED." },
+  { store: "CRED", match: /\bzomato\b/i, merchantLabel: "Zomato", discountPct: 3, coinFunded: true, confidence: "typical", notes: "" },
+  { store: "CRED", match: /lenskart/i, merchantLabel: "Lenskart", discountPct: 11, coinFunded: true, confidence: "typical", notes: "Often ~11% on CRED; override if live differs." },
+  { store: "CRED", match: /decathlon/i, merchantLabel: "Decathlon", discountPct: 5, coinFunded: true, confidence: "typical", notes: "" },
+  { store: "CRED", match: /croma|reliance\s*digital|vijay\s*sales/i, merchantLabel: "Electronics store", discountPct: 2, coinFunded: true, confidence: "typical", notes: "Electronics GC ~2%." },
+  { store: "CRED", match: /zepto/i, merchantLabel: "Zepto", discountPct: 3, coinFunded: true, confidence: "typical", notes: "" },
+  // CRED — volatile (ask before ranking)
+  { store: "CRED", match: /domino/i, merchantLabel: "Domino's", discountPct: 15, coinFunded: true, confidence: "volatile", notes: "Food GCs rotate — confirm live %." },
+  { store: "CRED", match: /uber/i, merchantLabel: "Uber", discountPct: 6.5, coinFunded: true, confidence: "volatile", notes: "Uber GC % moves — confirm live." },
+  { store: "CRED", match: /apollo/i, merchantLabel: "Apollo 24/7", discountPct: 15, coinFunded: true, confidence: "volatile", notes: "Rotates — confirm live %." },
+  // CheQ
+  { store: "CheQ", match: /amazon/i, merchantLabel: "Amazon", discountPct: 2, coinFunded: true, confidence: "typical", notes: "CheQ chips can add a small boost." },
+  { store: "CheQ", match: /flipkart/i, merchantLabel: "Flipkart", discountPct: 3, coinFunded: true, confidence: "typical", notes: "" },
+  { store: "CheQ", match: /myntra/i, merchantLabel: "Myntra", discountPct: 4, coinFunded: true, confidence: "typical", notes: "" },
+  // Amazon brand vouchers
+  { store: "Brand", match: /mainland\s*china/i, merchantLabel: "Mainland China", discountPct: 20, confidence: "typical", notes: "Amazon brand voucher." },
+  { store: "Brand", match: /pvr|inox/i, merchantLabel: "PVR INOX (Amazon)", discountPct: 17, confidence: "typical", notes: "Amazon brand voucher for PVR/INOX." },
+  { store: "Brand", match: /\baldo\b/i, merchantLabel: "Aldo", discountPct: 12, confidence: "typical", notes: "Amazon brand voucher." },
+  { store: "Brand", match: /jockey/i, merchantLabel: "Jockey", discountPct: 12, confidence: "typical", notes: "Amazon brand voucher." },
+  { store: "Brand", match: /lifestyle/i, merchantLabel: "Lifestyle", discountPct: 5, confidence: "typical", notes: "Amazon brand voucher." },
+  { store: "Brand", match: /pantaloons/i, merchantLabel: "Pantaloons", discountPct: 5, confidence: "typical", notes: "Amazon brand voucher." },
 ];
 
-/** Stable key for a deal, used for live-rate overrides in Settings. */
 export function giftCardKey(d: { store: GiftCardStore; merchantLabel: string }): string {
   return `${d.store}:${d.merchantLabel}`;
 }
 
 /**
- * Live / user-confirmed gift-card % only.
- * CRED widget override OR Settings override — never silent table defaults for ranking.
+ * % to use for ranking.
+ * live → Settings → catalog (stable/typical). Volatile needs live/Settings.
  */
+export function rankingGiftCardPct(
+  deal: GiftCardDeal,
+  overrides: Record<string, number> = {},
+  credLivePct?: number,
+  credLiveApplies = true
+): { pct: number; source: "live" | "settings" | "catalog" } | null {
+  if (deal.store === "CRED" && credLiveApplies && credLivePct != null && credLivePct > 0) {
+    return { pct: credLivePct, source: "live" };
+  }
+  const ov = overrides[giftCardKey(deal)];
+  if (ov != null && Number.isFinite(ov) && ov > 0) return { pct: ov, source: "settings" };
+  if (deal.confidence === "volatile") return null;
+  if (deal.discountPct > 0) return { pct: deal.discountPct, source: "catalog" };
+  return null;
+}
+
+/** Lookup helper for Settings / movie brands. */
 export function resolvedGiftCardPct(
   store: GiftCardStore,
   merchantLabel: string,
@@ -73,13 +107,18 @@ export function resolvedGiftCardPct(
   if (store === "CRED" && credLivePct != null && credLivePct > 0) return credLivePct;
   const ov = overrides[giftCardKey({ store, merchantLabel })];
   if (ov != null && Number.isFinite(ov) && ov > 0) return ov;
+  const deal = GIFT_CARD_DEALS.find((d) => d.store === store && d.merchantLabel === merchantLabel);
+  if (deal && deal.confidence !== "volatile") return deal.discountPct;
   return null;
 }
 
-/** Brands where a CRED/CheQ GC stack is often relevant — prompt for live % before ranking. */
-export function isGiftCardPromptCandidate(merchant: string, category: string): boolean {
-  const t = `${merchant} ${category}`.toLowerCase();
-  return /movie|event|bookmyshow|\bbms\b|district|pvr|inox|cinepolis|cinema|amazon|flipkart|myntra|ajio|nykaa|swiggy|zomato|cleartrip|croma|lenskart|shopping|fashion|electronics|online|apparel/.test(t);
+/** Shopping/movie-ish query with no catalog match → ask for live %. */
+export function isUnknownGiftCardBrand(merchant: string, category: string): boolean {
+  const t = `${merchant} ${category}`;
+  if (!/online|fashion|electronics|shopping|apparel|movie|cinema|bookmyshow|pvr|cinepolis|gift/i.test(t)) {
+    return false;
+  }
+  return !GIFT_CARD_DEALS.some((d) => d.match.test(t));
 }
 
 export function findGiftCardDeals(
@@ -88,16 +127,22 @@ export function findGiftCardDeals(
   overrides: Record<string, number> = {}
 ): GiftCardDeal[] {
   const text = `${merchant} ${category}`;
-  // best deal per store (after applying any live-rate overrides)
-  const byStore = new Map<GiftCardStore, GiftCardDeal>();
+  // Prefer best deal overall (not only one per store) so CRED cinema isn't dropped for CheQ.
+  const matched: GiftCardDeal[] = [];
   for (const raw of GIFT_CARD_DEALS) {
     if (!raw.match.test(text)) continue;
     const ov = overrides[giftCardKey(raw)];
     const d: GiftCardDeal = ov != null && Number.isFinite(ov) ? { ...raw, discountPct: ov } : raw;
-    const existing = byStore.get(d.store);
-    if (!existing || d.discountPct > existing.discountPct) byStore.set(d.store, d);
+    matched.push(d);
   }
-  return Array.from(byStore.values()).filter((d) => d.discountPct > 0).sort((a, b) => b.discountPct - a.discountPct);
+  // Dedup by store+label
+  const byKey = new Map<string, GiftCardDeal>();
+  for (const d of matched) {
+    const k = giftCardKey(d);
+    const prev = byKey.get(k);
+    if (!prev || d.discountPct > prev.discountPct) byKey.set(k, d);
+  }
+  return Array.from(byKey.values()).filter((d) => d.discountPct > 0).sort((a, b) => b.discountPct - a.discountPct);
 }
 
 /** Unique (store, merchant) deals for the Settings live-rate editor. */
@@ -115,15 +160,11 @@ export function uniqueGiftCardDeals(): { key: string; store: GiftCardStore; merc
 export type WelcomeOffer = {
   id: string;
   label: string;
-  match: RegExp; // tested against category + merchant
-  pctBack: number; // % cashback
-  capInr: number; // max cashback
+  match: RegExp;
+  pctBack: number;
+  capInr: number;
 };
 
-/**
- * Typical Amazon Pay ICICI welcome coupons (one-time, per category, ~30–60 day window).
- * These vary by cohort — confirm the exact set in Amazon app → Amazon Pay ICICI → Offers.
- */
 export const AMAZON_WELCOME_OFFERS: WelcomeOffer[] = [
   { id: "amz_shop", label: "100% up to ₹200 on first Amazon order", match: /amazon/i, pctBack: 100, capInr: 200 },
   { id: "amz_broadband", label: "25% up to ₹550 on first broadband bill", match: /broadband/i, pctBack: 25, capInr: 550 },
@@ -134,7 +175,6 @@ export const AMAZON_WELCOME_OFFERS: WelcomeOffer[] = [
   { id: "amz_prepaid", label: "50% up to ₹50 on first prepaid recharge", match: /mobile|recharge|prepaid/i, pctBack: 50, capInr: 50 },
 ];
 
-/** Returns the first unclaimed welcome offer matching the expense, if any. */
 export function findWelcomeOffer(merchant: string, category: string, claimedIds: string[]): WelcomeOffer | null {
   const text = `${merchant} ${category}`;
   for (const o of AMAZON_WELCOME_OFFERS) {
