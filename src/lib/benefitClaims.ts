@@ -1,9 +1,10 @@
 /**
- * Issuer / network benefits you can claim or activate — checklist for the portal.
- * Mark claimed in /claims; some IDs sync to legacy AppState flags used by Recommend.
+ * One-time claimable benefits — vouchers, welcome bonuses, enrollments, limited activations.
+ * Recurring perks (BOGO, lounges, monthly unlocks, Visa portal discounts, Amex Offers)
+ * live in Recommend / Network perks / Milestones — not this checklist.
  */
 
-export type BenefitUrgency = "urgent" | "open" | "ongoing" | "info";
+export type BenefitUrgency = "urgent" | "open";
 
 export type BenefitClaim = {
   id: string;
@@ -41,40 +42,20 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     cardLabel: "BOB Eterna",
     title: "₹50k / 60-day welcome → 10,000 RP",
     detail: "Spend ₹50,000 within 60 days of issuance for 10,000 bonus RP (~₹2,500 at ₹0.25).",
-    how: "Route eligible retail to Eterna until ₹50k; bonus posts after window. Mark claimed when RP credited.",
+    how: "Route eligible retail to Eterna until ₹50k; mark when bonus RP is credited.",
     valueHint: "~₹2,500",
     urgency: "urgent",
     legacyKey: "bobWelcomeUnlocked",
   },
   {
-    id: "bob_lounge_qtr",
-    cardId: "bob_eterna",
-    cardLabel: "BOB Eterna",
-    title: "Unlimited domestic lounge (₹75k prior quarter)",
-    detail: "From mid-2026, unlock needs ₹75,000 spend in the preceding calendar quarter (was ₹40k). First issue-quarter often exempt.",
-    how: "Track prior-quarter spend; use lounge via Visa Infinite / Dreamfolks as issued.",
-    valueHint: "Unlimited domestic",
-    urgency: "ongoing",
-  },
-  {
-    id: "bob_district_bogo",
-    cardId: "bob_eterna",
-    cardLabel: "BOB Eterna",
-    title: "District BOGO movie (₹250/mo)",
-    detail: "Buy-one-get-one movie ticket via District, typically capped ~₹250/mo.",
-    how: "Book on District with Eterna; confirm BOGO applies before pay.",
-    valueHint: "~₹250/mo",
-    urgency: "ongoing",
-  },
-  {
     id: "bob_annual_5l",
     cardId: "bob_eterna",
     cardLabel: "BOB Eterna",
-    title: "₹5L annual → 20,000 RP",
-    detail: "Milestone 20,000 RP (~₹5,000) at ₹5,00,000 annual spend.",
-    how: "Track in Milestones; mark when bonus RP posts.",
+    title: "₹5L annual → 20,000 RP credited",
+    detail: "One-time annual milestone: 20,000 RP (~₹5,000) when ₹5L spend posts.",
+    how: "Track in Milestones; mark when bonus RP posts on the statement.",
     valueHint: "~₹5,000",
-    urgency: "ongoing",
+    urgency: "open",
   },
 
   // ── HSBC Live+ ──────────────────────────────────────────────
@@ -113,8 +94,8 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     id: "hsbc_times_prime",
     cardId: "hsbc_live_plus",
     cardLabel: "HSBC Live+",
-    title: "Times Prime lifestyle privileges",
-    detail: "Times Prime access bundled with Live+ / Live+ Reserve dining programme.",
+    title: "Times Prime activated",
+    detail: "One-time activation of Times Prime / Live+ Reserve dining access.",
     how: "Activate via HSBC / Times Prime / dinewithtimesprime.com/hsbcliveplus.",
     link: "https://dinewithtimesprime.com/hsbcliveplus",
     urgency: "open",
@@ -123,28 +104,10 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     id: "hsbc_liveplus_reserve",
     cardId: "hsbc_live_plus",
     cardLabel: "HSBC Live+",
-    title: "Live+ Reserve fine dining",
-    detail: "DineWithTimesPrime curated restaurants (chef menus, comps) from ~1 Aug 2026.",
-    how: "Activate account → book participating restaurants; pay with Live+.",
+    title: "Live+ Reserve account activated",
+    detail: "DineWithTimesPrime curated restaurants programme (from ~1 Aug 2026) — mark once activated.",
+    how: "Activate account → then book restaurants as needed (bookings themselves are not checklist items).",
     link: "https://dinewithtimesprime.com/hsbcliveplus",
-    urgency: "open",
-  },
-  {
-    id: "hsbc_fuel_qtr",
-    cardId: "hsbc_live_plus",
-    cardLabel: "HSBC Live+",
-    title: "Quarterly contactless fuel cashback",
-    detail: "Periodic contactless fuel CB (often ~₹250/qtr with spend gate — confirm live T&Cs).",
-    how: "Pay contactless at fuel; meet quarterly spend if required.",
-    urgency: "ongoing",
-  },
-  {
-    id: "hsbc_myntra_10",
-    cardId: "hsbc_live_plus",
-    cardLabel: "HSBC Live+",
-    title: "Myntra 10% promo (until ~31 Oct 2026)",
-    detail: "Temporary 10% on Myntra with Live+ (then reverts to 1.5%).",
-    how: "Pay with Live+ on Myntra while promo live.",
     urgency: "open",
   },
 
@@ -154,83 +117,18 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     cardId: "amex_plat_travel",
     cardLabel: "Amex PT",
     title: "Priority Pass enrollment",
-    detail: "Membership fee waived with PT; international visits are usually paid (~USD 27–35). Enroll once if not already.",
+    detail: "Enroll once if not already. Membership fee waived with PT; intl visits usually paid.",
     how: "americanexpress.com/in → Benefits → Priority Pass / LoungeKey as issued.",
     urgency: "open",
-  },
-  {
-    id: "amex_pt_lounge_qtr",
-    cardId: "amex_plat_travel",
-    cardLabel: "Amex PT",
-    title: "Domestic lounge visits (8/yr, 2/qtr)",
-    detail: "Track remaining domestic lounge visits for the year/quarter.",
-    how: "Present card at participating lounges; update lounge counters in Settings.",
-    urgency: "ongoing",
-  },
-  {
-    id: "amex_pt_purchase_protect",
-    cardId: "amex_plat_travel",
-    cardLabel: "Amex PT",
-    title: "Purchase protection / extended warranty",
-    detail: "Coverage on eligible purchases per Amex Guide to Benefits — claim with invoice + statement.",
-    how: "File via Amex claims when needed; keep invoices.",
-    urgency: "info",
-  },
-  {
-    id: "amex_pt_offers",
-    cardId: "amex_plat_travel",
-    cardLabel: "Amex PT",
-    title: "Amex Offers (rotating statement credits)",
-    detail: "Add rotating merchant Offers in the Amex app before spend.",
-    how: "Amex app → Offers → Add to Card before purchase.",
-    urgency: "ongoing",
-  },
-  {
-    id: "amex_pt_hpcl",
-    cardId: "amex_plat_travel",
-    cardLabel: "Amex PT",
-    title: "HPCL fuel convenience-fee waiver",
-    detail: "Issuer fuel convenience-fee waiver at HPCL (MR still 0 on fuel).",
-    how: "Pay with PT at HPCL where waiver applies.",
-    urgency: "info",
   },
   {
     id: "amex_pt_taj",
     cardId: "amex_plat_travel",
     cardLabel: "Amex PT",
-    title: "Taj / Marriott milestone vouchers",
-    detail: "Higher annual spend milestones unlock Taj / hotel vouchers — track in Milestones.",
-    how: "Confirm voucher credit after hitting ₹4L / ₹7L (as per current T&Cs).",
-    urgency: "ongoing",
-  },
-
-  // ── Amex Gold ───────────────────────────────────────────────
-  {
-    id: "amex_gold_collection",
-    cardId: "amex_gold",
-    cardLabel: "Amex Gold",
-    title: "Gold Collection redemptions",
-    detail: "Redeem MR via Gold Collection partners when rates beat cash.",
-    how: "Amex app / rewards portal → Gold Collection.",
-    urgency: "ongoing",
-  },
-  {
-    id: "amex_gold_offers",
-    cardId: "amex_gold",
-    cardLabel: "Amex Gold",
-    title: "Amex Offers on Gold",
-    detail: "Same rotating Offers mechanic — add before spend.",
-    how: "Amex app → Offers → Add to Card.",
-    urgency: "ongoing",
-  },
-  {
-    id: "amex_gold_shopwise",
-    cardId: "amex_gold",
-    cardLabel: "Amex Gold",
-    title: "ShopWise / Referral Membership used this month",
-    detail: "Monthly ShopWise voucher / RM path for online earn — track usage in Settings.",
-    how: "Use ShopWise link when buying online; mark if you’ve exhausted the month.",
-    urgency: "ongoing",
+    title: "Taj / Marriott milestone voucher redeemed",
+    detail: "When a higher annual milestone unlocks a hotel voucher — mark after you redeem it.",
+    how: "Confirm voucher credit after ₹4L / ₹7L (current T&Cs); redeem before expiry.",
+    urgency: "open",
   },
 
   // ── Amex MRCC ───────────────────────────────────────────────
@@ -238,57 +136,10 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     id: "amex_mrcc_20k_enroll",
     cardId: "amex_mrcc",
     cardLabel: "Amex MRCC",
-    title: "₹20k/mo bonus enrollment active",
-    detail: "Enrollment-based 1,000 MR when you hit ₹20k in a month — confirm still enrolled.",
+    title: "₹20k/mo bonus enrollment confirmed",
+    detail: "One-time check: enrollment for 1,000 MR at ₹20k/mo is still active (not the monthly hit itself).",
     how: "americanexpress.com/in → MRCC ₹20k benefit → enroll / verify.",
     urgency: "open",
-  },
-  {
-    id: "amex_mrcc_fee_waiver",
-    cardId: "amex_mrcc",
-    cardLabel: "Amex MRCC",
-    title: "Fee waiver year on track (₹1.5L)",
-    detail: "Annual fee waives at ₹1.5L eligible spend in fee year.",
-    how: "Track mrccCycleSpend in Milestones / Settings.",
-    urgency: "ongoing",
-  },
-
-  // ── Scapia ──────────────────────────────────────────────────
-  {
-    id: "scapia_lounge_unlock",
-    cardId: "scapia",
-    cardLabel: "Scapia",
-    title: "Monthly lounge unlock (₹20k spend)",
-    detail: "Hit ₹20k/mo to unlock complimentary lounge (or alternate airport benefit).",
-    how: "Track scapiaMonthlySpend; claim lounge in Scapia app when unlocked.",
-    urgency: "ongoing",
-  },
-  {
-    id: "scapia_airport_alt",
-    cardId: "scapia",
-    cardLabel: "Scapia",
-    title: "Airport dining / shop / spa (vs lounge)",
-    detail: "With unlock you can often pick lounge OR coin-back at dining / retail / spa (caps apply).",
-    how: "In Scapia app at airport → choose dining/shop/spa alternative when offered.",
-    urgency: "open",
-  },
-  {
-    id: "scapia_store",
-    cardId: "scapia",
-    cardLabel: "Scapia",
-    title: "Scapia Store / visa / experiences redemptions",
-    detail: "Coins redeem beyond flights/hotels — store, visa, experiences.",
-    how: "Scapia app → Store / Experiences.",
-    urgency: "ongoing",
-  },
-  {
-    id: "scapia_intl_privilege",
-    cardId: "scapia",
-    cardLabel: "Scapia",
-    title: "International privilege / forex gates",
-    detail: "Confirm any intl spend gates for privilege lounges or partner offers.",
-    how: "Check Scapia app benefits before travel.",
-    urgency: "info",
   },
 
   // ── IDFC Indigo ─────────────────────────────────────────────
@@ -312,52 +163,34 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     valueHint: "Voucher",
     urgency: "urgent",
   },
-  {
-    id: "idfc_golf",
-    cardId: "idfc_indigo",
-    cardLabel: "IDFC Indigo",
-    title: "Mastercard golf (4 rounds + 12 lessons/yr)",
-    detail: "On Mastercard plastic only — complimentary golf rounds and lessons.",
-    how: "Mastercard golf / IDFC benefits portal → book with card.",
-    urgency: "open",
-  },
-  {
-    id: "idfc_travel_insurance",
-    cardId: "idfc_indigo",
-    cardLabel: "IDFC Indigo",
-    title: "Travel insurance / trip cancel cover",
-    detail: "Product guide lists air accident / trip cancel covers — claim path via insurer.",
-    how: "Keep boarding pass + card statement; file via issuer/insurer when needed.",
-    urgency: "info",
-  },
 
-  // ── Kiwi Neon ───────────────────────────────────────────────
+  // ── Kiwi Neon (claimable lounge passes when unlocked) ─────
   {
     id: "kiwi_lounge_50k",
     cardId: "yes_kiwi",
     cardLabel: "Kiwi Neon",
-    title: "Lounge pass unlocked @ ₹50k cycle",
-    detail: "Claim lounge pass in Kiwi app after milestone; typically 6-mo validity.",
+    title: "Lounge pass claimed @ ₹50k cycle",
+    detail: "Claim the lounge pass in Kiwi after the milestone unlocks (typically ~6-mo validity).",
     how: "Kiwi app → Benefits / Lounge after hitting spend.",
-    urgency: "ongoing",
+    urgency: "open",
   },
   {
     id: "kiwi_lounge_1l",
     cardId: "yes_kiwi",
     cardLabel: "Kiwi Neon",
-    title: "Lounge pass unlocked @ ₹1L cycle",
-    detail: "Second Neon lounge milestone.",
+    title: "Lounge pass claimed @ ₹1L cycle",
+    detail: "Second Neon lounge pass — mark when claimed in-app.",
     how: "Claim in Kiwi app when unlocked.",
-    urgency: "ongoing",
+    urgency: "open",
   },
   {
     id: "kiwi_lounge_15l",
     cardId: "yes_kiwi",
     cardLabel: "Kiwi Neon",
-    title: "Lounge pass unlocked @ ₹1.5L cycle",
-    detail: "Third Neon lounge milestone.",
+    title: "Lounge pass claimed @ ₹1.5L cycle",
+    detail: "Third Neon lounge pass — mark when claimed in-app.",
     how: "Claim in Kiwi app when unlocked.",
-    urgency: "ongoing",
+    urgency: "open",
   },
 
   // ── SBI SimplyCLICK ─────────────────────────────────────────
@@ -365,8 +198,8 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     id: "sbi_fee_waiver",
     cardId: "sbi_simplyclick",
     cardLabel: "SBI SimplyCLICK",
-    title: "Annual fee waiver (₹1L eligible retail)",
-    detail: "Fee-anniversary year eligible spend → fee reversal. Separate from online voucher year.",
+    title: "Annual fee waived (this fee year)",
+    detail: "Mark once the fee-anniversary waiver posts on the statement (₹1L eligible retail).",
     how: "Confirm on statement after fee levy / reversal.",
     valueHint: "~₹589+GST",
     urgency: "open",
@@ -376,32 +209,23 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     cardId: "sbi_simplyclick",
     cardLabel: "SBI SimplyCLICK",
     title: "Online ₹1L → Cleartrip/Yatra ₹2k e-voucher",
-    detail: "Online spend milestone in voucher year (not fee-waiver year).",
+    detail: "Online spend milestone voucher — mark when redeemed (or when expired unused).",
     how: "Voucher via SMS/email after threshold; redeem before expiry.",
     valueHint: "₹2,000",
-    urgency: "ongoing",
+    urgency: "open",
   },
   {
     id: "sbi_online_2l",
     cardId: "sbi_simplyclick",
     cardLabel: "SBI SimplyCLICK",
     title: "Online ₹2L → second Cleartrip/Yatra ₹2k e-voucher",
-    detail: "Second online milestone in the same voucher year.",
+    detail: "Second online milestone voucher in the same voucher year.",
     how: "Redeem voucher before expiry.",
     valueHint: "₹2,000",
-    urgency: "ongoing",
-  },
-  {
-    id: "sbi_rp_bms",
-    cardId: "sbi_simplyclick",
-    cardLabel: "SBI SimplyCLICK",
-    title: "Redeem RP → BookMyShow / partner voucher",
-    detail: "SBI RP often redeem well into BMS / partner e-vouchers (~2k RP tiers).",
-    how: "sbicard.com / YONO → Redeem rewards.",
     urgency: "open",
   },
 
-  // ── Amazon Pay ICICI ────────────────────────────────────────
+  // ── Amazon Pay ICICI welcome coupons ────────────────────────
   {
     id: "amz_shop",
     cardId: "amazon_pay_icici",
@@ -486,15 +310,6 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     legacyKey: "amazonWelcome",
     amazonOfferId: "amz_prepaid",
   },
-  {
-    id: "amz_fuel_surcharge",
-    cardId: "amazon_pay_icici",
-    cardLabel: "Amazon Pay ICICI",
-    title: "Fuel surcharge waiver",
-    detail: "Fuel surcharge waiver on eligible fuel spends (confirm caps on statement).",
-    how: "Pay fuel with card where waiver applies.",
-    urgency: "info",
-  },
 
   // ── HDFC Debit / GyFTR ──────────────────────────────────────
   {
@@ -520,115 +335,26 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     valueHint: "₹750",
     urgency: "urgent",
   },
-  {
-    id: "hdfc_debit_cashback_pts",
-    cardId: "hdfc_visa_platinum_debit",
-    cardLabel: "HDFC Debit",
-    title: "Monthly NetBanking cashback points",
-    detail: "Debit cashback posts as points (≈₹1) in NetBanking — Swiggy/BMS etc. caps.",
-    how: "NetBanking / MobileBanking → Rewards; redeem regularly.",
-    urgency: "ongoing",
-  },
 
-  // ── Visa Infinite (Live+ / BOB) ──────────────────────────────
-  {
-    id: "visa_inf_meet_greet",
-    cardId: "visa_infinite",
-    cardLabel: "Visa Infinite",
-    title: "Meet & Assist",
-    detail: "Complimentary Meet & Assist after ~USD1k intl POS in prior 12 months.",
-    how: "Visa offer page → Redeem Now; book ≥48h ahead.",
-    link: "https://www.visa.co.in/en_in/visa-offers-and-perks/visa-meet-assist/168650?locale=en_IN",
-    urgency: "open",
-  },
-  {
-    id: "visa_inf_itc",
-    cardId: "visa_infinite",
-    cardLabel: "Visa Infinite",
-    title: "ITC Hotels (3rd night free / 50% 2nd)",
-    detail: "Participating ITC properties via Visa Redeem Now.",
-    how: "Visa ITC offer → book through partner flow; pay with Infinite.",
-    link: "https://www.visa.co.in/en_in/visa-offers-and-perks/itc-hotels/166364?locale=en_IN",
-    urgency: "open",
-  },
-  {
-    id: "visa_inf_avis",
-    cardId: "visa_infinite",
-    cardLabel: "Visa Infinite",
-    title: "Avis rentals (up to 35% + President’s Club)",
-    detail: "Book via Visa Avis offer link.",
-    how: "Visa Avis → Redeem Now → pay with Infinite.",
-    link: "https://www.visa.co.in/en_in/visa-offers-and-perks/avis/141275?locale=en_IN",
-    urgency: "open",
-  },
-  {
-    id: "visa_inf_ihg",
-    cardId: "visa_infinite",
-    cardLabel: "Visa Infinite",
-    title: "IHG Hotels (~20% flexible rates)",
-    detail: "Visa × IHG partner booking flow.",
-    how: "Visa IHG offer → Redeem Now.",
-    link: "https://www.visa.co.in/en_in/visa-offers-and-perks/ihg-hotels-resorts/150837?locale=en_IN",
-    urgency: "open",
-  },
-  {
-    id: "visa_inf_agoda",
-    cardId: "visa_infinite",
-    cardLabel: "Visa Infinite",
-    title: "Agoda (up to ~7%)",
-    detail: "Hotels/flights via Visa Infinite × Agoda.",
-    how: "Visa Agoda offer → book via link.",
-    link: "https://www.visa.co.in/en_in/visa-offers-and-perks/agoda/177864?locale=en_IN",
-    urgency: "open",
-  },
+  // ── Visa Infinite — limited / one-time only ─────────────────
   {
     id: "visa_inf_district_play",
     cardId: "visa_infinite",
     cardLabel: "Visa Infinite",
-    title: "District Play (first 3 sports bookings)",
-    detail: "Up to 50% off (max ₹300) on first 3 pickleball/padel/etc. bookings.",
+    title: "District Play (first 3 sports bookings used)",
+    detail: "Limited pool: up to 50% off (max ₹300) on first 3 pickleball/padel bookings — mark when exhausted.",
     how: "Visa District offer → Redeem Now → District Play.",
     link: "https://www.visa.co.in/en_in/visa-offers-and-perks/district/179308?locale=en_IN",
-    urgency: "open",
-  },
-  {
-    id: "visa_inf_sephora",
-    cardId: "visa_infinite",
-    cardLabel: "Visa Infinite",
-    title: "Sephora 10% online",
-    detail: "10% off Sephora online via Visa Infinite offer.",
-    how: "Visa Sephora → Redeem Now → shop via link.",
-    link: "https://www.visa.co.in/en_in/visa-offers-and-perks/sephora/178058",
     urgency: "open",
   },
   {
     id: "visa_inf_concierge",
     cardId: "visa_infinite",
     cardLabel: "Visa Infinite",
-    title: "Visa Concierge activated / used",
-    detail: "24/7 dining, travel & tickets assistance.",
+    title: "Visa Concierge activated",
+    detail: "One-time: register / first use of Visa Concierge (24/7 dining, travel & tickets).",
     how: "concierge-asia.visa.com or number on card / HSBC app.",
     link: "https://www.concierge-asia.visa.com/",
-    urgency: "info",
-  },
-  {
-    id: "visa_inf_ajio_luxe",
-    cardId: "visa_infinite",
-    cardLabel: "Visa Infinite",
-    title: "Ajio Luxe (up to ₹4,500 off)",
-    detail: "Instant discount when spending ₹10k+ at Ajio Luxe via Visa offer.",
-    how: "Visa Ajio Luxe → Redeem Now.",
-    link: "https://www.visa.co.in/en_in/visa-offers-and-perks/ajio-luxe/172178",
-    urgency: "open",
-  },
-  {
-    id: "visa_inf_tattva",
-    cardId: "visa_infinite",
-    cardLabel: "Visa Infinite",
-    title: "Tattva Spa 20% off",
-    detail: "Flat 20% on select full-body massages.",
-    how: "Visa Tattva offer → book via flow.",
-    link: "https://www.visa.co.in/en_in/visa-offers-and-perks/tattva-spa/172048",
     urgency: "open",
   },
 ];
@@ -650,7 +376,8 @@ export function benefitCardGroups(): { cardId: string; cardLabel: string; items:
   }));
 }
 
-type ClaimState = {
+/** Minimal state shape for claim lookups (AppState-compatible). */
+export type ClaimState = {
   benefitClaims?: Record<string, boolean>;
   bobWelcomeUnlocked?: boolean;
   hsbcWelcomeClaimed?: boolean;
@@ -662,10 +389,10 @@ type ClaimState = {
 
 /** Whether a benefit is marked claimed (explicit checklist OR legacy flag). */
 export function isBenefitClaimed(id: string, st: ClaimState): boolean {
-  const b = BENEFIT_CLAIMS.find((x) => x.id === id);
   const explicit = st.benefitClaims?.[id];
   if (typeof explicit === "boolean") return explicit;
 
+  const b = BENEFIT_CLAIMS.find((x) => x.id === id);
   if (!b?.legacyKey) {
     if (id === "hdfc_gyftr_spent") {
       return !!st.gyftrVouchers?.find((x) => x.id === "gyftr-hdfc-dc-750")?.redeemed;

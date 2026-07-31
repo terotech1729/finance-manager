@@ -364,9 +364,6 @@ function buildClaimTips(input: RecommendInput, best: RouteOption, ranked: RouteO
   if (has("bob_eterna") && !claimed(input, "bob_fitpass")) {
     tips.push("BOB FITPASS Pro: activate within ~60 days of issuance if still open (Benefit claims).");
   }
-  if (has("bob_eterna")) {
-    tips.push(`BOB lounge unlock is ₹${BOB_LOUNGE_PRIOR_QTR_INR.toLocaleString("en-IN")} spend in the prior calendar quarter (not ₹40k).`);
-  }
   if (has("amex_plat_travel") && !claimed(input, "amex_pt_priority_pass")) {
     tips.push("Amex PT: enroll Priority Pass once if not done — intl visits are usually paid (Benefit claims).");
   }
@@ -377,8 +374,8 @@ function buildClaimTips(input: RecommendInput, best: RouteOption, ranked: RouteO
     const spent = input.scapiaMonthlySpend ?? 0;
     if (spent < SCAPIA_LOUNGE_MONTH_INR) {
       tips.push(`Scapia lounge / airport dining-spa unlock: ${inr(spent)} / ${inr(SCAPIA_LOUNGE_MONTH_INR)} this month.`);
-    } else if (!claimed(input, "scapia_airport_alt")) {
-      tips.push("Scapia unlock active — you can pick lounge OR airport dining/shop/spa coin-back (Benefit claims).");
+    } else {
+      tips.push("Scapia unlock active — pick lounge OR airport dining/shop/spa coin-back in the Scapia app.");
     }
   }
   if ((input.idfcYtdSpend ?? 0) >= 200000 && !claimed(input, "idfc_bluchip_2l")) {
@@ -386,9 +383,6 @@ function buildClaimTips(input: RecommendInput, best: RouteOption, ranked: RouteO
   }
   if ((input.idfcYtdSpend ?? 0) >= 500000 && !claimed(input, "idfc_bluchip_5l")) {
     tips.push("IDFC ₹5L BluChip milestone voucher — redeem before expiry (Benefit claims).");
-  }
-  if (has("idfc_indigo") && !claimed(input, "idfc_golf")) {
-    tips.push("IDFC Mastercard golf (4 rounds + 12 lessons/yr) unused until marked on Benefit claims.");
   }
   if (!claimed(input, "hdfc_gyftr_spent") && (claimed(input, "hdfc_gyftr_received") || (input.gyftrBalance ?? 0) > 0)) {
     tips.push(`GyFTR ~${inr(input.gyftrBalance && input.gyftrBalance > 0 ? input.gyftrBalance : 750)} still to spend — redeem before expiry (Debit & Benefit claims).`);

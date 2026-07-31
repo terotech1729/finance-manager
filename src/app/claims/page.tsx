@@ -11,26 +11,23 @@ import {
 import { loadState, saveState, type AppState } from "@/lib/storage";
 import { Callout } from "@/components/Callout";
 import { Icon } from "@/components/Icons";
+import Link from "next/link";
 
 const URGENCY_LABEL: Record<BenefitUrgency, string> = {
   urgent: "Time-sensitive",
   open: "Claim / activate",
-  ongoing: "Ongoing",
-  info: "Know / keep",
 };
 
 const URGENCY_CLASS: Record<BenefitUrgency, string> = {
   urgent: "bg-danger/15 text-danger border-danger/30",
   open: "bg-warning/15 text-warning border-warning/30",
-  ongoing: "bg-info/15 text-info border-info/30",
-  info: "bg-bg-chrome text-fg-muted border-border",
 };
 
-type Filter = "all" | "unclaimed" | "claimed" | "urgent" | "ongoing" | "info";
+type Filter = "all" | "unclaimed" | "claimed" | "urgent";
 
 export default function ClaimsPage() {
   const [state, setState] = useState<AppState | null>(null);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("unclaimed");
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -70,20 +67,16 @@ export default function ClaimsPage() {
     if (filter === "claimed" && !claimed) return false;
     if (filter === "unclaimed" && claimed) return false;
     if (filter === "urgent" && b.urgency !== "urgent") return false;
-    if (filter === "ongoing" && b.urgency !== "ongoing") return false;
-    if (filter === "info" && b.urgency !== "info") return false;
     const needle = q.trim().toLowerCase();
     if (!needle) return true;
     return `${b.title} ${b.detail} ${b.cardLabel} ${b.how ?? ""}`.toLowerCase().includes(needle);
   };
 
   const filters: { id: Filter; label: string }[] = [
-    { id: "all", label: "All" },
     { id: "unclaimed", label: `Open (${counts.unclaimed})` },
-    { id: "claimed", label: `Claimed (${counts.claimed})` },
+    { id: "claimed", label: `Done (${counts.claimed})` },
     { id: "urgent", label: `Urgent (${counts.urgent})` },
-    { id: "ongoing", label: "Ongoing" },
-    { id: "info", label: "Info" },
+    { id: "all", label: "All" },
   ];
 
   return (
@@ -91,8 +84,14 @@ export default function ClaimsPage() {
       <div>
         <h1 className="page-title">Benefit claims</h1>
         <p className="text-fg-muted mt-1 text-sm leading-relaxed max-w-2xl">
-          Every known issuer / Visa benefit for your cards. Check off what you already claimed or activated —
-          Recommend reads this checklist live (welcome pushes, Amazon coupons, GyFTR, MRCC enrollment, lounge rules).
+          One-time vouchers, welcome bonuses, and activations you can check off once.
+          Recurring perks (BOGO, lounges, monthly unlocks, Visa portal discounts) stay in{" "}
+          <Link href="/recommend" className="text-accent hover:underline">Recommend</Link>
+          {" · "}
+          <Link href="/network-perks" className="text-accent hover:underline">Network perks</Link>
+          {" · "}
+          <Link href="/milestones" className="text-accent hover:underline">Milestones</Link>
+          — not here.
         </p>
       </div>
 
@@ -106,7 +105,7 @@ export default function ClaimsPage() {
           <div className="text-2xl font-bold mt-1 text-warning">{counts.unclaimed}</div>
         </div>
         <div className="card-shell p-4">
-          <div className="label">Claimed</div>
+          <div className="label">Done</div>
           <div className="text-2xl font-bold mt-1 text-success">{counts.claimed}</div>
         </div>
         <div className="card-shell p-4">
@@ -118,14 +117,14 @@ export default function ClaimsPage() {
       {counts.urgent > 0 && (
         <Callout tone="warning" title="Time-sensitive still open">
           Live+ welcome / vouchers, Indigo BluChip vouchers, GyFTR spend, and BOB FITPASS if still activatable —
-          mark each as you confirm in the issuer app.
+          mark each when confirmed in the issuer app.
         </Callout>
       )}
 
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
         <input
           type="search"
-          placeholder="Search benefits…"
+          placeholder="Search vouchers & welcomes…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="input flex-1 min-w-0"
@@ -158,7 +157,7 @@ export default function ClaimsPage() {
               <div className="flex items-baseline justify-between gap-3 mb-3">
                 <h2 className="text-lg font-bold">{g.cardLabel}</h2>
                 <span className="text-xs text-fg-muted">
-                  {done}/{g.items.length} claimed
+                  {done}/{g.items.length} done
                 </span>
               </div>
               <div className="card-shell divide-y divide-border overflow-hidden">
@@ -179,54 +178,45 @@ export default function ClaimsPage() {
                             onChange={(e) => toggle(b.id, e.target.checked)}
                           />
                           <span className="min-w-0">
-                            <span
-                              className={`block text-sm font-medium leading-snug ${
-                                claimed ? "line-through text-fg-muted" : ""
-                              }`}
-                            >
-                              {b.title}
-                            </span>
-                            <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className={`font-medium ${claimed ? "line-through text-fg-muted" : ""}`}>
+                                {b.title}
+                              </span>
                               <span
-                                className={`inline-flex text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border ${URGENCY_CLASS[b.urgency]}`}
+                                className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${URGENCY_CLASS[b.urgency]}`}
                               >
                                 {URGENCY_LABEL[b.urgency]}
                               </span>
                               {b.valueHint && (
-                                <span className="text-[11px] text-success font-medium">{b.valueHint}</span>
+                                <span className="text-xs text-success font-medium">{b.valueHint}</span>
                               )}
+                            </span>
+                            <span className="block text-sm text-fg-muted mt-0.5 leading-relaxed">
+                              {b.detail}
                             </span>
                           </span>
                         </label>
                         <button
                           type="button"
-                          className="btn-ghost text-xs shrink-0 px-2 py-1"
+                          className="btn-ghost px-2 py-1 text-xs shrink-0"
                           onClick={() => setExpanded(open ? null : b.id)}
+                          aria-expanded={open}
                         >
                           {open ? "Hide" : "How"}
-                          <Icon.ArrowRight
-                            size={12}
-                            className={`inline ml-1 transition-transform ${open ? "rotate-90" : ""}`}
-                          />
+                          <Icon.ArrowRight size={12} className={open ? "rotate-90 inline ml-0.5" : "inline ml-0.5"} />
                         </button>
                       </div>
                       {open && (
-                        <div className="mt-3 ml-7 text-sm text-fg-muted space-y-2 leading-relaxed">
-                          <p>{b.detail}</p>
-                          {b.how && (
-                            <p>
-                              <span className="text-fg font-medium">How: </span>
-                              {b.how}
-                            </p>
-                          )}
+                        <div className="mt-3 ml-7 sm:ml-8 text-sm space-y-2 text-fg-muted">
+                          {b.how && <p>{b.how}</p>}
                           {b.link && (
                             <a
                               href={b.link}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-accent hover:underline text-xs font-medium"
+                              className="text-accent hover:underline inline-flex items-center gap-1"
                             >
-                              Open claim link
+                              Open claim / activate link
                               <Icon.ArrowRight size={12} />
                             </a>
                           )}
