@@ -1396,43 +1396,79 @@ function ytdForCard(cardId: string, input: RecommendInput): number {
 /**
  * Marginal value of pushing THIS spend toward a card's next ANNUAL milestone.
  *
- * CRITICAL: only attribute reward INR when this spend COMPLETES the threshold.
- * The old "close" pro-rata (within 10%/₹15k) inflated every small txn — e.g. ₹500
- * Swiggy scored ~97% via SBI fee-waiver "near miss", and Amex PT scored ~54% on
- * every spend while ₹7k short of ₹1.9L. Near-misses belong in milestoneTip only.
+ * Hybrid (not completing-only, not naive near-miss pro-rata):
+ *  1. Completing spend → full unlock value.
+ *  2. Far from threshold → fair share of the remaining gap (reward × amt/remaining)
+ *     so many small spends still steer toward long milestones (Amex PT ₹4L/₹7L).
+ *  3. Close but not completing (remaining ≤ max(₹15k, 5% of threshold)) → thin
+ *     credit only (reward × amt/threshold). Prevents the old bug where ₹500 Swiggy
+ *     scored ~97% via SBI fee-waiver "almost there".
  */
-function annualMilestoneBonus(cardId: string, input: RecommendInput, amt: number): { inr: number; note: string; threshold: number } | null {
+function annualMilestoneBonus(
+  cardId: string,
+  input: RecommendInput,
+  amt: number
+): { inr: number; note: string; threshold: number; kind: "completing" | "progress" | "close" } | null {
   const short = getCardById(cardId)?.short ?? cardId;
   const hit = new Set(input.milestonesHit ?? []);
 
+  const scoreGap = (
+    ytd: number,
+    threshold: number,
+    reward: number,
+    rewardLabel: string
+  ): { inr: number; note: string; threshold: number; kind: "completing" | "progress" | "close" } | null => {
+    if (ytd >= threshold || reward < 1 || amt < 1) return null;
+    const remaining = threshold - ytd;
+    if (amt >= remaining) {
+      return {
+        inr: reward,
+        note: `Completes ${short}'s ${inr(threshold)} milestone → unlocks ${rewardLabel} (${inr(reward)})`,
+        threshold,
+        kind: "completing",
+      };
+    }
+    const closeBand = Math.max(15000, threshold * 0.05);
+    if (remaining <= closeBand) {
+      // Near the finish line but this txn doesn't finish it — don't nearly-full-value unlock.
+      const thin = reward * (amt / threshold);
+      if (thin < 0.5) return null;
+      return {
+        inr: thin,
+        note: `Near ${short}'s ${inr(threshold)} (${inr(remaining)} left) — this spend doesn't finish it (+${inr(thin)} thin). Prefer a spend ≥${inr(remaining)} to unlock ${inr(reward)}.`,
+        threshold,
+        kind: "close",
+      };
+    }
+    // Far: each rupee of progress is worth reward/remaining if you'll finish the year.
+    const progress = reward * (amt / remaining);
+    if (progress < 0.5) return null;
+    return {
+      inr: progress,
+      note: `Builds ${short}'s ${inr(threshold)} (${inr(remaining)} left) → +${inr(progress)} of ${inr(reward)} — small spends still count`,
+      threshold,
+      kind: "progress",
+    };
+  };
+
   // SBI fee waiver is a separate counter from online voucher YTD.
   if (cardId === "sbi_simplyclick") {
-    if (!sbiFeeWaiverEligible(input.category || "", input.merchant || "")) return null;
-    const feeSpend = input.sbiFeeWaiverSpend ?? 0;
-    const feeThreshold = 100000;
-    const feeReward = 589; // ₹499 + 18% GST
-    if (feeSpend < feeThreshold && amt >= feeThreshold - feeSpend) {
-      return {
-        inr: feeReward,
-        note: `Completes SBI fee-waiver ₹1L eligible retail → ~${inr(feeReward)} fee saved`,
-        threshold: feeThreshold,
-      };
+    if (sbiFeeWaiverEligible(input.category || "", input.merchant || "")) {
+      const fee = scoreGap(input.sbiFeeWaiverSpend ?? 0, 100000, 589, "fee waiver");
+      if (fee) {
+        if (fee.kind === "completing") {
+          return { ...fee, note: `Completes SBI fee-waiver ₹1L eligible retail → ~${inr(589)} fee saved` };
+        }
+        return fee;
+      }
     }
   }
 
   const ytd = ytdForCard(cardId, input);
   const ms = ANNUAL_MILESTONES.filter((m) => m.cardId === cardId).slice().sort((a, b) => a.threshold - b.threshold);
-  // Live YTD + explicit hit flags (portal milestonesHit / static hit on cards).
   const next = ms.find((m) => ytd < m.threshold && !hit.has(`${cardId}:${m.threshold}`) && !m.hit);
   if (!next) return null;
-  const remaining = next.threshold - ytd;
-  if (amt < remaining) return null; // near-miss → no score inflation
-
-  return {
-    inr: next.rewardValueInr,
-    note: `Completes ${short}'s ${inr(next.threshold)} milestone → unlocks ${next.reward} (${inr(next.rewardValueInr)})`,
-    threshold: next.threshold,
-  };
+  return scoreGap(ytd, next.threshold, next.rewardValueInr, next.reward);
 }
 
 /**
@@ -2387,24 +2423,27 @@ export function recommend(input: RecommendInput): RecommendationResult {
       steps: ["Pay with BOB Eterna", "Drives ₹50K welcome milestone"] });
   }
 
-  // Amex PT — only when near ₹4L (real urgency). Otherwise the universal annual push covers it once.
-  if (amt >= 5000) {
-    const ptSpend = input.ptccEligibleSpend ?? 0;
-    const ptClose = ptSpend > 350000;
-    if (ptClose) {
-      const mb = annualMilestoneBonus("amex_plat_travel", input, amt);
+  // Amex PT annual progress — always surface when eligible (not only when already near ₹4L).
+  // Far-gap progress credit lives in annualMilestoneBonus; near-₹4L gets urgency copy.
+  if (amt >= 1000 && !amexExcluded(input.category || "")) {
+    const mb = annualMilestoneBonus("amex_plat_travel", input, amt);
+    if (mb) {
+      const ptSpend = input.ptccEligibleSpend ?? 0;
+      const near = ptSpend >= 350000 || mb.kind === "completing" || mb.kind === "close";
       add({
         cardId: "amex_plat_travel",
-        label: mb ? `Amex PT — near ${inr(mb.threshold)} milestone` : "Amex PT (near milestone)",
-        effectivePct: 1.0 + ((mb?.inr ?? 0) / amt) * 100,
+        label: near
+          ? `Amex PT — ${mb.kind === "completing" ? "completes" : "near"} ${inr(mb.threshold)} milestone`
+          : `Amex PT — build ${inr(mb.threshold)} milestone (${mb.kind})`,
+        effectivePct: 1.0 + (mb.inr / amt) * 100,
         baseRewardInr: amt * 0.01,
-        bonusRewardInr: mb?.inr ?? 0,
+        bonusRewardInr: mb.inr,
         worstCasePct: 1.0,
-        bestCasePct: 7.0,
-        pros: [mb?.note ?? "Near ₹4L / ₹7L annual milestone"],
-        cons: ["Excludes fuel/insurance/utilities/cash/EMI"],
-        rationale: mb?.note ?? "Near the next PT annual milestone.",
-        steps: [`Pay ${inr(amt)} with Amex PT`, "Builds annual milestone"],
+        bestCasePct: 1.0 + (mb.inr / amt) * 100,
+        pros: [mb.note],
+        cons: ["Excludes fuel/insurance/utilities/cash/EMI", "MR is flexible but needs redemption"],
+        rationale: mb.note,
+        steps: [`Pay ${inr(amt)} with Amex PT`, `Builds toward ${inr(mb.threshold)}`],
       });
     }
   }
@@ -2901,31 +2940,37 @@ function finalize(
   }
 
   // ---- Universal ANNUAL-milestone push (SBI, IDFC, Amex PT/MRCC, BOB ₹5L, Live+ ₹2L) ----
-  // Only when this spend completes the next threshold. Far-away pro-rata was removed.
+  // Completing = full value; far = fair progress share; close-not-complete = thin (see annualMilestoneBonus).
   if (!isForeign) {
     for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel", "amex_mrcc", "bob_eterna", "hsbc_live_plus"]) {
       if ((cardId === "amex_plat_travel" || cardId === "amex_mrcc") && amexExcluded(input.category || "")) continue;
-      // Skip welcome-only BOB ₹50k / Live+ ₹25k here — those have dedicated welcome helpers.
-      // annualMilestoneBonus still finds the next incomplete threshold (fee waiver / RP / etc.).
+      // Skip if this card already has milestone/welcome bonus attributed on a route.
       if (options.some((o) => o.cardId === cardId && o.bonusRewardInr > 0)) continue;
       const mb = annualMilestoneBonus(cardId, input, amt);
-      if (!mb || mb.inr < 1) continue;
+      if (!mb || mb.inr < 0.5) continue;
       // Don't double-count welcome thresholds that bobWelcomeBonus / livePlusWelcomeBonus already own.
       if (cardId === "bob_eterna" && mb.threshold === 50000) continue;
       if (cardId === "hsbc_live_plus" && mb.threshold === 25000) continue;
       const baseEval = genericCardEval(cardId, input, false);
       const basePct = baseEval?.pct ?? 0;
       const eff = basePct + (mb.inr / amt) * 100;
-      if (eff <= basePct + 0.05) continue;
+      // Always show completing / far progress; skip noise-level close thins under ~0.2pp.
+      if (mb.kind === "close" && eff <= basePct + 0.2) continue;
       const short = getCardById(cardId)?.short ?? cardId;
       options.push(mkOption(amt, {
         cardId,
-        label: `${short} — push to ${inr(mb.threshold)} annual milestone`,
+        label: mb.kind === "completing"
+          ? `${short} — completes ${inr(mb.threshold)} annual milestone`
+          : `${short} — build ${inr(mb.threshold)} annual milestone`,
         effectivePct: eff,
         baseRewardInr: (amt * basePct) / 100,
         bonusRewardInr: mb.inr,
         pros: [mb.note],
-        cons: ["Annual-milestone value assumes you'll actually reach the threshold this cycle"],
+        cons: mb.kind === "progress"
+          ? ["Progress value assumes you'll finish this milestone this cycle"]
+          : mb.kind === "close"
+            ? [`This spend alone won't unlock — need ≥${inr(mb.threshold - ytdForCard(cardId, input))} more`]
+            : ["Annual-milestone value assumes you'll actually reach the threshold this cycle"],
         rationale: `Routing this to ${short}: ${mb.note}`,
         steps: [`Pay with ${short}`, `Builds toward the ${inr(mb.threshold)} annual milestone`],
       }));
@@ -3024,14 +3069,22 @@ function finalize(
   const card = pickCard(best.cardId);
   const alternatives = ranked.slice(1); // full ranked list, with reasons
 
-  // Milestone nudge: if the raw-best route does NOT itself progress a milestone,
-  // surface the best milestone-feeding alternative so you can consciously feed it.
-  const bestFeedsMilestone = best.bonusRewardInr > 0 || best.cardId === "yes_kiwi";
+  // Milestone nudge: if the raw-best route does NOT itself progress a meaningful milestone,
+  // surface the best milestone-feeding alternative (incl. far-gap annual progress like Amex PT).
+  const bestFeedsMilestone = best.bonusRewardInr > 1 || best.cardId === "yes_kiwi";
   let milestoneTip: RecommendationResult["milestoneTip"];
   if (!bestFeedsMilestone) {
-    // Prefer a concrete milestone/welcome feeder (Amex/BOB) regardless of gap.
-    let feeder = ranked.find((o) => o.feasible && o.cardId !== best.cardId && o.bonusRewardInr > 0);
-    // Else nudge Kiwi (Neon cycle) only if it's not drastically worse.
+    // Prefer annual/welcome feeders with real progress credit; don't require completing-only.
+    let feeder = ranked.find(
+      (o) =>
+        o.feasible &&
+        o.cardId !== best.cardId &&
+        o.bonusRewardInr > 1 &&
+        /milestone|welcome|build|completes|neon|cycle/i.test(`${o.label} ${o.pros.join(" ")} ${o.rationale}`)
+    );
+    if (!feeder) {
+      feeder = ranked.find((o) => o.feasible && o.cardId !== best.cardId && o.bonusRewardInr > 1);
+    }
     if (!feeder) {
       const kiwi = ranked.find((o) => o.feasible && o.cardId === "yes_kiwi" && o.effectivePct >= 2);
       if (kiwi && best.effectivePct - kiwi.effectivePct <= 2.5) feeder = kiwi;
@@ -3040,7 +3093,7 @@ function finalize(
       const giveUp = Math.max(0, +(best.effectivePct - feeder.effectivePct).toFixed(2));
       const why = feeder.cardId === "yes_kiwi"
         ? "progresses your Kiwi Neon cycle toward the 3% / 4% / 5% + lounge milestones"
-        : (feeder.pros.find((p) => /milestone|welcome|cycle|fills|completes/i.test(p)) || feeder.rationale || "progresses a milestone");
+        : (feeder.pros.find((p) => /milestone|welcome|cycle|fills|completes|builds/i.test(p)) || feeder.rationale || "progresses a milestone");
       milestoneTip = {
         cardId: feeder.cardId,
         label: feeder.label,
