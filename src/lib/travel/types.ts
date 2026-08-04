@@ -4,6 +4,24 @@ export type TravelMode = "flight" | "train" | "bus";
 
 export type OfferConfidence = "stable" | "typical" | "volatile";
 
+export type TravelPlaceRef = {
+  id: string;
+  name: string;
+  code?: string;
+  city: string;
+  kind: "airport" | "station" | "city";
+};
+
+export type TravelSearchParams = {
+  origin: TravelPlaceRef;
+  destination: TravelPlaceRef;
+  date: string;
+  returnDate?: string;
+  adults: number;
+  children: number;
+  cabin?: "economy" | "premium" | "business";
+};
+
 export type TravelPlatform = {
   id: string;
   mode: TravelMode;
@@ -18,9 +36,15 @@ export type TravelPlatform = {
   openSteps: string[];
   /** Homepage / search URL when known */
   url?: string;
+  /** Build a prefilled search deep-link */
+  buildSearchUrl?: (p: TravelSearchParams) => string;
   notes?: string;
-  /** Prefer showing in fare grid by default */
+  /** Prefer showing in primary results */
   primary?: boolean;
+  /** Typical ₹ delta vs market fare (convenience fee / undercut) */
+  fareBiasInr?: number;
+  /** Typical % delta vs market fare */
+  fareBiasPct?: number;
 };
 
 export type TravelOffer = {

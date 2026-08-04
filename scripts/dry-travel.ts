@@ -4,13 +4,15 @@
  */
 import assert from "node:assert/strict";
 import { rankTravel } from "../src/lib/travel/rankTravel";
+import { discoverFares, estimateFlightMarketFare } from "../src/lib/travel/fareDiscover";
+import { searchPlaces } from "../src/lib/travel/places";
 import type { TravelTripInput } from "../src/lib/travel/types";
 
 let failed = 0;
 
-function check(name: string, fn: () => void) {
+async function check(name: string, fn: () => void | Promise<void>) {
   try {
-    fn();
+    await fn();
     console.log(`PASS  ${name}`);
   } catch (e) {
     failed++;
@@ -28,7 +30,33 @@ const baseState = {
 
 console.log("Dry travel suite\n");
 
-check("same fare flight: ranks a complete platform + card stack", () => {
+async function main() {
+await check("place typeahead finds BLR / Delhi", () => {
+  const blr = searchPlaces("blr", "flight");
+  assert.ok(blr.some((p) => p.code === "BLR"), "BLR airport");
+  const del = searchPlaces("delhi", "flight");
+  assert.ok(del.some((p) => /del|delhi/i.test(p.city) || p.code === "DEL"));
+  const stn = searchPlaces("ndls", "train");
+  assert.ok(stn.some((p) => p.code === "NDLS"));
+});
+
+await check("discoverFares auto-fills platform fares (no paste)", async () => {
+  const d = await discoverFares({
+    mode: "flight",
+    origin: "BLR",
+    destination: "DEL",
+    date: "2026-08-20",
+    adults: 1,
+    today: "2026-08-04",
+  });
+  assert.ok(d.marketFareInr > 1000, `market ${d.marketFareInr}`);
+  assert.ok(Object.keys(d.fares).length >= 4, "expected multiple platform quotes");
+  assert.ok(d.fares.amazon_flight > 0);
+  assert.ok(d.fares.cleartrip_flight > 0);
+  console.log(`      → market ₹${d.marketFareInr} · ${d.distanceKm} km · ${d.marketSource}`);
+});
+
+await check("same fare flight: ranks a complete platform + card stack", () => {
   const trip: TravelTripInput = {
     mode: "flight",
     origin: "BLR",
@@ -46,7 +74,33 @@ check("same fare flight: ranks a complete platform + card stack", () => {
   console.log(`      → best ${r.best.platformLabel} / ${r.best.cardId} net ₹${r.best.netInr.toFixed(0)}`);
 });
 
-check("higher Amazon fare loses to cheaper Cleartrip when gap > earn", () => {
+await check("discovered fares → rankTravel best all-in", async () => {
+  const d = await discoverFares({
+    mode: "flight",
+    origin: "Bengaluru (BLR)",
+    destination: "Delhi (DEL)",
+    date: "2026-08-20",
+    adults: 1,
+    today: "2026-08-04",
+  });
+  const r = rankTravel(
+    {
+      mode: "flight",
+      origin: "BLR",
+      destination: "DEL",
+      date: "2026-08-20",
+      adults: 1,
+      fares: d.fares,
+      today: "2026-08-04",
+    },
+    baseState
+  );
+  assert.ok(r.best.platformId !== "none");
+  assert.ok(r.best.netInr < d.marketFareInr + 500);
+  console.log(`      → best ${r.best.platformLabel} net ₹${r.best.netInr.toFixed(0)}`);
+});
+
+await check("higher Amazon fare loses to cheaper Cleartrip when gap > earn", () => {
   const trip: TravelTripInput = {
     mode: "flight",
     origin: "BLR",
@@ -66,7 +120,7 @@ check("higher Amazon fare loses to cheaper Cleartrip when gap > earn", () => {
   console.log(`      → best ${r.best.platformLabel} net ₹${r.best.netInr.toFixed(0)}`);
 });
 
-check("Instant Discount override can beat bare cashback", () => {
+await check("Instant Discount override can beat bare cashback", () => {
   const without: TravelTripInput = {
     mode: "flight",
     origin: "BLR",
@@ -86,7 +140,7 @@ check("Instant Discount override can beat bare cashback", () => {
   console.log(`      → without ID net ₹${a.best.netInr.toFixed(0)} · with ID ₹${b.best.netInr.toFixed(0)}`);
 });
 
-check("train: Amazon vs IRCTC with same fare prefers higher earn stack", () => {
+await check("train: Amazon vs IRCTC with same fare prefers higher earn stack", () => {
   const trip: TravelTripInput = {
     mode: "train",
     origin: "SBC",
@@ -99,11 +153,10 @@ check("train: Amazon vs IRCTC with same fare prefers higher earn stack", () => {
   const r = rankTravel(trip, baseState);
   assert.ok(r.best.platformId !== "none");
   assert.ok(["amazon_train", "irctc", "railone", "confirmtkt"].includes(r.best.platformId));
-  // Amazon 2% on ₹2000 = ₹40 — should often win if IRCTC card earn is weaker
   console.log(`      → best ${r.best.platformLabel} / ${r.best.cardId} net ₹${r.best.netInr.toFixed(0)}`);
 });
 
-check("bus: RedBus vs Amazon with same fare ranks a complete solution", () => {
+await check("bus: RedBus vs Amazon with same fare ranks a complete solution", () => {
   const trip: TravelTripInput = {
     mode: "bus",
     origin: "Bengaluru",
@@ -120,20 +173,23 @@ check("bus: RedBus vs Amazon with same fare ranks a complete solution", () => {
   console.log(`      → best ${r.best.platformLabel} / ${r.best.cardId} net ₹${r.best.netInr.toFixed(0)}`);
 });
 
-check("no fares → placeholder + warning", () => {
-  const r = rankTravel({
-    mode: "flight",
-    origin: "BLR",
-    destination: "DEL",
-    date: "2026-08-20",
-    adults: 1,
-    today: "2026-08-04",
-  }, baseState);
+await check("no fares → placeholder + warning", () => {
+  const r = rankTravel(
+    {
+      mode: "flight",
+      origin: "BLR",
+      destination: "DEL",
+      date: "2026-08-20",
+      adults: 1,
+      today: "2026-08-04",
+    },
+    baseState
+  );
   assert.equal(r.best.platformId, "none");
-  assert.ok(r.warnings.some((w) => /fare/i.test(w)));
+  assert.ok(r.warnings.some((w) => /fare|search/i.test(w)));
 });
 
-check("Amex travel stack carries ifAmexNotAccepted when Amex wins", () => {
+await check("Amex travel stack carries ifAmexNotAccepted when Amex wins", () => {
   const trip: TravelTripInput = {
     mode: "flight",
     origin: "BLR",
@@ -154,5 +210,14 @@ check("Amex travel stack carries ifAmexNotAccepted when Amex wins", () => {
   }
 });
 
+await check("flight estimate scales with distance", () => {
+  const short = estimateFlightMarketFare(350, "2026-09-15", "economy", "2026-08-04");
+  const long = estimateFlightMarketFare(1750, "2026-09-15", "economy", "2026-08-04");
+  assert.ok(long > short + 500, `${long} vs ${short}`);
+});
+
 console.log(`\n${failed === 0 ? "OK" : "FAILED"} — travel dry suite`);
 process.exit(failed === 0 ? 0 : 1);
+}
+
+main();

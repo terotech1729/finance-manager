@@ -9,10 +9,9 @@ export default function TravelPage() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Travel</h1>
-        <p className="text-fg-muted mt-1">
-          Flights, trains, and buses — rank <b className="text-fg">platform + Instant Discount + card / Cashkaro</b> for the
-          lowest all-in cost (better than cheapest sticker fare alone). Paste fares you see; we chain the optimal spend
-          route.
+        <p className="page-sub">
+          Flights, trains, buses — search like a booking site, then book the <span className="text-fg">lowest all-in</span> path
+          after Instant Discount, Cashkaro, and your cards.
         </p>
       </div>
       <TravelAssistant onLogged={() => setRefreshKey((k) => k + 1)} />

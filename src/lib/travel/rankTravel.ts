@@ -183,7 +183,7 @@ export function rankTravel(
 
   const anyFare = platforms.some((p) => resolveFare(trip, p.id) != null);
   if (!anyFare) {
-    warnings.push("Enter a base fare and/or per-platform fares so we can rank all-in cost.");
+    warnings.push("Search a route so we can discover fares and rank all-in cost.");
   }
 
   for (const platform of platforms) {
@@ -276,7 +276,7 @@ export function rankTravel(
     // Placeholder so UI can still render
     const empty: TravelSolution = {
       platformId: "none",
-      platformLabel: "Enter fares to rank",
+      platformLabel: "Search a route",
       fareInr: 0,
       offerDiscountInr: 0,
       cardId: "upi",
@@ -285,8 +285,8 @@ export function rankTravel(
       cardEffectivePct: 0,
       netInr: 0,
       allInPct: 0,
-      steps: ["Fill origin, destination, date, and at least one platform fare (or base fare)"],
-      rationale: "No fares entered yet.",
+      steps: ["Pick origin & destination, then Search — we discover fares and rank checkout stacks"],
+      rationale: "No fares discovered yet.",
       pros: [],
       cons: [],
       openSteps: [],
