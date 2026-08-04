@@ -56,6 +56,27 @@ await check("discoverFares auto-fills platform fares (no paste)", async () => {
   console.log(`      → market ₹${d.marketFareInr} · ${d.distanceKm} km · ${d.marketSource}`);
 });
 
+await check("PNQ→DEL 23 Oct live fare is ~₹8k+ (not ~₹3–4k model)", async () => {
+  const d = await discoverFares({
+    mode: "flight",
+    origin: "PNQ",
+    destination: "DEL",
+    date: "2026-10-23",
+    adults: 1,
+    today: "2026-08-04",
+  });
+  assert.equal(d.marketSource, "travelpayouts", `expected live calendar, got ${d.marketSource}`);
+  assert.ok(d.marketFareInr >= 7000, `expected ≥7000 live market, got ${d.marketFareInr}`);
+  // IndiGo direct should sit above cheapest market (app often ~₹9.6k when market ~₹8.2k)
+  assert.ok(
+    d.fares.indigo_direct >= d.marketFareInr,
+    `IndiGo ${d.fares.indigo_direct} should be ≥ market ${d.marketFareInr}`
+  );
+  console.log(
+    `      → live market ₹${d.marketFareInr} · IndiGo quote ₹${d.fares.indigo_direct} · ${d.marketSource}`
+  );
+});
+
 await check("same fare flight: ranks a complete platform + card stack", () => {
   const trip: TravelTripInput = {
     mode: "flight",

@@ -415,7 +415,11 @@ export function TravelAssistant({ onLogged }: Props) {
             <div>
               <div className="text-sm text-fg-muted">{discovery.summary}</div>
               <div className="text-xs text-fg-muted mt-0.5">
-                Fare source: {discovery.marketSource === "travelpayouts" ? "live calendar" : "route model"} · ranked by net ₹ after rewards
+                Fare source:{" "}
+                {discovery.marketSource === "travelpayouts"
+                  ? "live flight calendar"
+                  : "route estimate"}{" "}
+                · ranked by net ₹ after rewards
               </div>
             </div>
             <button type="button" className="btn-secondary text-sm" onClick={runSearch}>

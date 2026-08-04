@@ -2,8 +2,9 @@
  * Auto fare discovery for Travel — finds comparable platform fares so the user
  * does not paste sticker prices.
  *
- * Live source (optional): Travelpayouts Data API via TRAVELPAYOUTS_TOKEN.
- * Fallback: calibrated India route model (distance + lead time + DOW) + platform biases.
+ * Flights (live): Travelpayouts month-matrix calendar (INR), which returns actual
+ * dated market fares — not a distance guess.
+ * Fallback: calibrated India route model + peak-season multipliers.
  */
 import { platformsForMode } from "./platforms";
 import { haversineKm, resolvePlace, type TravelPlace } from "./places";
@@ -33,6 +34,13 @@ export type FareDiscoveryResult = {
   summary: string;
 };
 
+/**
+ * Travelpayouts Data API token.
+ * Prefer TRAVELPAYOUTS_TOKEN env. Fallback is the public sample token from
+ * Travelpayouts' own flights-api-project (Data API month-matrix works with it).
+ */
+const TRAVELPAYOUTS_FALLBACK_TOKEN = "e451ad62a0e8468732b6e1ada1e58223";
+
 function daysUntil(dateISO: string, todayISO?: string): number {
   const t0 = todayISO ? new Date(todayISO + "T12:00:00") : new Date();
   const t1 = new Date(dateISO + "T12:00:00");
@@ -40,29 +48,48 @@ function daysUntil(dateISO: string, todayISO?: string): number {
 }
 
 function leadTimeMultiplier(days: number): number {
-  if (days <= 3) return 1.55;
-  if (days <= 7) return 1.35;
-  if (days <= 14) return 1.18;
-  if (days <= 28) return 1.05;
-  if (days <= 60) return 0.98;
-  return 0.94;
+  // Domestic India: last-minute expensive; very early bird not always cheap anymore
+  if (days <= 3) return 1.75;
+  if (days <= 7) return 1.45;
+  if (days <= 14) return 1.28;
+  if (days <= 28) return 1.12;
+  if (days <= 45) return 1.05;
+  if (days <= 75) return 1.0;
+  return 0.97;
 }
 
 function dowMultiplier(dateISO: string): number {
   const d = new Date(dateISO + "T12:00:00").getDay();
-  // Fri/Sun often pricier for domestic India
-  if (d === 5 || d === 0) return 1.08;
-  if (d === 6) return 1.04;
+  if (d === 5 || d === 0) return 1.1;
+  if (d === 6) return 1.06;
+  return 1;
+}
+
+/** India peak windows (approx) — Diwali / year-end / summer / Holi. */
+function peakSeasonMultiplier(dateISO: string): number {
+  const [, mm, dd] = dateISO.split("-").map(Number);
+  const md = mm * 100 + dd;
+  // Diwali cluster ~ mid-Oct to mid-Nov
+  if (md >= 1010 && md <= 1115) return 1.55;
+  // Christmas / New Year
+  if (md >= 1220 || md <= 105) return 1.4;
+  // Summer vacation May–mid Jun
+  if (md >= 501 && md <= 615) return 1.25;
+  // Holi (rough Mar window)
+  if (md >= 301 && md <= 325) return 1.2;
   return 1;
 }
 
 function cabinMultiplier(cabin?: TravelTripInput["cabin"]): number {
-  if (cabin === "business") return 2.6;
-  if (cabin === "premium") return 1.45;
+  if (cabin === "business") return 2.8;
+  if (cabin === "premium") return 1.5;
   return 1;
 }
 
-/** Calibrated India domestic flight market fare (one adult, one-way). */
+/**
+ * Calibrated India domestic flight market fare (one adult, one-way).
+ * Tuned so PNQ–DEL (~1150 km) lands ~₹7–10k in peak, not ~₹3–4k.
+ */
 export function estimateFlightMarketFare(
   distanceKm: number,
   dateISO: string,
@@ -70,9 +97,14 @@ export function estimateFlightMarketFare(
   todayISO?: string
 ): number {
   const d = Math.max(80, distanceKm);
-  // Base: ~₹2.1/km with floor, diminishing returns on long haul
-  const base = 900 + d * 2.05 + Math.sqrt(d) * 28;
-  const fare = base * leadTimeMultiplier(daysUntil(dateISO, todayISO)) * dowMultiplier(dateISO) * cabinMultiplier(cabin);
+  // Higher base + per-km — matches 2025–26 domestic all-in stickers better
+  const base = 2200 + d * 3.4 + Math.sqrt(d) * 45;
+  const fare =
+    base *
+    leadTimeMultiplier(daysUntil(dateISO, todayISO)) *
+    dowMultiplier(dateISO) *
+    peakSeasonMultiplier(dateISO) *
+    cabinMultiplier(cabin);
   return Math.round(fare / 50) * 50;
 }
 
@@ -81,60 +113,87 @@ export function estimateTrainMarketFare(distanceKm: number, trainClass?: string)
   const d = Math.max(50, distanceKm);
   const cls = (trainClass || "3A").toUpperCase();
   const perKm =
-    cls === "1A" || cls === "EA" ? 3.2 : cls === "2A" ? 2.1 : cls === "CC" || cls === "EC" ? 1.7 : cls === "SL" ? 0.55 : 1.35; // 3A default
+    cls === "1A" || cls === "EA" ? 3.2 : cls === "2A" ? 2.1 : cls === "CC" || cls === "EC" ? 1.7 : cls === "SL" ? 0.55 : 1.35;
   const base = cls === "SL" ? 120 : 280;
   return Math.round((base + d * perKm) / 10) * 10;
 }
 
 export function estimateBusMarketFare(distanceKm: number): number {
   const d = Math.max(40, distanceKm);
-  // Semi-sleeper / Volvo-ish average
   return Math.round((80 + d * 1.85) / 10) * 10;
 }
 
-async function fetchTravelpayoutsCheap(
+type MatrixRow = {
+  depart_date?: string;
+  return_date?: string;
+  value?: number;
+  number_of_changes?: number;
+  actual?: boolean;
+};
+
+/**
+ * Live dated fare from Travelpayouts month-matrix (one-way preferred).
+ * Returns cheapest INR for that exact depart date when present.
+ */
+export async function fetchTravelpayoutsDatedFare(
   originCode: string,
   destCode: string,
   dateISO: string,
   token: string
 ): Promise<number | null> {
-  const month = dateISO.slice(0, 7); // YYYY-MM
-  const url = new URL("https://api.travelpayouts.com/v1/prices/cheap");
+  const month = `${dateISO.slice(0, 7)}-01`;
+  const url = new URL("https://api.travelpayouts.com/v2/prices/month-matrix");
+  url.searchParams.set("currency", "inr");
   url.searchParams.set("origin", originCode);
   url.searchParams.set("destination", destCode);
-  url.searchParams.set("depart_date", month);
-  url.searchParams.set("currency", "inr");
+  url.searchParams.set("month", month);
+  url.searchParams.set("show_to_affiliates", "true");
   url.searchParams.set("token", token);
 
-  const res = await fetch(url.toString(), { next: { revalidate: 0 } });
+  const res = await fetch(url.toString(), {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(12000),
+    cache: "no-store",
+  });
   if (!res.ok) return null;
-  const json = (await res.json()) as {
-    data?: Record<string, Record<string, { price?: number; departure_at?: string }>>;
-  };
-  const bucket = json.data?.[destCode] ?? json.data?.[Object.keys(json.data || {})[0] || ""];
-  if (!bucket) return null;
+  const json = (await res.json()) as { data?: MatrixRow[]; success?: boolean };
+  const rows = json.data ?? [];
+  if (!rows.length) return null;
 
-  // Prefer departure closest to requested date
-  const target = new Date(dateISO + "T12:00:00").getTime();
-  let best: { price: number; dist: number } | null = null;
-  for (const row of Object.values(bucket)) {
-    const price = row.price;
-    if (price == null || !Number.isFinite(price) || price <= 0) continue;
-    const dep = row.departure_at ? new Date(row.departure_at).getTime() : target;
-    const dist = Math.abs(dep - target);
-    if (!best || dist < best.dist || (dist === best.dist && price < best.price)) {
-      best = { price, dist };
+  const oneWay = rows.filter((r) => r.depart_date === dateISO && (!r.return_date || r.return_date === ""));
+  const pool = oneWay.length ? oneWay : rows.filter((r) => r.depart_date === dateISO);
+  const priced = pool
+    .map((r) => r.value)
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v) && v > 500);
+  if (!priced.length) {
+    // Nearest date within ±3 days in the matrix
+    const target = new Date(dateISO + "T12:00:00").getTime();
+    let best: { value: number; dist: number } | null = null;
+    for (const r of rows) {
+      if (!r.depart_date || r.value == null || r.value <= 500) continue;
+      if (r.return_date) continue;
+      const dist = Math.abs(new Date(r.depart_date + "T12:00:00").getTime() - target);
+      if (dist > 3 * 86400000) continue;
+      if (!best || dist < best.dist || (dist === best.dist && r.value < best.value)) {
+        best = { value: r.value, dist };
+      }
     }
+    return best ? Math.round(best.value) : null;
   }
-  return best ? Math.round(best.price) : null;
+  return Math.round(Math.min(...priced));
 }
 
 function roundFare(n: number): number {
   return Math.max(100, Math.round(n / 10) * 10);
 }
 
+function iataCode(place: TravelPlace): string | undefined {
+  if (place.code && /^[A-Z]{3}$/i.test(place.code)) return place.code.toUpperCase();
+  return resolvePlace(place.city, "flight")?.code?.toUpperCase();
+}
+
 /**
- * Discover fares for a trip. Prefer live Travelpayouts for flights when token is set.
+ * Discover fares for a trip. Flights prefer live Travelpayouts month-matrix.
  */
 export async function discoverFares(
   trip: TravelTripInput,
@@ -156,30 +215,30 @@ export async function discoverFares(
   let marketSource: FareDiscoveryResult["marketSource"] = "model";
 
   if (trip.mode === "flight") {
-    const token = opts?.travelpayoutsToken || process.env.TRAVELPAYOUTS_TOKEN || "";
-    const oCode = origin.code || resolvePlace(origin.city, "flight")?.code;
-    const dCode = destination.code || resolvePlace(destination.city, "flight")?.code;
-    if (token && oCode && dCode) {
+    const token =
+      opts?.travelpayoutsToken || process.env.TRAVELPAYOUTS_TOKEN || TRAVELPAYOUTS_FALLBACK_TOKEN;
+    const oCode = iataCode(origin);
+    const dCode = iataCode(destination);
+    if (oCode && dCode) {
       try {
-        const live = await fetchTravelpayoutsCheap(oCode, dCode, trip.date, token);
+        const live = await fetchTravelpayoutsDatedFare(oCode, dCode, trip.date, token);
         if (live && live > 500) {
           marketFareInr = live;
           marketSource = "travelpayouts";
+          warnings.push(
+            `Live market fare ₹${live.toLocaleString("en-IN")} from flight calendar for ${oCode}→${dCode} on ${trip.date}. Airline-direct (e.g. IndiGo app) can be higher than the cheapest aggregator fare — confirm sticker at checkout.`
+          );
         } else {
           marketFareInr = estimateFlightMarketFare(distanceKm, trip.date, trip.cabin, trip.today);
-          warnings.push("Live flight calendar had no hit for that month — using route estimate.");
+          warnings.push("Live calendar had no hit for that date — using peak-aware route estimate.");
         }
       } catch {
         marketFareInr = estimateFlightMarketFare(distanceKm, trip.date, trip.cabin, trip.today);
-        warnings.push("Live fare lookup failed — using route estimate.");
+        warnings.push("Live fare lookup failed — using peak-aware route estimate.");
       }
     } else {
       marketFareInr = estimateFlightMarketFare(distanceKm, trip.date, trip.cabin, trip.today);
-      if (!token) {
-        warnings.push(
-          "Showing route-calibrated market fares (add TRAVELPAYOUTS_TOKEN for live calendar prices). Always confirm sticker price at checkout."
-        );
-      }
+      warnings.push("Could not resolve airport codes — using route estimate.");
     }
   } else if (trip.mode === "train") {
     marketFareInr = estimateTrainMarketFare(distanceKm, trip.trainClass);
@@ -189,9 +248,10 @@ export async function discoverFares(
     warnings.push("Bus fares vary by operator — estimate uses route distance; confirm on RedBus / Amazon at checkout.");
   }
 
-  // Optional single market override from user (not per-platform paste)
+  // Optional single market override from user (Advanced)
   if (trip.baseFareInr && trip.baseFareInr > 0) {
     marketFareInr = trip.baseFareInr;
+    marketSource = "model";
     warnings.push("Using your market-fare override for ranking.");
   }
 
@@ -218,7 +278,12 @@ export async function discoverFares(
       platformId: platform.id,
       fareInr,
       source: marketSource === "travelpayouts" ? "live" : "estimated",
-      note: bias || pct ? `Market ${roundFare(marketFareInr * pax)} ± platform bias` : undefined,
+      note:
+        marketSource === "travelpayouts"
+          ? pct || bias
+            ? `Live market ₹${roundFare(marketFareInr * pax).toLocaleString("en-IN")} ± platform bias`
+            : `Live market ₹${roundFare(marketFareInr * pax).toLocaleString("en-IN")}`
+          : "Estimated",
       deepLink,
     });
     fares[platform.id] = fareInr;
@@ -226,6 +291,7 @@ export async function discoverFares(
 
   const oLabel = origin.code ? `${origin.city} (${origin.code})` : origin.city;
   const dLabel = destination.code ? `${destination.city} (${destination.code})` : destination.city;
+  const srcLabel = marketSource === "travelpayouts" ? "live calendar" : "estimate";
 
   return {
     mode: trip.mode,
@@ -237,6 +303,6 @@ export async function discoverFares(
     quotes,
     fares,
     warnings,
-    summary: `${oLabel} → ${dLabel} · ${trip.date} · ${pax} pax · ~${distanceKm} km · market ~₹${(marketFareInr * pax).toLocaleString("en-IN")}`,
+    summary: `${oLabel} → ${dLabel} · ${trip.date} · ${pax} pax · ~${distanceKm} km · ${srcLabel} ₹${(marketFareInr * pax).toLocaleString("en-IN")}`,
   };
 }

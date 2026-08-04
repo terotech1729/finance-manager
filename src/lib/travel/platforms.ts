@@ -88,9 +88,11 @@ export const TRAVEL_PLATFORMS: readonly TravelPlatform[] = [
     openSteps: ["Open IndiGo search (link)", "Book flight", "Pay with IDFC Indigo for BluChip earn when it wins"],
     url: "https://www.goindigo.in",
     buildSearchUrl: () => "https://www.goindigo.in",
-    notes: "Often the sticker winner on 6E-heavy routes.",
+    notes: "Airline app sticker can run above cheapest OTA/calendar fare — confirm before paying.",
     primary: true,
-    fareBiasInr: -150,
+    // Direct often ~10–15% above the cheapest market fare on the same day
+    fareBiasPct: 0.12,
+    fareBiasInr: 0,
   },
   {
     id: "scapia_flight",
