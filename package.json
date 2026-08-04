@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "scrape-cashkaro": "tsx scripts/scrape-cashkaro.ts",
-    "scrape-vouchers": "tsx scripts/scrape-voucher-stores.ts"
+    "scrape-vouchers": "tsx scripts/scrape-voucher-stores.ts",
+    "test:recommend": "tsx scripts/dry-recommend.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

@@ -128,6 +128,17 @@ export type CashkaroRate = {
   notes?: string;
 };
 
+export type CardDeclinedFallback = {
+  /** Short title shown as "If card not allowed" / "If Amex not accepted" */
+  label: string;
+  cardId: string;
+  /** Route label of the fallback (helps pick the right alt). */
+  routeLabel?: string;
+  effectivePct: number;
+  steps: string[];
+  rationale: string;
+};
+
 export type RouteOption = {
   cardId: string;
   label: string;
@@ -148,6 +159,13 @@ export type RouteOption = {
   liquidity?: "cash" | "flexible" | "locked";
   // Redemption-value range for points rewards (shown per row in the alternatives table).
   redemptionRange?: { worstPct: number; bestPct: number };
+  /** What to do if this credit card / route is declined or not accepted. */
+  ifCardNotAllowed?: CardDeclinedFallback;
+  /**
+   * Amex-only: POS / checkout often rejects Amex even when Visa/Mastercard work.
+   * Next-best non-Amex feasible route from the same ranking.
+   */
+  ifAmexNotAccepted?: CardDeclinedFallback;
 };
 
 export type RecommendationResult = {

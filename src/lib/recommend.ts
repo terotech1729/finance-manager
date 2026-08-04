@@ -68,6 +68,87 @@ function mkOption(amt: number, o: Partial<RouteOption> & { cardId: string; label
     cashkaroSuggested: o.cashkaroSuggested ?? false,
     worstCasePct: o.worstCasePct ?? o.effectivePct, bestCasePct: o.bestCasePct ?? o.effectivePct,
     steps: o.steps ?? [], rationale: o.rationale,
+    ifCardNotAllowed: o.ifCardNotAllowed,
+  };
+}
+
+/**
+ * What to do when the recommended credit card is declined / not accepted.
+ * Stalls often take UPI QR even when they refuse cards — Kiwi is the usual backup.
+ */
+function cardDeclinedFallbackFor(
+  input: RecommendInput,
+  amt: number,
+  primaryCardId: string
+): RouteOption["ifCardNotAllowed"] {
+  if (primaryCardId === "upi" || primaryCardId === "cash" || primaryCardId === "amazon_pay_balance") {
+    return {
+      label: "If this also fails → cash / debit",
+      cardId: "cash",
+      effectivePct: 0,
+      steps: ["Pay cash or debit", "No card rewards"],
+      rationale: "Last resort when even UPI / balance rails fail.",
+    };
+  }
+  if (input.channel === "foreign" || input.isForeign) {
+    return {
+      label: "If card not allowed → local cash / another 0% forex card",
+      cardId: "cash",
+      effectivePct: 0,
+      steps: ["Try Scapia if not already used (0% forex)", "Otherwise local currency cash / debit"],
+      rationale: "Abroad: prefer another 0% forex card before cash.",
+    };
+  }
+
+  const kiwiBlocked = kiwiExcluded(input.category || "", input.merchant || "").excluded;
+  const canKiwi =
+    primaryCardId !== "yes_kiwi" &&
+    !kiwiBlocked &&
+    amt >= 500 &&
+    input.channel !== "upi_normal";
+
+  const offlineLike =
+    input.channel === "offline_pos" ||
+    input.channel === "upi" ||
+    /dining|restaurant|stall|grocery|kirana|salon|pharmacy|chemist|parking|offline|pos/i.test(
+      `${input.merchant} ${input.category}`
+    );
+
+  if (canKiwi && offlineLike) {
+    return {
+      label: "If card not allowed → Kiwi UPI scan & pay (~2%)",
+      cardId: "yes_kiwi",
+      effectivePct: 2,
+      steps: [
+        "Ask for the UPI QR (stalls often refuse cards but accept UPI)",
+        "Open Kiwi → Scan & pay (not PhonePe)",
+        `Pay ${inr(amt)} via Kiwi CC-UPI → ~2% cashable`,
+      ],
+      rationale:
+        "Most small restaurants / stalls block credit cards on POS but still show a UPI QR. Kiwi turns that scan into ~2% cashback.",
+    };
+  }
+
+  if (primaryCardId === "yes_kiwi" || !canKiwi) {
+    return {
+      label: "If card / Kiwi not allowed → PhonePe / GPay UPI (0%) or cash",
+      cardId: "upi",
+      effectivePct: 0,
+      steps: [`Pay ${inr(amt)} via PhonePe / GPay UPI`, "Or cash / debit — 0% rewards"],
+      rationale: "When credit cards and Kiwi aren't options, normal UPI or cash is the fallback.",
+    };
+  }
+
+  // Online / app checkout declined this card — try UPI if the merchant offers it.
+  return {
+    label: "If this card not allowed → another ranked card, or UPI at checkout",
+    cardId: "upi",
+    effectivePct: 0,
+    steps: [
+      "Pick the next card in the ranked list below",
+      "Or pay via UPI if the checkout / merchant offers it (0% unless Kiwi QR)",
+    ],
+    rationale: "Online declines are usually card-specific — try the next-best ranked route before giving up rewards.",
   };
 }
 
@@ -183,9 +264,9 @@ function livePlusAccelBucket(merchant: string, category: string, today?: string)
   ) return "food";
   if (c.includes("dining") || c.includes("restaurant")) return "dining";
   if (
-    c.includes("grocery") || c.includes("instamart") ||
+    c.includes("grocery") || c.includes("instamart") || c.includes("kirana") ||
     m.includes("instamart") || m.includes("blinkit") || m.includes("zepto") ||
-    m.includes("bigbasket") || m.includes("big basket")
+    m.includes("bigbasket") || m.includes("big basket") || m.includes("kirana")
   ) return "grocery";
   if (
     c.includes("utility") || c.includes("electric") || c.includes("mobile") ||
@@ -224,6 +305,13 @@ function buildLivePlusOption(
   };
   const capFull = headroom < 1;
   const effPct = ((liveCash + ckInr + welcomeInr) / amt) * 100;
+  const offlinePos = input.channel === "offline_pos" || /offline|pos|swipe/i.test(input.category || "");
+  const payStep =
+    bucket === "utility"
+      ? "Open BBPS / Google Pay / the biller app (not Amazon Pay bills)"
+      : offlinePos && (bucket === "dining" || bucket === "grocery" || bucket === "shopping")
+        ? `Swipe / tap HSBC Live+ at the ${bucket === "dining" ? "restaurant" : "store"} POS`
+        : "Open the merchant app / site";
   return mkOption(amt, {
     cardId: "hsbc_live_plus",
     label: capFull
@@ -247,6 +335,11 @@ function buildLivePlusOption(
       capFull
         ? `Accelerated cap already used — ${LIVE_PLUS_BASE_PCT}% statement cashback (auto ~45 days)`
         : `10% statement cashback (Visa Infinite) — liquid, auto-credited`,
+      bucket === "dining"
+        ? offlinePos
+          ? "Offline restaurant POS swipe counts when MCC is dining (not only Swiggy/Zomato)"
+          : "Dining MCC — restaurants / cafes (online or offline)"
+        : "",
       `Shared accel cap ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo (~₹${Math.round(used)} used this month)`,
       "Also: Live+ Reserve dining (from 1 Aug 2026), District + BMS BOGO, 2 domestic + 1 intl lounge/yr",
       welcome?.note ?? "",
@@ -255,17 +348,16 @@ function buildLivePlusOption(
     cons: [
       "Amazon / Flipkart earn only 1.5% — use Amazon Pay ICICI for Amazon; Myntra 10% only till 31 Oct 2026",
       bucket === "utility" ? "Pay BBPS / GPay / biller app — not Amazon bill-pay (codes as Amazon 1.5%)" : "",
+      bucket === "dining" ? "Rare wrong MCC (e.g. coded as retail) → falls to 1.5% — check statement" : "",
       "International spends earn 0% cashback post-deval — use Scapia abroad",
       "Fee ₹999+GST waived at ₹2L/yr",
     ],
     rationale: capFull
       ? `Live+ 10% monthly cap is exhausted. This ${bucket} spend earns ${LIVE_PLUS_BASE_PCT}% base until next calendar month.${ckInr > 0 ? ` Cashkaro still adds ${inr(ckInr)}.` : ""}`
-      : `Live+ is your primary ${bucket} card at 10% (statement credit). Cap ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo across dining/food/grocery/utilities/shopping${ckInr > 0 ? `; Cashkaro adds ${inr(ckInr)}` : ""}.${welcome ? ` ${welcome.note}` : ""}`,
+      : `Live+ is your primary ${bucket} card at 10% (statement credit)${bucket === "dining" && offlinePos ? " — including normal restaurant POS swipes (dining MCC)" : ""}. Cap ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo across dining/food/grocery/utilities/shopping${ckInr > 0 ? `; Cashkaro adds ${inr(ckInr)}` : ""}.${welcome ? ` ${welcome.note}` : ""}`,
     steps: [
       ckInr > 0 ? "Open Cashkaro → click through to the merchant first" : "",
-      bucket === "utility"
-        ? "Open BBPS / Google Pay / the biller app (not Amazon Pay bills)"
-        : "Open the merchant app / site",
+      payStep,
       `Pay ${inr(amt)} with HSBC Live+`,
       capFull
         ? `Expect ~${LIVE_PLUS_BASE_PCT}% (${inr(liveCash)}) — 10% cap already used`
@@ -553,6 +645,10 @@ type TravelKind = "hotel" | "flight" | "bus" | "train";
 
 function travelKindOf(cat: string, merchant: string): TravelKind | null {
   const t = `${cat} ${merchant}`.toLowerCase();
+  // Hotel restaurant / buffet meal is dining — not an OTA hotel booking.
+  if (/dining|restaurant|buffet|\bfood\b|\blunch\b|\bdinner\b|\bbreakfast\b|\bmeal\b|\bcafe\b/.test(t) && !/hotel booking|hotel direct|agoda|booking\.com|makemytrip hotels|cleartrip hotels|amazon travel hotel/.test(t)) {
+    return null;
+  }
   if (/amazon travel hotel|cleartrip hotels|agoda|booking\.com|makemytrip hotels|hotel direct|hotel booking|\bhotel\b|ihg|intercontinental|holiday\s*inn|six\s*senses|\bitc\b/.test(t) && !/flight/.test(t)) {
     return "hotel";
   }
@@ -736,6 +832,13 @@ function addVisaInfiniteBenefitRoutes(
   }
 
   if (kind === "dining") {
+    // Only for explicit premium / listed dining — not every offline restaurant swipe.
+    const premiumDining =
+      /dine\s*with\s*visa|live\+?\s*reserve|times\s*prime|infinite\s*dining|dinewithtimesprime|visa\s*infinite\s*dining|premium\s*dining\s*(list|portal|program)/i.test(
+        t
+      );
+    if (!premiumDining) return;
+
     const reserve = visaInfiniteOffer("inf-liveplus-reserve");
     add({
       cardId: "hsbc_live_plus",
@@ -759,8 +862,8 @@ function addVisaInfiniteBenefitRoutes(
       label: "Visa Infinite Premium Dining (Dine with Visa) + Live+ 10%",
       effectivePct: 10,
       pros: ["Visa exclusive dining program", "Live+ 10% dining cashback"],
-      cons: ["Must use Visa dining offer flow", "Shared ₹1,200/mo 10% cap"],
-      rationale: "Dine with Visa portal + Live+ 10% when the restaurant is on the exclusive list.",
+      cons: ["Must use Visa dining offer flow", "Shared ₹1,200/mo 10% cap", "Only if this restaurant is on the exclusive list"],
+      rationale: "Dine with Visa portal + Live+ 10% when the restaurant is on the exclusive list — not for a normal POS meal.",
       steps: [
         dine?.link ? `Open ${dine.link}` : "Network perks → Dine with Visa",
         "Redeem / book",
@@ -1571,6 +1674,24 @@ function buildKiwiOption(input: RecommendInput, amt: number): RouteOption {
   // In-person / merchant-app / explicit UPI → scan & pay 2%, with milestone upside
   // only when THIS spend completes the next Neon tier OR you're within ₹10k of it.
   // Early-cycle (e.g. ₹0 of ₹50k) must not score every UPI at ~3% EV.
+  // Kiwi cashback floor is ₹500 — below that, don't advertise 2%.
+  if (amt < 500) {
+    return opt({
+      label: "YES Bank Kiwi — below ₹500 (no cashback)",
+      effectivePct: 0,
+      baseRewardInr: 0,
+      worstCasePct: 0,
+      bestCasePct: 0,
+      cons: ["Kiwi cashback needs ≥₹500 per txn — this amount earns 0%"],
+      pros: ["Still usable as a UPI rail if you want", "Counts toward Neon spend only if Kiwi credits it — treat as 0% reward"],
+      steps: [
+        "Prefer PhonePe / GPay for sub-₹500 (same 0% reward, simpler)",
+        "Or swipe a dining/grocery card on POS if the merchant accepts cards",
+      ],
+      rationale: "Kiwi's cashback doesn't apply under ₹500. Don't route here for yield — use POS Live+ when dining/grocery MCC, else normal UPI/cash.",
+    });
+  }
+
   const k = input.kiwiNeonCycleSpend ?? 0;
   let nextThreshold = 0;
   let targetMarginal = 2;
@@ -1666,6 +1787,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
       bestCasePct: o.bestCasePct ?? o.effectivePct,
       steps: o.steps ?? [],
       rationale: o.rationale ?? "",
+      ifCardNotAllowed: o.ifCardNotAllowed,
     });
   };
 
@@ -1803,6 +1925,13 @@ export function recommend(input: RecommendInput): RecommendationResult {
   // --- UPI scan/pay (Kiwi) ---
   if (input.channel === "upi") {
     options.push(buildKiwiOption(input, amt));
+    // If this is dining tagged as UPI QR, surface Live+ POS as a secondary (infeasible) option.
+    if (cat.includes("dining") || cat.includes("restaurant")) {
+      const lp = buildLivePlusOption(amt, "dining", input);
+      lp.feasible = false;
+      lp.feasibilityNote = "You tagged UPI — Live+ 10% only if they also have a card POS";
+      options.push(lp);
+    }
     return finalize(options, input, amt, isForeign, ck);
   }
 
@@ -1909,12 +2038,13 @@ export function recommend(input: RecommendInput): RecommendationResult {
     });
     add({
       cardId: "idfc_indigo",
-      label: "IDFC Indigo — only if you want 1% fuel surcharge waiver (~0.2–0.3% net)",
-      effectivePct: 0.25,
-      pros: ["1% surcharge waiver on typical pump CC txns"],
-      cons: ["BluChips on fuel are tiny; still prefer debit if no surcharge"],
-      rationale: "Only use a CC at the pump for surcharge waiver. Rewards are negligible.",
-      steps: ["If the pump forces CC and adds surcharge, IDFC Indigo can waive ~1% (check live T&Cs)"],
+      label: "IDFC Indigo — only if pump forces CC + surcharge waiver",
+      effectivePct: 0,
+      baseRewardInr: 0,
+      pros: ["1% surcharge waiver on some pump CC txns (check live T&Cs)"],
+      cons: ["Rewards still ~0% — not a yield play", "Prefer debit/UPI when the pump accepts them"],
+      rationale: "Only reach for a CC at the pump for surcharge waiver. Do not chase BluChips / milestones on fuel.",
+      steps: ["If debit/UPI works → use that", "If pump forces CC with surcharge → try IDFC Indigo waiver"],
     });
     return finalize(options, input, amt, isForeign, ck);
   }
@@ -2319,17 +2449,17 @@ export function recommend(input: RecommendInput): RecommendationResult {
     return finalize(options, input, amt, isForeign, ck);
   }
 
-  // ============ GROCERIES (Instamart / Blinkit / Zepto / BigBasket) ============
-  if (cat.includes("grocery") || merchant.includes("instamart") || merchant.includes("blinkit") || merchant.includes("zepto") || merchant.includes("bigbasket") || merchant.includes("big basket")) {
+  // ============ GROCERIES (Instamart / Blinkit / Zepto / BigBasket / kirana POS) ============
+  if (cat.includes("grocery") || merchant.includes("instamart") || merchant.includes("blinkit") || merchant.includes("zepto") || merchant.includes("bigbasket") || merchant.includes("big basket") || merchant.includes("kirana")) {
     options.push(buildLivePlusOption(amt, "grocery", input));
     add({
       cardId: "bob_eterna",
       label: "BOB Eterna 5× online (~3.75%) — backup",
       effectivePct: 3.75,
       pros: ["LTF 5× online"],
-      cons: ["Worse than Live+ 10%"],
-      rationale: "Live+ 10% on groceries is primary; BOB is overflow after the shared cap.",
-      steps: ["Pay with BOB Eterna"],
+      cons: ["Worse than Live+ 10%", "Offline kirana may not code as 5× online"],
+      rationale: "Live+ 10% on groceries is primary (app or offline MCC); BOB is overflow after the shared cap.",
+      steps: [input.channel === "offline_pos" ? "Swipe BOB Eterna at the store" : "Pay with BOB Eterna"],
     });
     return finalize(options, input, amt, isForeign, ck);
   }
@@ -2355,13 +2485,16 @@ export function recommend(input: RecommendInput): RecommendationResult {
     return finalize(options, input, amt, isForeign, ck);
   }
 
-  // ============ DINING (offline) ============
+  // ============ DINING (offline / restaurant MCC) ============
+  // Live+ 10% dining is MCC-based — includes normal restaurant POS swipes, not only online.
+  // Dine with Visa / Live+ Reserve are NOT assumed (only when merchant text says premium/listed).
+  // UPI-tagged dining is handled earlier (Kiwi + infeasible Live+ POS note).
   if (cat.includes("dining") || cat.includes("restaurant")) {
     options.push(buildLivePlusOption(amt, "dining", input));
     addVisaInfiniteBenefitRoutes("dining", input, amt, add, `${merchant} ${cat}`);
     add({ cardId: "bob_eterna", label: "BOB Eterna 5× dining (3.75%) — backup", effectivePct: 3.75,
-      pros: ["5× dining"], cons: ["Cap 5K RP/cycle", "Worse than Live+ 10%"], rationale: "Live+ 10% dining is primary.",
-      steps: ["Pay with BOB Eterna at the restaurant"] });
+      pros: ["5× dining"], cons: ["Cap 5K RP/cycle", "Worse than Live+ 10%"], rationale: "Live+ 10% dining is primary for restaurant POS / dining MCC.",
+      steps: ["Swipe BOB Eterna at the restaurant"] });
     return finalize(options, input, amt, isForeign, ck);
   }
 
@@ -2869,15 +3002,22 @@ function finalize(
 
   // ---- GyFTR / HDFC debit: tracked on /debit & claims — not ranked vs credit stacks ----
 
+  // Categories where chasing card rewards is wrong (hard routes already said debit/UPI).
+  const rewardDeadCat = /fuel|petrol|diesel|insurance|\brent\b|\btax\b|govt|government|wallet|gift\s*card|investment|trading/.test(
+    `${input.category || ""} ${input.merchant || ""}`.toLowerCase()
+  );
+
   // ---- Universal ANNUAL-milestone push (SBI, IDFC, Amex PT/MRCC, BOB ₹5L, Live+ ₹2L) ----
   // Fold progress into the best existing route for that card (avoids two Live+ rows).
   // Completing = full unlock; otherwise thin pro-rata (see annualMilestoneBonus).
+  // Never let thin annual progress outrank intentional 0% advice on fuel/rent/insurance/tax.
   if (!isForeign) {
     for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel", "amex_mrcc", "bob_eterna", "hsbc_live_plus"]) {
       if ((cardId === "amex_plat_travel" || cardId === "amex_mrcc") && amexExcluded(input.category || "")) continue;
       if (options.some((o) => o.cardId === cardId && o.bonusRewardInr > 0)) continue;
       const mb = annualMilestoneBonus(cardId, input, amt);
       if (!mb || mb.inr < 0.5) continue;
+      if (rewardDeadCat && mb.kind !== "completing") continue;
       if (cardId === "bob_eterna" && mb.threshold === 50000) continue;
       if (cardId === "hsbc_live_plus" && mb.threshold === 25000) continue;
 
@@ -2942,6 +3082,8 @@ function finalize(
 
   for (const id of active) {
     if (present.has(id)) continue;
+    // Don't inject filler cards that invent yield on fuel/rent/insurance/tax.
+    if (rewardDeadCat) continue;
     // Don't inject a dead Kiwi row for in-app movie checkout (already skipped above).
     if (id === "yes_kiwi" && movieApp) continue;
     const g = genericCardEval(id, input, isForeign);
@@ -3002,19 +3144,75 @@ function finalize(
     o.liquidity = liquidityOf(o.cardId, o.label);
     const rng = pointsRange(o.cardId, o.label, o.totalRewardInr, o.effectivePct, amt);
     if (rng) o.redemptionRange = { worstPct: rng.worstPct, bestPct: rng.bestPct };
+    // UPI-tagged spends: don't let card-POS / milestone fillers outrank Kiwi on the QR rail.
+    if (
+      (input.channel === "upi" || input.channel === "upi_normal") &&
+      o.cardId !== "yes_kiwi" &&
+      o.cardId !== "upi" &&
+      o.cardId !== "cash" &&
+      o.feasible !== false
+    ) {
+      o.feasible = false;
+      o.feasibilityNote = [
+        o.feasibilityNote,
+        "UPI rail — card POS not assumed; use only if the merchant also takes cards",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
+    if (!o.ifCardNotAllowed) {
+      o.ifCardNotAllowed = cardDeclinedFallbackFor(input, amt, o.cardId);
+    }
   }
   const score = (o: RouteOption) => o.totalRewardInr * (LIQ_WEIGHT[o.liquidity ?? "cash"] ?? 1);
   const ranked = [...deduped].sort((a, b) => {
     if (a.feasible !== b.feasible) return a.feasible ? -1 : 1;
     return score(b) - score(a);
   });
+
+  // Amex is often declined on POS / checkout even when Visa/MC work — attach next-best non-Amex.
+  const isAmex = (id: string) => id === "amex_gold" || id === "amex_plat_travel" || id === "amex_mrcc";
+  for (const o of ranked) {
+    if (!isAmex(o.cardId)) continue;
+    const next = ranked.find(
+      (r) =>
+        r !== o &&
+        r.feasible !== false &&
+        !isAmex(r.cardId) &&
+        r.cardId !== "giftcard" // GC funding still often needs a card; prefer a real plastic/UPI
+    );
+    if (!next) continue;
+    const short = getCardById(next.cardId)?.short ?? (
+      next.cardId === "yes_kiwi" ? "Kiwi" :
+      next.cardId === "upi" ? "UPI" :
+      next.cardId === "amazon_pay_icici" ? "Amazon Pay ICICI" :
+      next.cardId
+    );
+    o.ifAmexNotAccepted = {
+      label: `If Amex not accepted → ${short} (${next.effectivePct.toFixed(2)}%)`,
+      cardId: next.cardId,
+      routeLabel: next.label,
+      effectivePct: next.effectivePct,
+      steps: [
+        `Skip Amex — many POS / checkouts reject Amex even when other cards work`,
+        `Pay with ${short}: ${next.label}`,
+        ...(next.steps.slice(0, 2)),
+      ],
+      rationale: `Amex acceptance is spotty on Indian POS and some apps. Next-best non-Amex in this ranking is ${short} at ${next.effectivePct.toFixed(2)}% (≈ ${inr(next.totalRewardInr)}).`,
+    };
+  }
+
   const best = ranked[0];
   const card = pickCard(best.cardId);
   const alternatives = ranked.slice(1); // full ranked list, with reasons
 
-  // Milestone nudge: if the raw-best route does NOT itself progress a meaningful milestone,
-  // surface the best milestone-feeding alternative (incl. far-gap annual progress like Amex PT).
-  const bestFeedsMilestone = best.bonusRewardInr > 1 || best.cardId === "yes_kiwi";
+  // Milestone nudge: thin annual pro-rata on the winner (e.g. Live+ fee-waiver ₹5) should
+  // NOT suppress tipping a real feeder like Amex PT ₹4L — only skip when the best route
+  // already carries substantial milestone value (≥5% of this spend) or is Kiwi Neon.
+  const bestFeedsMilestone =
+    best.cardId === "yes_kiwi" ||
+    best.bonusRewardInr > Math.max(1, amt * 0.05) ||
+    /completes|welcome|fills monthly|still need|6-txn|4-txn/i.test(`${best.label} ${best.pros.join(" ")}`);
   let milestoneTip: RecommendationResult["milestoneTip"];
   if (!bestFeedsMilestone) {
     // Prefer annual/welcome feeders with real progress credit; don't require completing-only.

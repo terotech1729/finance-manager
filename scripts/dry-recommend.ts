@@ -1,0 +1,438 @@
+/**
+ * Dry recommend + categorize suite for everyday spends.
+ * Run: npm run test:recommend
+ * Exits non-zero on any assertion failure.
+ */
+import assert from "node:assert/strict";
+import { detectCategory } from "../src/lib/categorize";
+import { recommend, type RecommendInput } from "../src/lib/recommend";
+
+type Expect = {
+  channel?: string;
+  categoryIncludes?: string | RegExp;
+  bestCard?: string | string[];
+  bestLabelAvoid?: RegExp;
+  /** Best route steps should mention POS swipe for offline dining */
+  stepsMatch?: RegExp;
+  /** Every credit-like route must carry ifCardNotAllowed */
+  requireDeclinedFallback?: boolean;
+  declinedFallbackIncludes?: RegExp;
+};
+
+type Case = {
+  name: string;
+  query: string;
+  amount: number;
+  expect: Expect;
+  /** Optional extras merged into RecommendInput */
+  input?: Partial<RecommendInput>;
+};
+
+const BASE: Partial<RecommendInput> = {
+  today: "2026-08-04",
+  hsbcLivePlusYtdSpend: 30000,
+  livePlusAccelCashbackUsedThisMonth: 50,
+  ptccEligibleSpend: 180000,
+  mrccCycleSpend: 70000,
+  mrccThisCycleTxnsAt1500: 4,
+  mrccThisCycleAmount: 9000,
+  bobYtdSpend: 40000,
+  sbiYtdSpend: 30000,
+  idfcYtdSpend: 800000,
+};
+
+const CASES: Case[] = [
+  // —— Offline dining / POS ——
+  {
+    name: "offline restaurant → dining POS + Live+",
+    query: "offline restaurant",
+    amount: 840,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /dining/,
+      bestCard: "hsbc_live_plus",
+      bestLabelAvoid: /dine with visa|live\+?\s*reserve|premium dining/i,
+      stepsMatch: /swipe|tap|pos/i,
+      requireDeclinedFallback: true,
+      declinedFallbackIncludes: /kiwi|upi/i,
+    },
+  },
+  {
+    name: "street food stall → dining POS",
+    query: "street food stall",
+    amount: 250,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /dining/,
+      bestCard: "hsbc_live_plus",
+      requireDeclinedFallback: true,
+      // Below ₹500 Kiwi cashback → UPI/cash fallback
+      declinedFallbackIncludes: /upi|cash|phonepe/i,
+    },
+  },
+  {
+    name: "dhaba card swipe",
+    query: "dhaba card swipe",
+    amount: 600,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /dining/,
+      bestCard: "hsbc_live_plus",
+      stepsMatch: /swipe|tap|pos/i,
+      requireDeclinedFallback: true,
+      declinedFallbackIncludes: /kiwi/i,
+    },
+  },
+  {
+    name: "normal stall restaurant POS",
+    query: "stall restaurant pos",
+    amount: 400,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /dining/,
+      bestCard: "hsbc_live_plus",
+      bestLabelAvoid: /dine with visa/i,
+      requireDeclinedFallback: true,
+    },
+  },
+  {
+    name: "roadside eatery",
+    query: "roadside eatery",
+    amount: 350,
+    expect: { channel: "offline_pos", categoryIncludes: /dining/, bestCard: "hsbc_live_plus" },
+  },
+  {
+    name: "hotel buffet is dining not OTA hotel",
+    query: "hotel food offline",
+    amount: 1200,
+    expect: { channel: "offline_pos", categoryIncludes: /dining/, bestCard: "hsbc_live_plus" },
+  },
+  {
+    name: "restaurant UPI QR → UPI channel (Kiwi)",
+    query: "restaurant upi",
+    amount: 700,
+    expect: {
+      channel: "upi",
+      categoryIncludes: /dining/,
+      bestCard: ["yes_kiwi", "hsbc_live_plus"],
+      requireDeclinedFallback: true,
+    },
+  },
+
+  // —— Daily life offline ——
+  {
+    name: "kirana store offline POS",
+    query: "kirana store",
+    amount: 800,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /grocer/,
+      bestCard: "hsbc_live_plus",
+      requireDeclinedFallback: true,
+      declinedFallbackIncludes: /kiwi/i,
+    },
+  },
+  {
+    name: "medical store offline",
+    query: "medical store offline",
+    amount: 450,
+    expect: { channel: "offline_pos", categoryIncludes: /pharmacy|chemist/i },
+  },
+  {
+    name: "salon POS",
+    query: "salon",
+    amount: 900,
+    expect: { channel: "offline_pos", categoryIncludes: /salon/, requireDeclinedFallback: true },
+  },
+  {
+    name: "fuel pump",
+    query: "petrol pump",
+    amount: 2000,
+    expect: { channel: "offline_pos", categoryIncludes: /fuel/ },
+  },
+  {
+    name: "parking",
+    query: "parking",
+    amount: 100,
+    expect: { channel: "offline_pos", categoryIncludes: /parking/ },
+  },
+
+  // —— Online daily (sanity) ——
+  {
+    name: "Swiggy → Live+ food, no CRED GC ask noise",
+    query: "Swiggy",
+    amount: 400,
+    expect: {
+      channel: "merchant_app",
+      bestCard: "hsbc_live_plus",
+      bestLabelAvoid: /dine with visa/i,
+      requireDeclinedFallback: true,
+    },
+  },
+  {
+    name: "Amazon Now → Amazon Pay ICICI",
+    query: "Amazon",
+    amount: 1500,
+    expect: { channel: "online", bestCard: "amazon_pay_icici", requireDeclinedFallback: true },
+  },
+  {
+    name: "Uber ride → Kiwi UPI",
+    query: "Uber",
+    amount: 280,
+    expect: { channel: "upi", bestCard: ["yes_kiwi", "upi"] },
+  },
+
+  // —— Audit ship-blockers ——
+  {
+    name: "petrol → not SBI annual thin progress",
+    query: "petrol pump",
+    amount: 2000,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /fuel/,
+      bestCard: ["upi", "cash"],
+      bestLabelAvoid: /simplyclick|annual milestone|build ₹/i,
+    },
+  },
+  {
+    name: "house rent → UPI/NEFT not SBI annual",
+    query: "house rent",
+    amount: 40000,
+    expect: {
+      categoryIncludes: /rent/,
+      bestCard: ["upi", "cash"],
+      bestLabelAvoid: /simplyclick|annual milestone/i,
+    },
+  },
+  {
+    name: "LIC insurance → not SBI annual",
+    query: "LIC insurance",
+    amount: 15000,
+    expect: {
+      categoryIncludes: /insurance/,
+      bestLabelAvoid: /simplyclick — build|annual milestone/i,
+    },
+  },
+  {
+    name: "restaurant UPI under ₹500 → Kiwi 0% not 2%",
+    query: "restaurant upi",
+    amount: 400,
+    expect: {
+      channel: "upi",
+      bestCard: ["yes_kiwi", "upi"],
+    },
+    // Asserted below via custom check in runner for effectivePct === 0 when kiwi
+  },
+  {
+    name: "Uber under ₹500 → Kiwi 0%",
+    query: "Uber",
+    amount: 280,
+    expect: { channel: "upi", bestCard: ["yes_kiwi", "upi"] },
+  },
+  {
+    name: "blinkit app → merchant_app groceries + Live+",
+    query: "Blinkit",
+    amount: 600,
+    expect: {
+      channel: "merchant_app",
+      categoryIncludes: /grocer/,
+      bestCard: "hsbc_live_plus",
+    },
+  },
+  {
+    name: "kirana upi → Kiwi not Live+ POS",
+    query: "kirana upi",
+    amount: 700,
+    expect: {
+      channel: "upi",
+      bestCard: "yes_kiwi",
+    },
+  },
+  {
+    name: "Live+ accel cap full → not 10% dining",
+    query: "offline restaurant",
+    amount: 840,
+    expect: {
+      bestCard: ["hsbc_live_plus", "bob_eterna"],
+      bestLabelAvoid: /10% on dining(?!.*cap full)/i,
+    },
+    input: { livePlusAccelCashbackUsedThisMonth: 1200 },
+  },
+  {
+    name: "marriott buffet → dining POS not hotel stay",
+    query: "marriott buffet dinner",
+    amount: 3500,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /dining/,
+      bestCard: "hsbc_live_plus",
+      bestLabelAvoid: /ihg|itc hotels|agoda|hotel direct/i,
+    },
+  },
+  {
+    name: "taj hotel booking stay → hotel direct (not dining)",
+    query: "taj hotel booking",
+    amount: 12000,
+    expect: {
+      channel: "online",
+      categoryIncludes: /hotel/,
+    },
+  },
+  {
+    name: "fine dining restaurant → no Dine-with-Visa in top-3",
+    query: "fine dining restaurant",
+    amount: 2000,
+    expect: {
+      channel: "offline_pos",
+      bestCard: "hsbc_live_plus",
+      bestLabelAvoid: /dine with visa|live\+?\s*reserve/i,
+    },
+  },
+  {
+    name: "explicit dine with visa → premium route allowed",
+    query: "dine with visa",
+    amount: 3000,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /dining/,
+      requireDeclinedFallback: true,
+    },
+  },
+  {
+    name: "Swiggy Live+ still beats MRCC annual thin",
+    query: "Swiggy",
+    amount: 400,
+    expect: {
+      bestCard: "hsbc_live_plus",
+      requireDeclinedFallback: true,
+    },
+    input: { mrcc20kEnrolled: false, mrccCycleSpend: 73708 },
+  },
+  {
+    name: "Amex PT near milestone → ifAmexNotAccepted is non-Amex",
+    query: "offline restaurant",
+    amount: 2000,
+    expect: { requireDeclinedFallback: true },
+    input: {
+      // Force Amex PT completing-ish ranking isn't needed — assert any Amex row in list
+      ptccEligibleSpend: 399000,
+    },
+  },
+];
+
+let failed = 0;
+
+function runCase(c: Case) {
+  const det = detectCategory(c.query);
+  const errors: string[] = [];
+
+  if (c.expect.channel && det.channel !== c.expect.channel) {
+    errors.push(`channel: got ${det.channel}, want ${c.expect.channel}`);
+  }
+  if (c.expect.categoryIncludes) {
+    const ok =
+      typeof c.expect.categoryIncludes === "string"
+        ? det.category.toLowerCase().includes(c.expect.categoryIncludes.toLowerCase())
+        : c.expect.categoryIncludes.test(det.category);
+    if (!ok) errors.push(`category: got "${det.category}", want match ${c.expect.categoryIncludes}`);
+  }
+
+  const input: RecommendInput = {
+    merchant: c.query,
+    category: det.category,
+    amount: c.amount,
+    channel: det.channel,
+    isForeign: det.channel === "foreign" || !!det.forex,
+    ...BASE,
+    ...c.input,
+  } as RecommendInput;
+
+  const rec = recommend(input);
+  assert.ok(rec.best, "missing best route");
+  const best = rec.best!;
+  const rows = [best, ...(rec.alternatives ?? [])];
+
+  if (c.expect.bestCard) {
+    const allowed = Array.isArray(c.expect.bestCard) ? c.expect.bestCard : [c.expect.bestCard];
+    if (!allowed.includes(best.cardId)) {
+      errors.push(`bestCard: got ${best.cardId} (${best.label}), want one of [${allowed.join(", ")}]`);
+    }
+  }
+  if (c.expect.bestLabelAvoid && c.expect.bestLabelAvoid.test(best.label)) {
+    errors.push(`bestLabelAvoid: label matched forbidden pattern: ${best.label}`);
+  }
+  if (c.expect.stepsMatch) {
+    const steps = best.steps.join(" | ");
+    if (!c.expect.stepsMatch.test(steps)) {
+      errors.push(`stepsMatch: steps "${steps}" did not match ${c.expect.stepsMatch}`);
+    }
+  }
+  if (c.expect.requireDeclinedFallback) {
+    const creditRows = rows.filter((r) => !["upi", "cash", "amazon_pay_balance"].includes(r.cardId));
+    for (const r of creditRows.slice(0, 8)) {
+      if (!r.ifCardNotAllowed) {
+        errors.push(`ifCardNotAllowed missing on ${r.cardId} / ${r.label}`);
+      }
+    }
+  }
+  if (c.expect.declinedFallbackIncludes && best.ifCardNotAllowed) {
+    const blob = `${best.ifCardNotAllowed.label} ${best.ifCardNotAllowed.rationale}`;
+    if (!c.expect.declinedFallbackIncludes.test(blob)) {
+      errors.push(`declinedFallback: "${blob}" did not match ${c.expect.declinedFallbackIncludes}`);
+    }
+  }
+  // Never show Dine-with-Visa as #1/#2 for generic offline dining queries
+  if (/stall|dhaba|eatery|offline restaurant|normal restaurant|street food|fine dining restaurant/i.test(c.query)) {
+    const premium = rows.slice(0, 3).filter((r) => /dine with visa|live\+?\s*reserve|premium dining/i.test(r.label));
+    if (premium.length) {
+      errors.push(`premium dining leaked into top-3: ${premium.map((p) => p.label).join(" | ")}`);
+    }
+  }
+  // Explicit premium dining portal words → allow Dine-with-Visa / Live+ Reserve in top ranks
+  if (/dine with visa|live\+?\s*reserve|dinewithtimesprime/i.test(c.query)) {
+    const premium = rows.filter((r) => /dine with visa|live\+?\s*reserve|premium dining|dinewithtimesprime/i.test(r.label));
+    if (!premium.length) {
+      errors.push(`expected premium dining route for "${c.query}" but none ranked`);
+    }
+  }
+  // Every Amex route must expose a non-Amex next-best (POS/apps often reject Amex)
+  for (const r of rows.filter((x) => /^amex_/.test(x.cardId))) {
+    if (!r.ifAmexNotAccepted) {
+      errors.push(`Amex route missing ifAmexNotAccepted: ${r.label}`);
+    } else if (/^amex_/.test(r.ifAmexNotAccepted.cardId)) {
+      errors.push(`ifAmexNotAccepted still points at Amex: ${r.ifAmexNotAccepted.cardId}`);
+    }
+  }
+  // Sub-₹500 Kiwi must not advertise 2%
+  if (c.amount < 500 && best.cardId === "yes_kiwi" && best.effectivePct >= 1.5) {
+    errors.push(`Kiwi under ₹500 scored ${best.effectivePct}% — must be 0%`);
+  }
+  // Fuel/rent/insurance: no thin annual milestone as #1
+  if (/petrol|fuel|house rent|insurance/i.test(c.query)) {
+    if (/build ₹|annual milestone/i.test(best.label) && !/completes/i.test(best.label)) {
+      errors.push(`reward-dead category crowned thin annual: ${best.label}`);
+    }
+  }
+
+  if (errors.length) {
+    failed++;
+    console.error(`FAIL  ${c.name}`);
+    for (const e of errors) console.error(`      - ${e}`);
+  } else {
+    console.log(`PASS  ${c.name}  →  ${det.channel}/${det.category}  best=${best.cardId} ${best.effectivePct.toFixed(2)}%`);
+  }
+}
+
+console.log(`Dry recommend suite — ${CASES.length} cases\n`);
+for (const c of CASES) {
+  try {
+    runCase(c);
+  } catch (err) {
+    failed++;
+    console.error(`FAIL  ${c.name}`);
+    console.error(`      - ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+console.log(`\n${failed === 0 ? "OK" : "FAILED"} — ${CASES.length - failed}/${CASES.length} passed`);
+process.exit(failed === 0 ? 0 : 1);

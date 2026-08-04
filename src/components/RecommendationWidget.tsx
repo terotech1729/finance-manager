@@ -527,6 +527,67 @@ export function RecommendationWidget({ onLogged }: Props) {
               </div>
             )}
 
+            {routeToLog.ifCardNotAllowed && (
+              <div className="rounded-lg p-4 border border-border bg-bg-chrome/60">
+                <div className="text-sm font-semibold mb-1">If card not allowed</div>
+                <div className="text-sm text-accent font-medium">{routeToLog.ifCardNotAllowed.label}</div>
+                <div className="text-xs text-fg-muted mt-1 leading-relaxed">{routeToLog.ifCardNotAllowed.rationale}</div>
+                {routeToLog.ifCardNotAllowed.steps.length > 0 && (
+                  <ol className="mt-2 space-y-1 text-sm text-fg-muted list-decimal pl-4">
+                    {routeToLog.ifCardNotAllowed.steps.map((step, i) => (
+                      <li key={i}>{step}</li>
+                    ))}
+                  </ol>
+                )}
+                <div className="text-xs text-fg-muted mt-2">
+                  Fallback value ≈ {routeToLog.ifCardNotAllowed.effectivePct.toFixed(2)}%
+                  {routeToLog.ifCardNotAllowed.cardId !== routeToLog.cardId
+                    ? ` via ${routeName(routeToLog.ifCardNotAllowed.cardId)}`
+                    : ""}
+                </div>
+              </div>
+            )}
+
+            {routeToLog.ifAmexNotAccepted && (
+              <div className="rounded-lg p-4 border border-warning/40 bg-warning/5">
+                <div className="text-sm font-semibold mb-1">If Amex not accepted</div>
+                <div className="text-sm text-accent font-medium">{routeToLog.ifAmexNotAccepted.label}</div>
+                <div className="text-xs text-fg-muted mt-1 leading-relaxed">{routeToLog.ifAmexNotAccepted.rationale}</div>
+                {routeToLog.ifAmexNotAccepted.steps.length > 0 && (
+                  <ol className="mt-2 space-y-1 text-sm text-fg-muted list-decimal pl-4">
+                    {routeToLog.ifAmexNotAccepted.steps.map((step, i) => (
+                      <li key={i}>{step}</li>
+                    ))}
+                  </ol>
+                )}
+                <div className="text-xs text-fg-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span>
+                    Next-best ≈ {routeToLog.ifAmexNotAccepted.effectivePct.toFixed(2)}% via{" "}
+                    {routeName(routeToLog.ifAmexNotAccepted.cardId)}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-accent hover:underline"
+                    onClick={() => {
+                      const target =
+                        (best &&
+                          best.cardId === routeToLog.ifAmexNotAccepted!.cardId &&
+                          best.label === routeToLog.ifAmexNotAccepted!.routeLabel &&
+                          best) ||
+                        alts.find(
+                          (a) =>
+                            a.cardId === routeToLog.ifAmexNotAccepted!.cardId &&
+                            a.label === routeToLog.ifAmexNotAccepted!.routeLabel
+                        );
+                      if (target) setSelectedRoute(target);
+                    }}
+                  >
+                    Select this route
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div>
               <div className="label">Why this card</div>
               <div className="text-sm text-fg-muted mt-0.5 leading-relaxed">{routeToLog.rationale}</div>
@@ -670,6 +731,18 @@ function AltTableRow({
             <div className="text-xs text-fg-muted mt-0.5 leading-relaxed">
               <span className={notSuitable ? "text-warning font-medium" : "text-fg-muted"}>{notSuitable ? "Why not: " : "Note: "}</span>
               {reason}
+            </div>
+          )}
+          {alt.ifCardNotAllowed && (
+            <div className="text-xs text-fg-muted mt-0.5">
+              <span className="font-medium text-fg">If card not allowed: </span>
+              {alt.ifCardNotAllowed.label}
+            </div>
+          )}
+          {alt.ifAmexNotAccepted && (
+            <div className="text-xs text-fg-muted mt-0.5">
+              <span className="font-medium text-warning">If Amex not accepted: </span>
+              {alt.ifAmexNotAccepted.label}
             </div>
           )}
         </button>

@@ -165,7 +165,8 @@ const FALLBACK_RULES: Rule[] = [
   },
   { match: /\bswiggy\b/i, category: "swiggy", prettyLabel: "Swiggy", channel: "merchant_app", confidence: "high" },
   { match: /\bzomato\b/i, category: "zomato", prettyLabel: "Zomato", channel: "merchant_app", confidence: "high" },
-  { match: /\binstamart\b|\bblinkit\b|\bzepto\b|\bbigbasket\b|\bdmart\b|grocery|groceries|kirana/i, category: "groceries", prettyLabel: "Groceries", channel: "merchant_app", confidence: "high" },
+  { match: /\binstamart\b|\bblinkit\b|\bzepto\b|\bbigbasket\b|\bdmart\b/i, category: "groceries", prettyLabel: "Groceries (app / chain)", channel: "merchant_app", confidence: "high" },
+  { match: /\bkirana\b|grocery|groceries|provi(?:sion|sions)\s*store|general\s*store|neighbourhood\s*store/i, category: "groceries (offline)", prettyLabel: "Kirana / grocery store", channel: "offline_pos", confidence: "high" },
   { match: /\bflipkart\b/i, category: "flipkart (fashion)", prettyLabel: "Flipkart", channel: "online", confidence: "high" },
   { match: /\bmyntra\b/i, category: "myntra", prettyLabel: "Myntra", channel: "online", confidence: "high" },
   { match: /\bajio\b/i, category: "ajio", prettyLabel: "AJIO", channel: "online", confidence: "high" },
@@ -217,8 +218,20 @@ const FALLBACK_RULES: Rule[] = [
     channel: "upi_normal",
     confidence: "high",
   },
-  { match: /restaurant|\bcafe\b|\bstarbucks\b|food\s*court|\bdining\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bdomino|\bkfc\b|\bmcd|mcdonald/i, category: "dining (offline restaurant)", prettyLabel: "Dining out", channel: "offline_pos", confidence: "medium" },
+  // Hotel buffet / restaurant inside hotel — dining POS, not OTA hotel booking
+  { match: /\bhotel\s*(food|restaurant|dining|buffet|lunch|dinner)\b|\b(food|restaurant|dining|buffet)\s*(at\s*)?hotel\b/i, category: "dining (offline restaurant)", prettyLabel: "Dining out", channel: "offline_pos", confidence: "high" },
+  // Normal stalls / dhabas / eateries / POS swipe dining (not Swiggy)
+  {
+    match: /restaurant|\bcafe\b|\bstarbucks\b|food\s*court|\bdining\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bdomino|\bkfc\b|\bmcd|mcdonald|\bstall\b|street\s*food|\bdhaba\b|\beatery\b|\broadside\b|\btiffin\b|\bchaat\b|\bmess\b|\bcanteen\b|\bfood\s*cart\b|\btea\s*stall\b|\bsamose|\bpani\s*puri|\bidli\b|\bdosa\b/i,
+    category: "dining (offline restaurant)",
+    prettyLabel: "Dining out",
+    channel: "offline_pos",
+    confidence: "medium",
+  },
   { match: /\bcroma\b|\bvijay\s*sales\b|reliance\s*digital/i, category: "electronics (offline)", prettyLabel: "Electronics store", channel: "offline_pos", confidence: "high" },
+  { match: /\b(medical\s*store|chemist|medical\s*shop|medicine\s*shop)\b/i, category: "pharmacy (offline)", prettyLabel: "Medical store / chemist", channel: "offline_pos", confidence: "high" },
+  { match: /\bsalon\b|\bparlour\b|\bparlor\b|\bbarber\b|\bhaircut\b|\bspasalon\b/i, category: "salon / personal care (offline)", prettyLabel: "Salon / barber", channel: "offline_pos", confidence: "high" },
+  { match: /\bparking\b|\bvalet\b/i, category: "parking", prettyLabel: "Parking", channel: "offline_pos", confidence: "medium" },
   { match: /\blenskart\b/i, category: "lenskart / boat / mamaearth", prettyLabel: "Lenskart", channel: "online", confidence: "high" },
   { match: /\bboat\b|\bmamaearth\b|\bsugar\b|\bplum\b/i, category: "lenskart / boat / mamaearth", prettyLabel: "D2C brand", channel: "online", confidence: "high" },
   { match: /amazon\s*pay\s*wallet|\bpaytm\s*wallet\b|\bphonepe\s*wallet\b|wallet\s*top\s*up|gift\s*card/i, category: "wallet top-up", prettyLabel: "Wallet / Gift card", channel: "online", confidence: "medium" },
@@ -244,7 +257,33 @@ export function detectCategory(merchant: string): CategoryDetection {
   const brand = detectBrand(t);
   const intent = detectTravelIntent(t);
 
-  // Luxury hotel brands → direct (any word order: "taj hotel", "hotel taj mumbai")
+  // Explicit Visa Infinite / Live+ Reserve dining programs
+  if (/dine\s*with\s*visa|live\+?\s*reserve|dinewithtimesprime|visa\s*infinite\s*dining/i.test(t)) {
+    return {
+      category: "dining (offline restaurant)",
+      prettyLabel: "Premium dining (Visa / Live+ Reserve)",
+      channel: "offline_pos",
+      confidence: "high",
+    };
+  }
+
+  // Hotel restaurant / buffet / meal — dining POS even at Taj/Marriott (not OTA stay booking).
+  // Booking words (room/night/stay/agoda…) keep the luxury-hotel → hotel-direct path.
+  if (
+    /\b(food|restaurant|dining|buffet|lunch|dinner|breakfast|cafe|meal)\b/.test(t) &&
+    (/\bhotel\b/.test(t) ||
+      /\btaj\b|\bmarriott\b|\bhyatt\b|\boberoi\b|\bhilton\b|\bitc\b|\bleela\b|\bvivanta\b|\bradisson\b|\bnovotel\b/.test(t)) &&
+    !/\b(book|booking|agoda|makemytrip|cleartrip|yatra|stay|room|night|suite|reservation)\b/.test(t)
+  ) {
+    return {
+      category: "dining (offline restaurant)",
+      prettyLabel: "Dining out (hotel restaurant)",
+      channel: "offline_pos",
+      confidence: "high",
+    };
+  }
+
+  // Luxury hotel brands → direct stay (any word order: "taj hotel", "hotel taj mumbai")
   if (/\btaj\b|\bmarriott\b|\bhyatt\b|\boberoi\b|\bhilton\b|\bitc\b|\bleela\b|\bvivanta\b|\bradisson\b|\bnovotel\b|\bibis\b|\bseleqtion\b|\bihg\b|intercontinental|holiday\s*inn|six\s*senses/.test(t)) {
     return { category: "hotel direct", prettyLabel: "Hotel (direct)", channel: "online", confidence: "high" };
   }
@@ -422,15 +461,36 @@ export function detectCategory(merchant: string): CategoryDetection {
 
   for (const rule of FALLBACK_RULES) {
     if (rule.match.test(raw) || rule.match.test(t)) {
+      let channel = rule.channel;
+      // Explicit POS / swipe wording forces offline card-machine channel.
+      if (/\bpos\b|\bswipe\b|card\s*machine|\bedc\b|tap\s*(and|&)?\s*pay|tap\s*to\s*pay|offline\s*card|card\s*payment/i.test(t)) {
+        if (channel !== "foreign" && channel !== "upi_normal") channel = "offline_pos";
+      }
+      // "restaurant UPI" / "stall UPI QR" → UPI rail (Kiwi), not card POS.
+      if (/\bupi\b|\bqr\b|phonepe|gpay|google\s*pay/i.test(t) && !/\bpos\b|\bswipe\b|card\s*machine/i.test(t)) {
+        if (/dining|restaurant|stall|cafe|food|grocery|kirana|salon|pharmacy|chemist|parking/i.test(rule.category + " " + t)) {
+          channel = "upi";
+        }
+      }
       return {
         category: rule.category,
         prettyLabel: rule.prettyLabel,
-        channel: rule.channel,
+        channel,
         confidence: rule.confidence,
         forex: rule.forex,
         clarification: rule.clarification,
       };
     }
+  }
+
+  // Bare POS / swipe with no merchant type — still offline card machine.
+  if (/\bpos\b|\bswipe\b|card\s*machine|\bedc\b|tap\s*(and|&)?\s*pay|offline\s*card/i.test(t)) {
+    return {
+      category: "general (offline POS)",
+      prettyLabel: "Offline POS / swipe",
+      channel: "offline_pos",
+      confidence: "medium",
+    };
   }
 
   return { category: "general", prettyLabel: raw, channel: "online", confidence: "low" };
@@ -455,6 +515,12 @@ export const ALL_CATEGORIES = [
   "swiggy",
   "zomato",
   "groceries",
+  "groceries (offline)",
+  "dining (offline restaurant)",
+  "pharmacy (offline)",
+  "salon / personal care (offline)",
+  "parking",
+  "general (offline POS)",
   "cleartrip hotels",
   "cleartrip flights",
   "indigo flight",
