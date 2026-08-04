@@ -71,11 +71,11 @@ export const TRAVEL_PLATFORMS: readonly TravelPlatform[] = [
     label: "EaseMyTrip / Yatra",
     recommendMerchant: "EaseMyTrip",
     recommendCategory: "flight booking",
-    cashkaroMerchant: "EaseMyTrip",
-    openSteps: ["Open Cashkaro → EaseMyTrip or Yatra", "Book flight", "Pay with ranked card (often BOB 5× travel)"],
+    openSteps: ["Open EaseMyTrip or Yatra directly (not on Cashkaro)", "Book flight", "Pay with ranked card (often BOB 5× travel)"],
     url: "https://www.easemytrip.com",
     buildSearchUrl: (p) =>
       `https://flight.easemytrip.com/FlightList/Index?org=${encodeURIComponent(codeOrCity(p.origin))}&dept=${encodeURIComponent(codeOrCity(p.destination))}&deptDt=${encodeURIComponent(dmy(p.date))}&ADT=${p.adults}&CHD=${p.children}&INF=0&Cabin=${p.cabin === "business" ? "B" : "E"}`,
+    notes: "Not on Cashkaro — compare sticker vs Amazon / Cleartrip / IndiGo.",
     primary: false,
     fareBiasInr: -80,
   },

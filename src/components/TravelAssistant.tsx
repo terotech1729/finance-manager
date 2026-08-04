@@ -45,6 +45,7 @@ export function TravelAssistant({ onLogged }: Props) {
   const [children, setChildren] = useState(0);
   const [cabin, setCabin] = useState<"economy" | "premium" | "business">("economy");
   const [marketOverride, setMarketOverride] = useState("");
+  const [indigoVoucher, setIndigoVoucher] = useState("");
   const [offerOverrides, setOfferOverrides] = useState<Record<string, string>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -115,6 +116,7 @@ export function TravelAssistant({ onLogged }: Props) {
         children: Math.max(0, children),
         cabin: mode === "flight" ? cabin : undefined,
         baseFareInr: override,
+        indigoBluChipVoucherInr: Number((indigoVoucher || "").replace(/[^0-9.]/g, "")) || undefined,
         offerDiscountOverrides: Object.keys(offerDiscountOverrides).length ? offerDiscountOverrides : undefined,
         today: localDateToISO(todayLocal()),
       };
@@ -151,10 +153,11 @@ export function TravelAssistant({ onLogged }: Props) {
       children: Math.max(0, children),
       cabin: mode === "flight" ? cabin : undefined,
       fares: discovery.fares,
+      indigoBluChipVoucherInr: Number((indigoVoucher || "").replace(/[^0-9.]/g, "")) || undefined,
       offerDiscountOverrides: Object.keys(offerDiscountOverrides).length ? offerDiscountOverrides : undefined,
       today: localDateToISO(todayLocal()),
     };
-  }, [discovery, date, returnDate, adults, children, cabin, mode, offerOverrides]);
+  }, [discovery, date, returnDate, adults, children, cabin, mode, offerOverrides, indigoVoucher]);
 
   const result = useMemo(
     () => (tripForRank ? rankTravel(tripForRank, stateExtras) : null),
@@ -364,7 +367,7 @@ export function TravelAssistant({ onLogged }: Props) {
                 className="text-xs text-slate-400 hover:text-slate-200"
                 onClick={() => setShowAdvanced((v) => !v)}
               >
-                {showAdvanced ? "Hide" : "Advanced"} · market fare override / live Instant Discount
+                {showAdvanced ? "Hide" : "Advanced"} · market fare override / BluChip voucher / Instant Discount
               </button>
               {showAdvanced && (
                 <div className="mt-3 grid sm:grid-cols-2 gap-3">
@@ -378,6 +381,18 @@ export function TravelAssistant({ onLogged }: Props) {
                       onChange={(e) => setMarketOverride(e.target.value)}
                     />
                   </div>
+                  {mode === "flight" && (
+                    <div>
+                      <label className="label mb-1 block text-slate-400">IndiGo BluChip voucher ₹</label>
+                      <input
+                        className="input bg-black/20 border-white/15"
+                        inputMode="decimal"
+                        placeholder="e.g. 5000 from IDFC milestone"
+                        value={indigoVoucher}
+                        onChange={(e) => setIndigoVoucher(e.target.value)}
+                      />
+                    </div>
+                  )}
                   {volatileOffers.map((o) => (
                     <div key={o.id}>
                       <label className="label mb-1 block text-slate-400">{o.label}</label>

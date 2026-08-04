@@ -27,9 +27,7 @@ const TARGETS = [
   { merchant: "Booking.com", url: "https://cashkaro.com/stores/bookingcom" },
   { merchant: "Agoda", url: "https://cashkaro.com/stores/agoda" },
   { merchant: "MakeMyTrip", url: "https://cashkaro.com/stores/makemytrip" },
-  { merchant: "EaseMyTrip", url: "https://cashkaro.com/stores/easemytrip" },
   { merchant: "Cleartrip", url: "https://cashkaro.com/stores/cleartrip" },
-  { merchant: "Yatra", url: "https://cashkaro.com/stores/yatra" },
 ];
 
 export async function GET() {

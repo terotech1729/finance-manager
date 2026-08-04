@@ -186,6 +186,8 @@ export type RecommendInput = {
   giftCardRateOverrides?: Record<string, number>;
   cashkaroPctOverride?: number; // live Cashkaro % you see (e.g. a limited-time sale) — overrides defaults
   amazonOrderCashbackInr?: number; // order-level Amazon offer cashback you see at checkout (e.g. ₹200 on orders > ₹1398)
+  /** IndiGo BluChip voucher ₹ you will apply at IndiGo checkout (e.g. 5,000 from IDFC milestone). */
+  indigoBluChipVoucherInr?: number;
   /** Live CRED gift-card discount % you see in CRED Store (e.g. PVR 24%, Cinepolis 28%). */
   credGiftCardPctOverride?: number;
   /** Cinema chain for movie bookings — drives CRED GC merchant label / ranking. */
@@ -718,16 +720,23 @@ function addVisaInfiniteBenefitRoutes(
       worstCasePct: payTravel.earnPct,
       bestCasePct: discPct + payTravel.earnPct,
       pros: [
-        `Visa Infinite Agoda portal discount up to ~${discPct}% (hotels/flights/activities)`,
+        `Visa Infinite Agoda portal discount up to ~${discPct}% (${kind === "hotel" ? "hotels" : "flights / activities via portal"})`,
         payTravel.earnNote,
         "Same Infinite plastic: Live+ or BOB Eterna",
       ],
       cons: [
         "Must open Visa Agoda offer → Redeem Now (not plain Agoda app)",
-        "Usually does NOT stack with Cashkaro Agoda — pick portal OR Cashkaro, not both",
-        "Compare all-in fare vs Cashkaro Agoda 7% + BOB / Amazon 5%",
+        kind === "hotel"
+          ? "Usually does NOT stack with Cashkaro Agoda — pick portal OR Cashkaro, not both"
+          : "Cashkaro Agoda flat 7% is hotels only — it does not apply to flights",
+        kind === "hotel"
+          ? "Compare all-in fare vs Cashkaro Agoda 7% + BOB / Amazon 5%"
+          : "Compare all-in vs Amazon 5% / Cleartrip / airline direct — not Cashkaro Agoda",
       ],
-      rationale: `Visa Infinite × Agoda portal (~${discPct}% off) + card earn. Alternative to Cashkaro→Agoda when the Visa rate wins or Cashkaro tracking fails.`,
+      rationale:
+        kind === "hotel"
+          ? `Visa Infinite × Agoda portal (~${discPct}% off) + card earn. Alternative to Cashkaro→Agoda when the Visa rate wins or Cashkaro tracking fails.`
+          : `Visa Infinite × Agoda portal (~${discPct}% off) for flights/activities + card earn. Cashkaro Agoda 7% is hotels-only — do not stack or compare against it for flights.`,
       steps: [
         offer?.link ? `Open ${offer.link}` : "Open Network perks → Agoda Visa offer",
         "Tap Redeem Now → continue on Agoda",
@@ -1050,9 +1059,14 @@ function addExhaustiveTravelRoutes(
       cons: [
         "Must start from Amex Reward Multiplier / ShopWise → MakeMyTrip (not MMT app alone)",
         "Fare on MMT via RM can be higher than Agoda — compare all-in",
-        "Usually behind Cashkaro Agoda 7% + BOB 5× (~10.75%) when Agoda price matches",
+        kind === "hotel"
+          ? "Usually behind Cashkaro Agoda 7% + BOB 5× (~10.75%) when Agoda price matches"
+          : "Usually behind Amazon 5% / airline direct when fares match (Cashkaro Agoda 7% is hotels only)",
       ],
-      rationale: `Amex Gold portal accel on MMT ${kind}: ~${goldRmPct}% MR. Beats Amazon ${apPct}% when fares are equal; still check Agoda+Cashkaro+BOB first.`,
+      rationale:
+        kind === "hotel"
+          ? `Amex Gold portal accel on MMT ${kind}: ~${goldRmPct}% MR. Beats Amazon ${apPct}% when fares are equal; still check Agoda+Cashkaro+BOB first.`
+          : `Amex Gold portal accel on MMT ${kind}: ~${goldRmPct}% MR. Beats Amazon ${apPct}% when fares are equal; Cashkaro Agoda 7% does not apply to flights.`,
       steps: [
         "Open Amex app / americanexpress.com → Reward Multiplier (or ShopWise travel)",
         `Select MakeMyTrip → book ${kind}`,
@@ -1242,6 +1256,34 @@ function addExhaustiveTravelRoutes(
       rationale: "Scapia-app flight when inventory exists and you burn coins.",
       steps: ["Scapia → Travel → Flights", "Pay with Scapia"],
     });
+    {
+      const voucher = Math.max(0, input.indigoBluChipVoucherInr ?? 0);
+      const voucherApplied = Math.min(voucher, amt);
+      const bluchipInr = amt * 0.099;
+      add({
+        cardId: "idfc_indigo",
+        label:
+          voucherApplied > 0
+            ? `IndiGo direct → IDFC Indigo (BluChips + ${inr(voucherApplied)} voucher)`
+            : "IndiGo direct → IDFC Indigo (up to 22 BluChips/₹100)",
+        effectivePct: ((bluchipInr + voucherApplied) / amt) * 100,
+        baseRewardInr: bluchipInr,
+        bonusRewardInr: voucherApplied,
+        bestCasePct: ((bluchipInr + voucherApplied) / amt) * 100,
+        worstCasePct: 6 * 0.45,
+        pros: [
+          "Up to ~9.9% BluChip value on IndiGo app",
+          voucherApplied > 0 ? `Voucher −${inr(voucherApplied)} off payable` : "Enter BluChip voucher ₹ if you will redeem one",
+        ],
+        cons: ["IndiGo inventory / fare must beat Amazon/OTA all-in after voucher"],
+        rationale: "Airline direct with IDFC — strongest when BluChip voucher applies or IndiGo fare matches OTAs.",
+        steps: [
+          "Open IndiGo app/site",
+          voucherApplied > 0 ? `Apply BluChip voucher (~${inr(voucherApplied)})` : "Apply BluChip voucher if available",
+          "Pay with IDFC Indigo",
+        ],
+      });
+    }
   }
 
   // --- Bus ---
@@ -1506,7 +1548,6 @@ function annualMilestoneBonus(
   amt: number
 ): { inr: number; note: string; threshold: number; kind: "completing" | "progress" | "close" } | null {
   const short = getCardById(cardId)?.short ?? cardId;
-  const hit = new Set(input.milestonesHit ?? []);
 
   const scoreGap = (
     ytd: number,
@@ -1558,7 +1599,10 @@ function annualMilestoneBonus(
 
   const ytd = ytdForCard(cardId, input);
   const ms = ANNUAL_MILESTONES.filter((m) => m.cardId === cardId).slice().sort((a, b) => a.threshold - b.threshold);
-  const next = ms.find((m) => ytd < m.threshold && !hit.has(`${cardId}:${m.threshold}`) && !m.hit);
+  // Trust spend first. Ignore stale catalog `m.hit` and stale milestonesHit when YTD is still below the threshold
+  // (e.g. Amex PT 1.9L was seeded as hit while till-date was still ~₹1.84L → wrongly jumped to 4L).
+  const isUnlocked = (threshold: number) => ytd >= threshold;
+  const next = ms.find((m) => !isUnlocked(m.threshold));
   if (!next) return null;
   return scoreGap(ytd, next.threshold, next.rewardValueInr, next.reward);
 }
@@ -1902,16 +1946,38 @@ export function recommend(input: RecommendInput): RecommendationResult {
       return finalize(options, input, amt, isForeign, ck);
     }
     if (isIndiGo) {
+      const voucher = Math.max(0, input.indigoBluChipVoucherInr ?? 0);
+      const voucherApplied = Math.min(voucher, amt);
+      const bluchipInr = amt * 0.099;
       add({
         cardId: "idfc_indigo",
-        label: "IDFC Indigo via IndiGo app (up to 22 BluChips/₹100)",
-        effectivePct: 9.9,
-        bestCasePct: 9.9,
+        label:
+          voucherApplied > 0
+            ? `IDFC Indigo via IndiGo app (BluChips + ${inr(voucherApplied)} voucher)`
+            : "IDFC Indigo via IndiGo app (up to 22 BluChips/₹100)",
+        effectivePct: ((bluchipInr + voucherApplied) / amt) * 100,
+        baseRewardInr: bluchipInr,
+        bonusRewardInr: voucherApplied,
+        bestCasePct: ((bluchipInr + voucherApplied) / amt) * 100,
         worstCasePct: 6 * 0.45,
-        pros: ["Up to 22 BluChips/₹100 (6 card + up to 16 IndiGo tier) ≈ 9.9% at ₹0.45/BluChip", "Burn BluChip vouchers on IndiGo"],
+        pros: [
+          "Up to 22 BluChips/₹100 (6 card + up to 16 IndiGo tier) ≈ 9.9% at ₹0.45/BluChip",
+          voucherApplied > 0
+            ? `Applies your IndiGo BluChip voucher −${inr(voucherApplied)} at checkout`
+            : "Optional: enter a BluChip voucher ₹ (e.g. 5k milestone voucher) to re-rank",
+        ],
         cons: ["Must book on IndiGo app/site directly", "BluChips redeemable only on IndiGo one-way flights (base fare+fuel)"],
-        rationale: "IndiGo direct + IDFC is usually the best flight route you hold — still compare Amazon 5% if IndiGo fare is worse on Amazon.",
-        steps: ["Open IndiGo (6E) app", "Select flight", "Pay with IDFC Indigo card", "Earn up to 22 BluChips/₹100"],
+        rationale:
+          voucherApplied > 0
+            ? `IndiGo direct + IDFC BluChips plus voucher ${inr(voucherApplied)} off the payable.`
+            : "IndiGo direct + IDFC is usually the best flight route you hold — still compare Amazon 5% if IndiGo fare is worse on Amazon.",
+        steps: [
+          "Open IndiGo (6E) app",
+          "Select flight",
+          voucherApplied > 0 ? `Apply BluChip voucher (~${inr(voucherApplied)})` : "Apply BluChip voucher if you have one",
+          "Pay with IDFC Indigo card",
+          "Earn up to 22 BluChips/₹100",
+        ],
       });
       addExhaustiveTravelRoutes("flight", input, amt, add, ckOverride);
       return finalize(options, input, amt, isForeign, ck);
@@ -2511,9 +2577,9 @@ export function recommend(input: RecommendInput): RecommendationResult {
       steps: ["Pay with BOB Eterna", "Drives ₹50K welcome milestone"] });
   }
 
-  // Amex PT annual progress — always surface when eligible (not only when already near ₹4L).
-  // Far-gap progress credit lives in annualMilestoneBonus; near-₹4L gets urgency copy.
-  if (amt >= 1000 && !amexExcluded(input.category || "")) {
+  // Amex PT annual progress — surface whenever eligible (dining POS included; no ₹1k floor).
+  // Far-gap progress credit lives in annualMilestoneBonus; near-threshold gets urgency copy.
+  if (amt >= 1 && !amexExcluded(input.category || "")) {
     const mb = annualMilestoneBonus("amex_plat_travel", input, amt);
     if (mb) {
       const ptSpend = input.ptccEligibleSpend ?? 0;

@@ -186,7 +186,7 @@ export const CARDS: readonly Card[] = [
 ];
 
 export const ANNUAL_MILESTONES: readonly AnnualMilestone[] = [
-  { cardId: "amex_plat_travel", threshold: 190000, reward: "7,500 MR", rewardValueInr: 3750, hit: true, notes: "Hit earlier this cycle" },
+  { cardId: "amex_plat_travel", threshold: 190000, reward: "7,500 MR", rewardValueInr: 3750, hit: false },
   { cardId: "amex_plat_travel", threshold: 400000, reward: "10,000 MR", rewardValueInr: 5000, hit: false },
   { cardId: "amex_plat_travel", threshold: 700000, reward: "22,500 MR + Taj ₹10K voucher", rewardValueInr: 21250, hit: false },
   { cardId: "amex_mrcc", threshold: 90000, reward: "50% renewal-fee waiver", rewardValueInr: 2655, hit: false },

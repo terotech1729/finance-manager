@@ -49,6 +49,10 @@ function buildRecInput(
       platform.id.startsWith("amazon_") && trip.amazonOrderCashbackInr
         ? trip.amazonOrderCashbackInr
         : undefined,
+    indigoBluChipVoucherInr:
+      platform.id === "indigo_direct" && trip.indigoBluChipVoucherInr
+        ? trip.indigoBluChipVoucherInr
+        : undefined,
     primeMember: true,
     ...stateExtras,
   };
@@ -61,7 +65,7 @@ function routeMatchesPlatform(platform: TravelPlatform, route: { cardId: string;
   if (id.startsWith("amazon_")) return route.cardId === "amazon_pay_icici" || /\bamazon\b/.test(l);
   if (id.includes("cleartrip")) return /cleartrip/.test(l);
   if (id.includes("mmt")) return /makemytrip|\bmmt\b|reward multiplier/.test(l);
-  if (id.includes("easemytrip")) return /easemytrip|yatra|bob_eterna|cashkaro/.test(l);
+  if (id.includes("easemytrip")) return /easemytrip|yatra|bob_eterna/.test(l) && !/cashkaro/.test(l);
   if (id.includes("indigo")) return /indigo|idfc/.test(l);
   if (id.includes("scapia")) return route.cardId === "scapia" || /scapia/.test(l);
   if (id.includes("redbus")) return /redbus/.test(l);
@@ -216,6 +220,16 @@ export function rankTravel(
           forceCardId: o.cardId,
         });
       }
+    }
+    // IndiGo BluChip voucher — only on IndiGo direct checkout
+    if (platform.id === "indigo_direct" && trip.indigoBluChipVoucherInr && trip.indigoBluChipVoucherInr > 0) {
+      const v = Math.min(trip.indigoBluChipVoucherInr, fare);
+      discountCandidates.push({
+        offerId: "indigo_bluchip_voucher",
+        offerLabel: "IndiGo BluChip voucher",
+        discount: v,
+        forceCardId: "idfc_indigo",
+      });
     }
 
     // Dedupe by discount amount + force card

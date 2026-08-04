@@ -19,11 +19,12 @@ export const CASHKARO_RATES: readonly CashkaroRate[] = [
   { merchant: "Meesho", rate: "varies", minRate: 1, maxRate: 8, zone: "reliable" },
   { merchant: "Zomato", rate: "3–5%", minRate: 3, maxRate: 5, zone: "reliable" },
   { merchant: "Booking.com", rate: "3–6%", minRate: 3, maxRate: 6, zone: "reliable", notes: "Hotels. Stack with BOB 5× travel when booking through Cashkaro." },
-  { merchant: "Agoda", rate: "flat 7%", minRate: 7, maxRate: 7, zone: "reliable", notes: "Jul 2026: Flat 7% Cashkaro on Agoda hotel bookings. Stack with BOB 5×." },
+  { merchant: "Agoda", category: "Hotels", rate: "flat 7%", minRate: 7, maxRate: 7, zone: "reliable", notes: "Flat 7% Cashkaro on Agoda hotel bookings only — NOT flights/activities. Stack with BOB 5×." },
+  { merchant: "Agoda", category: "Flights", rate: "n/a (hotels only on Cashkaro)", minRate: 0, maxRate: 0, zone: "na", notes: "Cashkaro Agoda 7% is hotels only. Do not apply to flights." },
   { merchant: "MakeMyTrip", category: "Hotels", rate: "flat ₹140", minRate: 0, maxRate: 0, flatInr: 140, zone: "reliable", notes: "Domestic hotels over ₹1,000 → flat ₹140 Cashkaro (check live)." },
   { merchant: "MakeMyTrip", category: "Flights", rate: "flat ~₹90", minRate: 0, maxRate: 0, flatInr: 90, zone: "try", notes: "Domestic flights Cashkaro often flat ₹ — verify on store page." },
-  { merchant: "EaseMyTrip", rate: "2–4%", minRate: 2, maxRate: 4, zone: "reliable" },
-  { merchant: "Yatra", rate: "1–3%", minRate: 1, maxRate: 3, zone: "reliable" },
+  { merchant: "EaseMyTrip", rate: "n/a (not on Cashkaro)", minRate: 0, maxRate: 0, zone: "na", notes: "Not listed on Cashkaro — book direct / compare Amazon & Cleartrip." },
+  { merchant: "Yatra", rate: "n/a (not on Cashkaro)", minRate: 0, maxRate: 0, zone: "na", notes: "Not listed on Cashkaro — book direct." },
   { merchant: "Cleartrip", category: "Hotels", rate: "flat ₹180", minRate: 0, maxRate: 0, flatInr: 180, zone: "try", notes: "Domestic hotels — flat ₹180 Cashkaro typical; verify live." },
   { merchant: "Cleartrip", category: "Flights", rate: "flat ₹45", minRate: 0, maxRate: 0, flatInr: 45, zone: "try", notes: "Flights — flat ₹45 Cashkaro typical; verify live." },
   { merchant: "RedBus", rate: "try", minRate: 1, maxRate: 3, zone: "try", notes: "Bus bookings — verify Cashkaro store; Amazon bus often simpler at 2% AP ICICI." },
@@ -90,9 +91,31 @@ export function findCashkaro(merchant: string, category?: string): CashkaroRate 
   const lower = resolved.toLowerCase();
   const matches = CASHKARO_RATES.filter((r) => r.merchant.toLowerCase() === lower);
   if (matches.length === 0) return undefined;
+
+  const cat = (category || "").toLowerCase();
+
+  // Agoda Cashkaro flat 7% is hotels only — never apply to flights/trains/buses/activities.
+  if (lower === "agoda") {
+    if (/flight|train|bus|activity|car\b|cab/.test(cat) && !/hotel/.test(cat)) {
+      return matches.find((r) => r.zone === "na") ?? {
+        merchant: "Agoda",
+        category: "Flights",
+        rate: "n/a",
+        minRate: 0,
+        maxRate: 0,
+        zone: "na" as const,
+      };
+    }
+    const hotels = matches.find((r) => r.category && /hotel/i.test(r.category) && r.zone !== "na");
+    if (hotels) return hotels;
+  }
+
   if (category) {
-    const exact = matches.find((r) => r.category && category.toLowerCase().includes(r.category.toLowerCase().split(" ")[0]));
+    const exact = matches.find(
+      (r) => r.category && category.toLowerCase().includes(r.category.toLowerCase().split(" ")[0])
+    );
     if (exact) return exact;
   }
-  return matches[0];
+  // Prefer a usable (non-na) row when category is ambiguous
+  return matches.find((r) => r.zone !== "na") ?? matches[0];
 }

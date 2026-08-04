@@ -42,6 +42,7 @@ export function RecommendationWidget({ onLogged }: Props) {
   const [cashkaroOverride, setCashkaroOverride] = useState<string>("");
   const [amazonOrderCashback, setAmazonOrderCashback] = useState<string>("");
   const [movieTheatre, setMovieTheatre] = useState<"pvr" | "cinepolis" | "inox" | "bms" | "district" | "other" | "">("");
+  const [indigoVoucher, setIndigoVoucher] = useState<string>("");
   const [credGiftCardPct, setCredGiftCardPct] = useState<string>("");
   const [showAlts, setShowAlts] = useState(false);
   /** Which ranked route to log — 0 = best, 1+ = alternatives index + 1 conceptually; we store the route itself. */
@@ -58,6 +59,7 @@ export function RecommendationWidget({ onLogged }: Props) {
     setCredGiftCardPct("");
     setCashkaroOverride("");
     setAmazonOrderCashback("");
+    setIndigoVoucher("");
     setSelectedRoute(null);
   }, [merchant]);
 
@@ -103,19 +105,23 @@ export function RecommendationWidget({ onLogged }: Props) {
       today: localDateToISO(date),
       cashkaroPctOverride: Number((cashkaroOverride || "").replace(/[^0-9.]/g, "")) || undefined,
       amazonOrderCashbackInr: Number((amazonOrderCashback || "").replace(/[^0-9.]/g, "")) || undefined,
+      indigoBluChipVoucherInr: Number((indigoVoucher || "").replace(/[^0-9.]/g, "")) || undefined,
       credGiftCardPctOverride: Number((credGiftCardPct || "").replace(/[^0-9.]/g, "")) || undefined,
       movieTheatre: movieTheatre || undefined,
       bobBogoUsedThisMonth,
       livePlusBogoUsedThisMonth,
     });
     return recommend(input);
-  }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride, amazonOrderCashback, credGiftCardPct, movieTheatre]);
+  }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride, amazonOrderCashback, indigoVoucher, credGiftCardPct, movieTheatre]);
 
   const isAmazon = /amazon/i.test(merchant) || /amazon/i.test(finalCategory);
   const isTravel =
     /hotel|flight|bus|train|travel|agoda|cleartrip|makemytrip|\bmmt\b|booking\.com|indigo|irctc|redbus/i.test(
       `${merchant} ${finalCategory}`
     );
+  const isIndigoFlight =
+    /indigo|6e\b/i.test(`${merchant} ${finalCategory}`) ||
+    (/flight/i.test(finalCategory) && /indigo/i.test(merchant));
   const isMovie =
     /movie|event|bookmyshow|\bbms\b|district|pvr|inox|cinepolis|cinema|imax|insignia|4dx|luxe/i.test(`${merchant} ${finalCategory}`);
   // Only show CRED/CheQ override when catalog actually has a GC for this brand (not Swiggy/food).
@@ -276,7 +282,7 @@ export function RecommendationWidget({ onLogged }: Props) {
             <div className="text-xs text-fg-muted">
               {isTravel ? (
                 <>
-                  We compare <b>Amazon travel</b> (ICICI 5%/3% flights&amp;hotels, ~2% bus/train), <b>Cashkaro → Agoda (~7%)</b>, MMT/Cleartrip flats, Scapia app, and airline/hotel direct.
+                  We compare <b>Amazon travel</b> (ICICI 5%/3% flights&amp;hotels, ~2% bus/train), <b>Cashkaro → Agoda (~7% hotels only)</b>, MMT/Cleartrip flats, Scapia app, and airline/hotel direct.
                   Enter any <b>extra Amazon first-booking / wallet cashback ₹</b> shown at checkout (card % is already counted). Always fare-match platforms — a higher fare kills the %.
                 </>
               ) : (
@@ -296,6 +302,28 @@ export function RecommendationWidget({ onLogged }: Props) {
               <span className="text-xs text-fg-muted">
                 {isTravel ? "Added to the Amazon travel → ICICI route." : "Added to the Amazon Pay ICICI route."}
               </span>
+            </div>
+          </div>
+        )}
+
+        {(isIndigoFlight || (/flight/i.test(finalCategory) && isTravel)) && !merchantTooShort && (
+          <div className="bg-sky-50 dark:bg-sky-950/20 rounded-lg p-3 border border-sky-300/60 dark:border-sky-700/40 space-y-2">
+            <div className="text-sm font-semibold flex items-center gap-1.5">
+              <Icon.Sparkles size={14} className="text-sky-600" />
+              IndiGo BluChip voucher (optional)
+            </div>
+            <div className="text-xs text-fg-muted">
+              IDFC Indigo milestone vouchers (often ₹5,000) cut the IndiGo payable and can flip the winner vs Amazon / OTAs. Enter the voucher ₹ you will apply.
+            </div>
+            <div className="grid sm:grid-cols-[200px_1fr] gap-2 items-center">
+              <input
+                className="input"
+                inputMode="numeric"
+                placeholder="Voucher ₹ (e.g. 5000)"
+                value={indigoVoucher}
+                onChange={(e) => setIndigoVoucher(e.target.value)}
+              />
+              <span className="text-xs text-fg-muted">Applied to IndiGo direct → IDFC Indigo routes only.</span>
             </div>
           </div>
         )}

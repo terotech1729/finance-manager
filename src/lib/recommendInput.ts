@@ -17,6 +17,7 @@ export type RecommendRequest = {
   today?: string;
   cashkaroPctOverride?: number;
   amazonOrderCashbackInr?: number;
+  indigoBluChipVoucherInr?: number;
   credGiftCardPctOverride?: number;
   movieTheatre?: RecommendInput["movieTheatre"];
   bobBogoUsedThisMonth?: boolean;
@@ -92,6 +93,7 @@ export function buildRecommendInputFromState(st: AppState, req: RecommendRequest
 
     cashkaroPctOverride: req.cashkaroPctOverride,
     amazonOrderCashbackInr: req.amazonOrderCashbackInr,
+    indigoBluChipVoucherInr: req.indigoBluChipVoucherInr,
     credGiftCardPctOverride: req.credGiftCardPctOverride,
     movieTheatre: req.movieTheatre,
   };

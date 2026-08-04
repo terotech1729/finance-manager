@@ -145,7 +145,7 @@ export const DEFAULT_STATE: AppState = {
   cheqChips: 3846,
   amazonPayIciciIssued: true,
   primeMember: true,
-  milestonesHit: ["amex_plat_travel:190000", "idfc_indigo:200000", "idfc_indigo:500000"],
+  milestonesHit: ["idfc_indigo:200000", "idfc_indigo:500000"],
   ptccLoungesUsed: 1,
   ptccLoungesUsedThisQuarter: 1,
   hdfcDebitIssueDate: "",
@@ -308,6 +308,33 @@ export function loadState(): AppState {
   }
 
   if (changed) localStorage.setItem(KEYS.STATE, JSON.stringify(st));
+
+  // Drop stale milestone claims where till-date spend is still below the threshold
+  // (keeps Recommend aligned with the Milestones page).
+  {
+    const spendByCard: Record<string, number> = {
+      amex_plat_travel: st.ptccEligibleSpend ?? 0,
+      amex_mrcc: st.mrccCycleSpend ?? 0,
+      sbi_simplyclick: st.sbiYtdSpend ?? 0,
+      idfc_indigo: st.idfcYtdSpend ?? 0,
+      bob_eterna: st.bobYtdSpend ?? 0,
+      hsbc_live_plus: st.hsbcLivePlusYtdSpend ?? 0,
+    };
+    const before = st.milestonesHit ?? [];
+    const cleaned = before.filter((key) => {
+      const [cardId, thrRaw] = key.split(":");
+      const thr = Number(thrRaw);
+      if (!cardId || !Number.isFinite(thr)) return true;
+      const spent = spendByCard[cardId];
+      if (spent == null) return true;
+      return spent >= thr;
+    });
+    if (cleaned.length !== before.length) {
+      st.milestonesHit = cleaned;
+      localStorage.setItem(KEYS.STATE, JSON.stringify(st));
+    }
+  }
+
   return st;
 }
 

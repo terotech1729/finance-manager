@@ -314,9 +314,29 @@ const CASES: Case[] = [
     amount: 2000,
     expect: { requireDeclinedFallback: true },
     input: {
-      // Force Amex PT completing-ish ranking isn't needed — assert any Amex row in list
       ptccEligibleSpend: 399000,
     },
+  },
+  {
+    name: "Amex PT at ₹1.84L targets 1.9L not 4L (stale hit ignored)",
+    query: "offline restaurant",
+    amount: 940,
+    expect: {
+      bestCard: "hsbc_live_plus",
+      requireDeclinedFallback: true,
+    },
+    input: {
+      ptccEligibleSpend: 184231,
+      // Stale claim must not skip 1.9L when till-date is still below it
+      milestonesHit: ["amex_plat_travel:190000"],
+    },
+  },
+  {
+    name: "IndiGo + BluChip voucher boosts IDFC route",
+    query: "IndiGo flight",
+    amount: 9600,
+    expect: { bestCard: ["idfc_indigo", "amazon_pay_icici", "bob_eterna", "amex_gold"] },
+    input: { indigoBluChipVoucherInr: 5000 },
   },
 ];
 
@@ -412,6 +432,28 @@ function runCase(c: Case) {
     if (/build ₹|annual milestone/i.test(best.label) && !/completes/i.test(best.label)) {
       errors.push(`reward-dead category crowned thin annual: ${best.label}`);
     }
+  }
+
+  // Amex PT must chase the next unpaid threshold from till-date spend (not a stale 4L jump)
+  if (/targets 1\.9L/i.test(c.name)) {
+    const pt = rows.find((r) => r.cardId === "amex_plat_travel");
+    if (!pt) {
+      errors.push("expected an Amex PT route in the ranking");
+    } else {
+      const blob = `${pt.label} ${pt.rationale} ${pt.pros.join(" ")}`;
+      if (!/1[,.]?90|190,?000|₹1\.9/i.test(blob)) {
+        errors.push(`Amex PT should reference 1.9L milestone, got: ${pt.label} | ${pt.rationale}`);
+      }
+      if (/4[,.]?00,?000|₹4\.0|build ₹4/i.test(blob) && !/1[,.]?90/i.test(blob)) {
+        errors.push(`Amex PT incorrectly jumped to 4L: ${pt.label}`);
+      }
+    }
+  }
+  // IndiGo voucher should land on IDFC with voucher in the label/pros
+  if (/BluChip voucher/i.test(c.name)) {
+    const idfc = rows.find((r) => r.cardId === "idfc_indigo" && /voucher/i.test(`${r.label} ${r.pros.join(" ")}`));
+    if (!idfc) errors.push("expected IDFC Indigo route mentioning BluChip voucher");
+    else if (idfc.bonusRewardInr < 4000) errors.push(`voucher bonus too small: ${idfc.bonusRewardInr}`);
   }
 
   if (errors.length) {

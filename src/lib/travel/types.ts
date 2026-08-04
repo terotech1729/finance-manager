@@ -91,6 +91,8 @@ export type TravelTripInput = {
   offerDiscountOverrides?: Record<string, number>;
   /** Extra Amazon checkout cashback ₹ (flights/hotels first-booking style) */
   amazonOrderCashbackInr?: number;
+  /** IndiGo BluChip voucher ₹ to apply at airline checkout */
+  indigoBluChipVoucherInr?: number;
   today?: string;
 };
 
