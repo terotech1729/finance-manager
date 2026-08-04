@@ -13,6 +13,7 @@ const groups: NavGroup[] = [
     items: [
       { href: "/", label: "Home", icon: Icon.Dashboard },
       { href: "/recommend", label: "Recommend", icon: Icon.Zap },
+      { href: "/travel", label: "Travel", icon: Icon.Plane },
     ],
   },
   {

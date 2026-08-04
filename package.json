@@ -9,7 +9,8 @@
     "lint": "next lint",
     "scrape-cashkaro": "tsx scripts/scrape-cashkaro.ts",
     "scrape-vouchers": "tsx scripts/scrape-voucher-stores.ts",
-    "test:recommend": "tsx scripts/dry-recommend.ts"
+    "test:recommend": "tsx scripts/dry-recommend.ts",
+    "test:travel": "tsx scripts/dry-travel.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
