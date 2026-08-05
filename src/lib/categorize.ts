@@ -257,6 +257,78 @@ export function detectCategory(merchant: string): CategoryDetection {
   const brand = detectBrand(t);
   const intent = detectTravelIntent(t);
 
+  // ---- Payment-rail keywords (before brand/travel) ----
+  // Merchant UPI / VPA / "upi payment" — not card POS, not online CNP.
+  const upiIntent =
+    /\bupi\b/.test(t) ||
+    /\bvpa\b/.test(t) ||
+    /@ok(hdfc|icici|sbi|axis|yesbank|idfc)|@ybl\b|@paytm\b|@ibl\b|@axl\b/i.test(raw) ||
+    /\bmerchant\s*upi\b|\bupi\s*(id|number|payment|pay|transfer)\b|\bpay\s*(via|by|using)\s*upi\b/i.test(t);
+  const kiwiQrIntent = /\bkiwi\b/.test(t) || (/\b(qr|scan)\b/.test(t) && /\bupi\b/.test(t));
+  if (upiIntent && !/\bpos\b|\bswipe\b|card\s*machine|\bedc\b/i.test(t)) {
+    // Keep merchant context (dining / kirana) so Recommend can note POS alternatives.
+    if (/\b(dining|restaurant|cafe|dhaba|eatery|stall|food)\b/.test(t)) {
+      return {
+        category: "dining (upi)",
+        prettyLabel: kiwiQrIntent ? "Dining UPI QR" : "Dining — merchant UPI",
+        channel: "upi",
+        confidence: "high",
+      };
+    }
+    if (/\b(kirana|grocery|groceries)\b/.test(t)) {
+      return {
+        category: "groceries (upi)",
+        prettyLabel: "Kirana / grocery UPI",
+        channel: "upi",
+        confidence: "high",
+      };
+    }
+    return {
+      category: kiwiQrIntent ? "upi (kiwi qr)" : "upi (merchant / vpa)",
+      prettyLabel: kiwiQrIntent ? "UPI QR (Kiwi scan)" : "Merchant UPI / VPA",
+      channel: "upi",
+      confidence: "high",
+    };
+  }
+
+  // Offline hotel checkout / front-desk bill — POS at property, not OTA online booking.
+  // Exclude hotel restaurant / food (those are dining POS).
+  if (
+    /\bhotel\b/.test(t) &&
+    !/\b(food|restaurant|dining|buffet|lunch|dinner|breakfast|cafe|meal)\b/.test(t) &&
+    /\b(offline|checkout|check[\s-]*out|front\s*desk|reception|settle|bill|folio|room\s*bill)\b/.test(t) &&
+    !/\b(agoda|makemytrip|cleartrip|bookingcom|yatra|easemytrip|amazon\s*travel|book\s*online)\b/.test(t)
+  ) {
+    return {
+      category: "hotel checkout (offline)",
+      prettyLabel: "Hotel checkout / bill (offline)",
+      channel: "offline_pos",
+      confidence: "high",
+    };
+  }
+
+  // Explicit offline + generic bill/payment (no travel OTA brand)
+  if (
+    /\boffline\b/.test(t) &&
+    /\b(bill|payment|pay|checkout)\b/.test(t) &&
+    !/\b(agoda|makemytrip|cleartrip|amazon|flipkart|myntra)\b/.test(t)
+  ) {
+    if (/\bhotel\b/.test(t)) {
+      return {
+        category: "hotel checkout (offline)",
+        prettyLabel: "Hotel checkout / bill (offline)",
+        channel: "offline_pos",
+        confidence: "high",
+      };
+    }
+    return {
+      category: "general (offline POS)",
+      prettyLabel: "Offline bill / payment",
+      channel: "offline_pos",
+      confidence: "medium",
+    };
+  }
+
   // Explicit Visa Infinite / Live+ Reserve dining programs
   if (/dine\s*with\s*visa|live\+?\s*reserve|dinewithtimesprime|visa\s*infinite\s*dining/i.test(t)) {
     return {
@@ -377,8 +449,16 @@ export function detectCategory(merchant: string): CategoryDetection {
     return { category: "makemytrip / easemytrip", prettyLabel: brand.pretty, channel: "online", confidence: "medium" };
   }
 
-  // Plain travel intent with no brand → ask platform comparison via category
+  // Plain travel intent with no brand → ask platform (unless already offline/checkout)
   if (!brand && intent) {
+    if (/\boffline\b|\bcheckout\b|\bfront\s*desk\b|\bbill\b/.test(t) && intent === "hotel") {
+      return {
+        category: "hotel checkout (offline)",
+        prettyLabel: "Hotel checkout / bill (offline)",
+        channel: "offline_pos",
+        confidence: "high",
+      };
+    }
     return {
       category: intent === "hotel" ? "hotel booking" : intent === "flight" ? "flight booking" : intent === "bus" ? "bus booking" : "train booking",
       prettyLabel: `${intent.charAt(0).toUpperCase()}${intent.slice(1)} booking`,
@@ -534,7 +614,10 @@ export const ALL_CATEGORIES = [
   "makemytrip / easemytrip",
   "hotel direct",
   "hotel booking",
+  "hotel checkout (offline)",
   "bus booking",
+  "upi (merchant / vpa)",
+  "upi (kiwi qr)",
   "train booking",
   "amazon travel",
   "amazon travel flight",
@@ -570,8 +653,8 @@ export const ALL_CATEGORIES = [
 export const ALL_CHANNELS: { value: ChannelType; label: string; help: string }[] = [
   { value: "online", label: "Online (card-not-present)", help: "Web checkout, app payment with card details" },
   { value: "merchant_app", label: "In-app payment", help: "Inside Swiggy / Zomato / IndiGo / Cleartrip app" },
-  { value: "offline_pos", label: "Offline POS / swipe", help: "In-store / restaurant tap-and-pay" },
-  { value: "upi", label: "UPI via Kiwi (CC-UPI for cashback)", help: "Scan UPI QR using Kiwi app" },
-  { value: "upi_normal", label: "UPI via PhonePe / GPay", help: "Direct UPI from bank — no card rewards" },
+  { value: "offline_pos", label: "Offline POS / swipe", help: "In-store / restaurant / hotel front-desk tap-and-pay" },
+  { value: "upi", label: "UPI (RuPay CC / Kiwi)", help: "Merchant UPI ID → IDFC RuPay; QR scan → Kiwi app for 2%" },
+  { value: "upi_normal", label: "UPI via PhonePe / GPay", help: "Direct bank UPI — no card rewards" },
   { value: "foreign", label: "Foreign currency", help: "USD / EUR / international merchant" },
 ];

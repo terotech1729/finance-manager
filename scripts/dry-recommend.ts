@@ -219,7 +219,7 @@ const CASES: Case[] = [
     amount: 400,
     expect: {
       channel: "upi",
-      bestCard: ["yes_kiwi", "upi"],
+      bestCard: ["yes_kiwi", "upi", "idfc_indigo"],
     },
     // Asserted below via custom check in runner for effectivePct === 0 when kiwi
   },
@@ -337,6 +337,49 @@ const CASES: Case[] = [
     amount: 9600,
     expect: { bestCard: ["idfc_indigo", "amazon_pay_icici", "bob_eterna", "amex_gold"] },
     input: { indigoBluChipVoucherInr: 5000 },
+  },
+  {
+    name: "merchant upi payment → UPI rail + IDFC RuPay (not Amex)",
+    query: "upi payment",
+    amount: 6000,
+    expect: {
+      channel: "upi",
+      categoryIncludes: /upi/,
+      bestCard: "idfc_indigo",
+      bestLabelAvoid: /amex|platinum travel|live\+|bob eterna/i,
+    },
+  },
+  {
+    name: "merchant VPA handle → UPI + RuPay capable",
+    query: "shop@ybl",
+    amount: 2500,
+    expect: {
+      channel: "upi",
+      bestCard: ["idfc_indigo", "yes_kiwi"],
+      bestLabelAvoid: /amex/i,
+    },
+  },
+  {
+    name: "offline hotel bill → offline POS checkout not online booking",
+    query: "offline hotel bill",
+    amount: 6000,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /hotel checkout|offline/,
+      bestLabelAvoid: /agoda|makemytrip|amazon travel|taj voucher|ota/i,
+      stepsMatch: /front desk|reception|swipe|tap|pos/i,
+      requireDeclinedFallback: true,
+    },
+  },
+  {
+    name: "hotel checkout offline → not Online CNP",
+    query: "hotel checkout bill",
+    amount: 8000,
+    expect: {
+      channel: "offline_pos",
+      categoryIncludes: /hotel checkout/,
+      bestLabelAvoid: /booking\.com|cleartrip hotels/i,
+    },
   },
 ];
 

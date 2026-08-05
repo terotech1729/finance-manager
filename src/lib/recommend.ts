@@ -651,6 +651,10 @@ function travelKindOf(cat: string, merchant: string): TravelKind | null {
   if (/dining|restaurant|buffet|\bfood\b|\blunch\b|\bdinner\b|\bbreakfast\b|\bmeal\b|\bcafe\b/.test(t) && !/hotel booking|hotel direct|agoda|booking\.com|makemytrip hotels|cleartrip hotels|amazon travel hotel/.test(t)) {
     return null;
   }
+  // Front-desk / offline checkout is POS lodging — not Agoda/MMT online booking stacks.
+  if (/hotel checkout|checkout \(offline\)|front\s*desk|room\s*bill|folio/.test(t)) {
+    return null;
+  }
   if (/amazon travel hotel|cleartrip hotels|agoda|booking\.com|makemytrip hotels|hotel direct|hotel booking|\bhotel\b|ihg|intercontinental|holiday\s*inn|six\s*senses|\bitc\b/.test(t) && !/flight/.test(t)) {
     return "hotel";
   }
@@ -1509,6 +1513,9 @@ function sbiSimplyClickPartner(merchant: string, category: string): boolean {
  */
 function amazonPayable(category: string, merchant: string): boolean {
   const c = `${category} ${merchant}`.toLowerCase();
+  // Front-desk / offline hotel settlement is card POS — not Amazon Pay.
+  if (/hotel checkout|checkout \(offline\)|front\s*desk|room\s*bill|folio/.test(c)) return false;
+  if (/\boffline\b/.test(c) && /\bhotel\b/.test(c)) return false;
   return /utilit|electric|mobile|recharge|broadband|\btv\b|dth|\bgas\b|water|amazon|bookmyshow|\bbms\b|movie|flight|hotel|bus|train|travel/.test(c);
 }
 
@@ -1837,6 +1844,122 @@ export function recommend(input: RecommendInput): RecommendationResult {
 
   // ============ HARD-ROUTED CATEGORIES (channel/MCC forces the card) ============
 
+  // --- UPI rail (merchant VPA / QR) — only RuPay CC variants can pay ---
+  if (input.channel === "upi") {
+    const merchCat = `${input.merchant || ""} ${input.category || ""}`.toLowerCase();
+    const kiwiQr =
+      /kiwi|upi \(kiwi|qr|scan/.test(merchCat) ||
+      /\bkiwi\b|\bqr\b|\bscan\b/i.test(input.merchant || "");
+    const merchantVpa = /upi \(merchant|vpa|upi payment|upi id|merchant upi/i.test(merchCat) ||
+      /@ok|@ybl|@paytm|@ibl|@axl/i.test(input.merchant || "");
+    const isRide = /ride|cab|uber|ola|rapido/.test(merchCat);
+    const isDiningOrKirana = /dining|restaurant|grocer|kirana/.test(merchCat);
+
+    // Rides / cab apps → Kiwi (or bank UPI). Don't push IDFC BluChips as primary.
+    if (isRide) {
+      options.push(buildKiwiOption(input, amt));
+      add({
+        cardId: "upi",
+        label: "Normal UPI (PhonePe / GPay bank account) — 0%",
+        effectivePct: 0,
+        baseRewardInr: 0,
+        pros: ["Works in Uber/Ola in-app UPI"],
+        cons: ["No card rewards"],
+        rationale: "Ride apps: Kiwi if the flow is QR/CC-UPI; otherwise bank UPI. Amex/Visa/MC can't pay UPI.",
+        steps: [`Pay ${inr(amt)} via the ride app UPI / PhonePe / GPay`],
+      });
+      return finalize(options, input, amt, isForeign, ck);
+    }
+
+    // IDFC Indigo RuPay — pays merchant UPI IDs; earns 0.5 BluChip/₹100 ≈ 0.225%
+    // Skip as primary noise on dining/kirana QR (Kiwi 2% wins) unless amount is large merchant VPA.
+    if (!isDiningOrKirana || merchantVpa) {
+      const idfcUpiPct = 0.5 * 0.45;
+      const idfcInr = amt * (idfcUpiPct / 100);
+      add({
+        cardId: "idfc_indigo",
+        label: "IDFC Indigo RuPay UPI (0.5 BluChip/₹100)",
+        effectivePct: idfcUpiPct,
+        baseRewardInr: idfcInr,
+        worstCasePct: idfcUpiPct,
+        bestCasePct: idfcUpiPct,
+        pros: [
+          "RuPay CC on UPI — works for merchant UPI IDs / many QR apps",
+          "Earns BluChips (travel-locked to IndiGo) — better than bank UPI at 0%",
+          "Same combined limit as your IDFC Mastercard",
+        ],
+        cons: [
+          "Only ~0.23% value — thin vs Kiwi 2% on a QR you can scan in the Kiwi app",
+          "BluChips redeemable only on IndiGo flights",
+        ],
+        rationale: merchantVpa || !kiwiQr
+          ? "Merchant UPI / VPA: pay with IDFC RuPay (not Amex/Visa/MC). Kiwi 2% only applies when you scan the QR inside the Kiwi app — a plain YES Bank CC UPI path without Kiwi earns nothing useful."
+          : "IDFC RuPay UPI backup if you prefer BluChips over Kiwi cashback.",
+        steps: [
+          "Open PhonePe / GPay / BHIM / bank UPI and select IDFC Indigo RuPay credit card",
+          "Pay the merchant UPI ID / QR",
+          `Expect ~${idfcUpiPct.toFixed(2)}% as BluChips (~${inr(idfcInr)})`,
+        ],
+      });
+    }
+    // Kiwi QR scan & pay — full 2% when QR/scan/dining-stall/kirana context.
+    // Typed merchant UPI ID / "upi payment": linking YES Bank in PhonePe ≠ Kiwi earn → prefer IDFC RuPay.
+    options.push(buildKiwiOption(input, amt));
+    const demoteKiwiForVpa =
+      !kiwiQr &&
+      (merchantVpa || /upi \(merchant|merchant \/ vpa|upi payment|upi id/i.test(merchCat)) &&
+      !/dining|restaurant|grocer|kirana/i.test(merchCat);
+    if (demoteKiwiForVpa) {
+      const kiwi = options[options.length - 1];
+      if (kiwi.cardId === "yes_kiwi") {
+        kiwi.label = "Kiwi QR scan & pay (~2%) — only if merchant has a QR in Kiwi app";
+        kiwi.effectivePct = Math.min(kiwi.effectivePct, 0.15);
+        kiwi.totalRewardInr = amt * (kiwi.effectivePct / 100);
+        kiwi.baseRewardInr = kiwi.totalRewardInr;
+        kiwi.bestCasePct = amt >= 500 ? 2 : 0;
+        kiwi.pros = [
+          ...kiwi.pros,
+          "Full ~2% only if you open the Kiwi app and scan their QR",
+        ];
+        kiwi.cons = [
+          ...kiwi.cons,
+          "Typed merchant UPI ID in PhonePe/GPay with YES Bank CC ≠ Kiwi cashback — use IDFC RuPay instead",
+        ];
+        kiwi.rationale =
+          "Kiwi rewards need a Kiwi-app QR scan. For a typed UPI ID, pay with IDFC Indigo RuPay (BluChips) — not Amex/Visa/MC.";
+      }
+    } else if (!kiwiQr) {
+      const kiwi = options[options.length - 1];
+      if (kiwi.cardId === "yes_kiwi" && kiwi.effectivePct > 0) {
+        kiwi.pros = [
+          ...kiwi.pros,
+          "Scan the merchant QR inside the Kiwi app (not PhonePe + YES Bank alone)",
+        ];
+      }
+    }
+
+    add({
+      cardId: "upi",
+      label: "Normal UPI (PhonePe / GPay bank account) — 0%",
+      effectivePct: 0,
+      baseRewardInr: 0,
+      pros: ["Works everywhere"],
+      cons: ["No card rewards"],
+      rationale: "Bank UPI earns nothing — only use if RuPay CC UPI is declined.",
+      steps: [`Pay ${inr(amt)} via PhonePe / GPay from a savings account`],
+    });
+
+    // Dining/kirana tagged as UPI: surface Live+ POS as infeasible secondary (card machine may exist).
+    if (cat.includes("dining") || cat.includes("restaurant") || cat.includes("grocer")) {
+      const lp = buildLivePlusOption(amt, cat.includes("grocer") ? "grocery" : "dining", input);
+      lp.feasible = false;
+      lp.feasibilityNote = "You tagged UPI — Live+ 10% only if they also have a card POS";
+      options.push(lp);
+    }
+
+    return finalize(options, input, amt, isForeign, ck);
+  }
+
   // --- UPI normal (no card rewards) ---
   if (input.channel === "upi_normal") {
     return finalize([{
@@ -1890,6 +2013,70 @@ export function recommend(input: RecommendInput): RecommendationResult {
       rationale: "Backup only if Scapia fails abroad.",
       steps: [`Pay with IDFC Indigo (1.49% forex)`],
     });
+    return finalize(options, input, amt, isForeign, ck);
+  }
+
+  // --- Offline hotel checkout / front-desk bill (POS lodging, not OTA) ---
+  if (
+    input.channel === "offline_pos" &&
+    !/dining|restaurant|buffet|food|meal|cafe/.test(cat) &&
+    (/hotel checkout|checkout \(offline\)/.test(cat) ||
+      (/\bhotel\b/.test(`${cat} ${merchant}`) && /\b(offline|checkout|bill|folio|front\s*desk)\b/.test(`${cat} ${merchant}`) && !/\b(food|buffet|dining|restaurant|meal)\b/.test(merchant)))
+  ) {
+    // Lodging POS: Live+ is only ~1.5% on hotel MCC — Amex PT milestone / BOB travel often win.
+    const mb = !amexExcluded(input.category || "")
+      ? annualMilestoneBonus("amex_plat_travel", input, amt)
+      : null;
+    if (mb) {
+      const ptSpend = input.ptccEligibleSpend ?? 0;
+      const near = ptSpend >= 350000 || mb.kind === "completing" || mb.kind === "close";
+      add({
+        cardId: "amex_plat_travel",
+        label: near
+          ? `Amex PT POS — ${mb.kind === "completing" ? "completes" : "near"} ${inr(mb.threshold)} milestone`
+          : `Amex PT POS — build ${inr(mb.threshold)} milestone`,
+        effectivePct: 1.0 + (mb.inr / amt) * 100,
+        baseRewardInr: amt * 0.01,
+        bonusRewardInr: mb.inr,
+        worstCasePct: 1.0,
+        bestCasePct: 1.0 + (mb.inr / amt) * 100,
+        pros: [mb.note, "Swipe / tap at hotel front desk (offline POS — not an OTA booking)"],
+        cons: ["Hotel must accept Amex on POS", "Not for online Agoda/MMT checkout"],
+        rationale: `Offline hotel checkout bill — card POS at property. ${mb.note}`,
+        steps: [
+          "At hotel reception / checkout, ask for card POS (not UPI-only)",
+          `Pay ${inr(amt)} with Amex PT`,
+          `Builds toward ${inr(mb.threshold)}`,
+        ],
+      });
+    }
+    add({
+      cardId: "bob_eterna",
+      label: "BOB Eterna POS (~0.75%–3.75% if travel MCC)",
+      effectivePct: 3.75,
+      worstCasePct: 0.75,
+      bestCasePct: 3.75,
+      pros: ["Often codes as travel / hotel MCC → 5×", "Widely accepted Visa"],
+      cons: ["5× cap 5,000 RP/cycle", "Confirm MCC with bill"],
+      rationale: "Offline hotel stay settlement — swipe BOB if Amex declined or you prefer Visa.",
+      steps: ["Swipe / tap BOB Eterna at front desk"],
+    });
+    add({
+      cardId: "hsbc_live_plus",
+      label: "HSBC Live+ hotel POS (~1.5% base — not 10% dining)",
+      effectivePct: 1.5,
+      pros: ["Works if Amex/BOB declined"],
+      cons: ["Hotel lodging is NOT Live+ 10% dining/shopping — ~1.5% only"],
+      rationale: "Live+ accelerated 10% does not apply to hotel room bills — only ~1.5% base.",
+      steps: ["Swipe Live+ only as backup"],
+    });
+    options.push(buildKiwiOption({ ...input, channel: "upi" }, amt));
+    const kiwi = options[options.length - 1];
+    if (kiwi.cardId === "yes_kiwi") {
+      kiwi.feasible = false;
+      kiwi.feasibilityNote = "Fallback if front desk is UPI-QR only (no card POS)";
+      kiwi.label = "If no card POS → Kiwi UPI scan (~2%)";
+    }
     return finalize(options, input, amt, isForeign, ck);
   }
 
@@ -1988,18 +2175,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
     }
   }
 
-  // --- UPI scan/pay (Kiwi) ---
-  if (input.channel === "upi") {
-    options.push(buildKiwiOption(input, amt));
-    // If this is dining tagged as UPI QR, surface Live+ POS as a secondary (infeasible) option.
-    if (cat.includes("dining") || cat.includes("restaurant")) {
-      const lp = buildLivePlusOption(amt, "dining", input);
-      lp.feasible = false;
-      lp.feasibilityNote = "You tagged UPI — Live+ 10% only if they also have a card POS";
-      options.push(lp);
-    }
-    return finalize(options, input, amt, isForeign, ck);
-  }
+  // (UPI rail handled early above — IDFC RuPay + Kiwi + bank UPI)
 
   // ============ UTILITIES (electricity / mobile / broadband / TV / gas / water) ============
   if (cat.includes("utility") || cat.includes("electric") || cat.includes("mobile") || cat.includes("recharge") || cat.includes("broadband") || cat.includes("tv") || cat.includes("gas") || cat.includes("water") || cat.includes("dth")) {
@@ -2653,9 +2829,16 @@ function genericCardEval(
   const ch = input.channel;
   const cat = (input.category || "").toLowerCase();
   const merch = (input.merchant || "").toLowerCase();
-  // Cards other than Kiwi cannot be used for UPI scan & pay.
-  if (ch === "upi" && cardId !== "yes_kiwi") {
-    return { pct: 0, label: "Not UPI-capable", reason: "Only the RuPay Kiwi card supports credit-card-on-UPI (scan & pay). This card can't be used for a UPI QR payment." };
+  // Cards that cannot pay on UPI rail (Amex / Visa / MC without RuPay UPI).
+  // You hold: Kiwi RuPay (QR scan & pay) + IDFC Indigo RuPay (merchant UPI / VPA).
+  if (ch === "upi") {
+    if (cardId === "yes_kiwi" || cardId === "idfc_indigo") return null; // handled by dedicated UPI routes
+    if (cardId === "amex_gold" || cardId === "amex_plat_travel" || cardId === "amex_mrcc") {
+      return { pct: 0, label: "Amex (no UPI)", reason: "Amex cannot pay on UPI — use IDFC RuPay (BluChips) or Kiwi QR scan, or swipe Amex on a card POS if available." };
+    }
+    if (cardId === "hsbc_live_plus" || cardId === "bob_eterna" || cardId === "sbi_simplyclick" || cardId === "amazon_pay_icici" || cardId === "scapia") {
+      return { pct: 0, label: "Not UPI-capable", reason: "This plastic can't pay a UPI ID/QR. Use IDFC RuPay UPI or Kiwi (RuPay) scan & pay — or ask for a card POS swipe." };
+    }
   }
   if (isForeign) {
     switch (cardId) {
@@ -2963,7 +3146,7 @@ function finalize(
   // BookMyShow). Paying via Amazon Pay with the ICICI card earns 5% (Amazon) / 2% (bills/partner),
   // stacks Cashkaro, and is liquid cashback. Other cards via Amazon Pay just earn their normal
   // rate (= paying direct), so only the ICICI bonus route is worth surfacing here.
-  if (!isForeign && amazonPayable(input.category || "", input.merchant || "") && !options.some((o) => o.cardId === "amazon_pay_icici")) {
+  if (!isForeign && input.channel !== "offline_pos" && amazonPayable(input.category || "", input.merchant || "") && !options.some((o) => o.cardId === "amazon_pay_icici")) {
     const isAmazonShop = /amazon/.test(`${input.category} ${input.merchant}`.toLowerCase()) && !/recharge|bill/.test(`${input.category}`.toLowerCase());
     const rate = isAmazonShop ? (input.primeMember !== false ? 5 : 3) : 2;
     const ckAmz = amazonPlatformCashkaro(input.category || "", amt, input.cashkaroPctOverride);
@@ -3035,7 +3218,7 @@ function finalize(
   // Considered for EVERY eligible expense (not just generic), so the engine surfaces the high
   // value of completing a monthly milestone — esp. the final txn (full ₹500). Skipped for
   // Amex-excluded categories (fuel/insurance/rent/wallet/tax) which don't count.
-  if (!isForeign && !amexExcluded(input.category || "")) {
+  if (!isForeign && input.channel !== "upi" && input.channel !== "upi_normal" && !amexExcluded(input.category || "")) {
     const gB = goldMilestoneBonus(input, amt);
     if (gB && gB.inr > 0 && !options.some((o) => o.cardId === "amex_gold" && /milestone/i.test(o.label))) {
       options.push(mkOption(amt, {
@@ -3077,7 +3260,8 @@ function finalize(
   // Fold progress into the best existing route for that card (avoids two Live+ rows).
   // Completing = full unlock; otherwise thin pro-rata (see annualMilestoneBonus).
   // Never let thin annual progress outrank intentional 0% advice on fuel/rent/insurance/tax.
-  if (!isForeign) {
+  // UPI rail already has dedicated RuPay routes — don't inflate IDFC/Amex with annual thin EV.
+  if (!isForeign && input.channel !== "upi" && input.channel !== "upi_normal") {
     for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel", "amex_mrcc", "bob_eterna", "hsbc_live_plus"]) {
       if ((cardId === "amex_plat_travel" || cardId === "amex_mrcc") && amexExcluded(input.category || "")) continue;
       if (options.some((o) => o.cardId === cardId && o.bonusRewardInr > 0)) continue;
@@ -3210,10 +3394,11 @@ function finalize(
     o.liquidity = liquidityOf(o.cardId, o.label);
     const rng = pointsRange(o.cardId, o.label, o.totalRewardInr, o.effectivePct, amt);
     if (rng) o.redemptionRange = { worstPct: rng.worstPct, bestPct: rng.bestPct };
-    // UPI-tagged spends: don't let card-POS / milestone fillers outrank Kiwi on the QR rail.
+    // UPI-tagged spends: only RuPay CC UPI (Kiwi / IDFC) or bank UPI stay feasible.
     if (
       (input.channel === "upi" || input.channel === "upi_normal") &&
       o.cardId !== "yes_kiwi" &&
+      o.cardId !== "idfc_indigo" &&
       o.cardId !== "upi" &&
       o.cardId !== "cash" &&
       o.feasible !== false
@@ -3221,7 +3406,7 @@ function finalize(
       o.feasible = false;
       o.feasibilityNote = [
         o.feasibilityNote,
-        "UPI rail — card POS not assumed; use only if the merchant also takes cards",
+        "UPI rail — Amex/Visa/MC can't pay a UPI ID. Use IDFC RuPay or Kiwi RuPay, or ask for a card POS.",
       ]
         .filter(Boolean)
         .join(" · ");
