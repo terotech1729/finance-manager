@@ -3,7 +3,9 @@
 import type { TravelMode } from "../types";
 import type { TravelPlace } from "../places";
 
-export type JourneyLegMode = TravelMode | "cab" | "metro";
+export type JourneyLegMode = TravelMode | "cab" | "metro" | "hotel";
+
+export type ScheduleSource = "live" | "catalog" | "estimated";
 
 export type JourneyLeg = {
   id: string;
@@ -18,9 +20,15 @@ export type JourneyLeg = {
   /** Estimated all-in ₹ for this leg (1 adult) */
   costInr: number;
   costSource: "live" | "estimated";
+  /** Where the timetable came from */
+  scheduleSource: ScheduleSource;
   note?: string;
+  /** Carrier / service name when known (e.g. 6E 204, Deccan Queen) */
+  carrier?: string;
   /** Minutes overlapping preferred sleep window */
   sleepOverlapMin: number;
+  /** Intentional overnight sleep on this leg (bus/train as hotel substitute) */
+  overnightSleep?: boolean;
 };
 
 export type JourneyItinerary = {
@@ -29,6 +37,13 @@ export type JourneyItinerary = {
   /** Short path like PNQ → BOM → DED → Rishikesh */
   pathLabel: string;
   legs: JourneyLeg[];
+  /** Transport only */
+  transportCostInr: number;
+  /** Hotel / lodging nights */
+  stayCostInr: number;
+  stayNights: number;
+  stayNote?: string;
+  /** transport + stay */
   totalCostInr: number;
   totalDurationMin: number;
   departAt: string;
@@ -42,6 +57,8 @@ export type JourneyItinerary = {
   warnings: string[];
   /** Tree node tags for UI */
   tags: string[];
+  /** Fraction of timed legs that are live or catalog (not invented) */
+  realityPct: number;
 };
 
 export type JourneyPrefs = {
@@ -56,8 +73,14 @@ export type JourneyPrefs = {
   timeWeight: number;
   /** Weight 0–1: higher = protect sleep */
   sleepWeight: number;
-  /** Avoid overnight trains/buses when true */
+  /** Soft-penalize overnight surface unless used as hotel substitute */
   avoidOvernightSurface: boolean;
+  /** Include hotel nights in all-in cost when arriving early */
+  includeStayCost: boolean;
+  /** Override hotel ₹/night */
+  hotelBudgetPerNight?: number;
+  /** Allow overnight bus/train as intentional sleep (no hotel) */
+  allowOvernightAsStay: boolean;
 };
 
 export type JourneyPlanInput = {

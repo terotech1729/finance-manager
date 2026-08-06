@@ -40,7 +40,7 @@ function ItineraryCard({
         <div>
           <div className="text-xs text-fg-muted">
             #{rank}
-            {highlight ? " · recommended" : ""} · score {it.score}
+            {highlight ? " · recommended" : ""} · score {it.score} · reality {it.realityPct}%
           </div>
           <div className="font-semibold text-fg mt-0.5">{it.pathLabel}</div>
           <div className="text-sm text-fg-muted">{it.label}</div>
@@ -49,6 +49,10 @@ function ItineraryCard({
           <div className="text-lg font-semibold tabular-nums">{inr(it.totalCostInr)}</div>
           <div className="text-xs text-fg-muted">
             {hrs(it.totalDurationMin)} · sleep {it.sleepScore}/100
+          </div>
+          <div className="text-[11px] text-fg-muted mt-0.5">
+            transport {inr(it.transportCostInr)}
+            {it.stayCostInr > 0 ? ` + stay ${inr(it.stayCostInr)}` : " · no hotel"}
           </div>
         </div>
       </div>
@@ -62,14 +66,24 @@ function ItineraryCard({
             <div className="min-w-0 flex-1">
               <div className="font-medium text-fg">
                 {placeLabel(leg.from)} → {placeLabel(leg.to)}
+                {leg.carrier ? <span className="text-fg-muted font-normal"> · {leg.carrier}</span> : null}
               </div>
               <div className="text-xs text-fg-muted">
                 {fmtWhen(leg.departAt)} → {fmtWhen(leg.arriveAt)} · {hrs(leg.durationMin)} ·{" "}
                 {inr(leg.costInr)}
-                {leg.costSource === "live" ? " · live fare" : " · est."}
+                {leg.scheduleSource === "live"
+                  ? " · live timetable"
+                  : leg.scheduleSource === "catalog"
+                    ? " · catalog"
+                    : " · est. timing"}
               </div>
               {leg.note && <div className="text-xs text-fg-muted mt-0.5">{leg.note}</div>}
-              {leg.sleepOverlapMin > 30 && (
+              {leg.overnightSleep && (
+                <div className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
+                  Sleep on this leg — counts as hotel substitute
+                </div>
+              )}
+              {!leg.overnightSleep && leg.sleepOverlapMin > 30 && (
                 <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
                   ~{hrs(leg.sleepOverlapMin)} in your sleep window
                 </div>
@@ -78,6 +92,13 @@ function ItineraryCard({
           </li>
         ))}
       </ol>
+
+      {it.stayNote && (
+        <div className="text-xs rounded-lg bg-black/5 dark:bg-white/5 px-3 py-2 text-fg-muted">
+          Stay: {it.stayNote}
+          {it.stayCostInr > 0 ? ` · ${inr(it.stayCostInr)}` : ""}
+        </div>
+      )}
 
       {it.why.length > 0 && (
         <ul className="text-xs text-fg-muted list-disc pl-4 space-y-0.5">
@@ -104,6 +125,8 @@ export function JourneyReach() {
   const [arriveTime, setArriveTime] = useState("05:00");
   const [adults, setAdults] = useState(1);
   const [protectSleep, setProtectSleep] = useState(true);
+  const [allowOvernightBus, setAllowOvernightBus] = useState(true);
+  const [includeStay, setIncludeStay] = useState(true);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<JourneyPlanResult | null>(null);
@@ -126,9 +149,13 @@ export function JourneyReach() {
           arriveBy,
           adults: Math.max(1, adults),
           today: localDateToISO(todayLocal()),
-          prefs: protectSleep
-            ? { sleepWeight: 0.4, costWeight: 0.35, timeWeight: 0.25, avoidOvernightSurface: true }
-            : { sleepWeight: 0.15, costWeight: 0.5, timeWeight: 0.35, avoidOvernightSurface: false },
+          prefs: {
+            includeStayCost: includeStay,
+            allowOvernightAsStay: allowOvernightBus,
+            ...(protectSleep
+              ? { sleepWeight: 0.4, costWeight: 0.35, timeWeight: 0.25, avoidOvernightSurface: !allowOvernightBus }
+              : { sleepWeight: 0.15, costWeight: 0.5, timeWeight: 0.35, avoidOvernightSurface: false }),
+          },
         }),
       });
       const data = await res.json();
@@ -161,9 +188,9 @@ export function JourneyReach() {
               Best route tree to your deadline
             </h2>
             <p className="text-sm text-slate-300/90 mt-1 max-w-2xl">
-              Enter destination + arrive-by time. We expand direct flights and via-hub options (e.g. Pune →
-              Mumbai train/cab, then cheaper BOM flights to Dehradun/Delhi), then rank by cost, duration, and
-              night-sleep protection.
+              We only suggest flights with live market departure times, plus known train/bus catalog services.
+              All-in includes hotel nights when you arrive early — or overnight bus as a sleep/hotel substitute
+              (e.g. Delhi → Rishikesh).
             </p>
           </div>
 
@@ -220,15 +247,35 @@ export function JourneyReach() {
                 {searching ? "Exploring routes…" : "Plan routes"}
               </button>
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={protectSleep}
-                onChange={(e) => setProtectSleep(e.target.checked)}
-                className="rounded border-white/20"
-              />
-              Prefer routes that don’t wreck night sleep (23:00–06:00)
-            </label>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={protectSleep}
+                  onChange={(e) => setProtectSleep(e.target.checked)}
+                  className="rounded border-white/20"
+                />
+                Prefer routes that don’t wreck night sleep (23:00–06:00)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeStay}
+                  onChange={(e) => setIncludeStay(e.target.checked)}
+                  className="rounded border-white/20"
+                />
+                Include hotel stay in all-in when you arrive early
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allowOvernightBus}
+                  onChange={(e) => setAllowOvernightBus(e.target.checked)}
+                  className="rounded border-white/20"
+                />
+                Allow overnight bus/train as sleep (skip hotel — e.g. Delhi→Rishikesh)
+              </label>
+            </div>
             {!origin && (
               <p className="text-xs text-slate-400">Home base defaults to Pune if From is empty.</p>
             )}
