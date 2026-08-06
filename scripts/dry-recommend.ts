@@ -339,6 +339,28 @@ const CASES: Case[] = [
     input: { indigoBluChipVoucherInr: 5000 },
   },
   {
+    name: "₹2.2L phone — Amex PT unlocks 1.9L + 4L (not 1.9L only)",
+    query: "new phone purchase",
+    amount: 220000,
+    expect: {
+      bestCard: "amex_plat_travel",
+    },
+    input: {
+      ptccEligibleSpend: 184231,
+      idfcYtdSpend: 800000,
+      sbiYtdSpend: 95000,
+      hsbcLivePlusYtdSpend: 180000,
+    },
+  },
+  {
+    name: "phone purchase asks store (not low-confidence general)",
+    query: "new phone purchase",
+    amount: 50000,
+    expect: {
+      categoryIncludes: /electronics|phone|amazon/i,
+    },
+  },
+  {
     name: "merchant upi payment → UPI rail + IDFC RuPay (not Amex)",
     query: "upi payment",
     amount: 6000,
@@ -489,6 +511,30 @@ function runCase(c: Case) {
       }
       if (/4[,.]?00,?000|₹4\.0|build ₹4/i.test(blob) && !/1[,.]?90/i.test(blob)) {
         errors.push(`Amex PT incorrectly jumped to 4L: ${pt.label}`);
+      }
+    }
+  }
+  // Large phone spend must credit BOTH 1.9L and 4L Amex PT unlocks
+  if (/unlocks 1\.9L \+ 4L/i.test(c.name)) {
+    const pt = rows.find((r) => r.cardId === "amex_plat_travel");
+    if (!pt) errors.push("expected Amex PT on large phone spend");
+    else {
+      const blob = `${pt.label} ${pt.rationale} ${pt.pros.join(" ")}`;
+      if (!/1[,.]?90|190,?000/i.test(blob) || !/4[,.]?00,?000|₹4/i.test(blob)) {
+        errors.push(`Amex PT should cite both 1.9L and 4L, got: ${pt.label} | ${pt.rationale}`);
+      }
+      if (pt.bonusRewardInr < 8000) {
+        errors.push(`Amex PT milestone bonus too small (want ≥₹8.75k for 1.9L+4L): ${pt.bonusRewardInr}`);
+      }
+    }
+    // Ranked list should be descending by ₹ return among feasible rows
+    const feasible = rows.filter((r) => r.feasible !== false);
+    for (let i = 1; i < Math.min(feasible.length, 6); i++) {
+      if (feasible[i].totalRewardInr > feasible[i - 1].totalRewardInr + 50) {
+        errors.push(
+          `rank not descending by ₹ return: #${i} ${feasible[i - 1].cardId} ₹${feasible[i - 1].totalRewardInr.toFixed(0)} < #${i + 1} ${feasible[i].cardId} ₹${feasible[i].totalRewardInr.toFixed(0)}`
+        );
+        break;
       }
     }
   }

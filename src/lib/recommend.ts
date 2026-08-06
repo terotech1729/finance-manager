@@ -282,6 +282,25 @@ function livePlusAccelBucket(merchant: string, category: string, today?: string)
   return null;
 }
 
+function livePlusCashOnTxn(
+  amt: number,
+  input: RecommendInput,
+  accel: boolean
+): { inr: number; pct: number; headroom: number; cappedAccelInr: number } {
+  const used = input.livePlusAccelCashbackUsedThisMonth ?? 0;
+  const headroom = Math.max(0, LIVE_PLUS_ACCEL_CAP_INR - used);
+  if (!accel || amt < 1) {
+    const inr = amt * (LIVE_PLUS_BASE_PCT / 100);
+    return { inr, pct: LIVE_PLUS_BASE_PCT, headroom, cappedAccelInr: 0 };
+  }
+  const uncappedBase = amt * (LIVE_PLUS_ACCEL_PCT / 100);
+  const cappedBase = Math.min(uncappedBase, headroom);
+  const overflow = Math.max(0, uncappedBase - cappedBase);
+  const overflowAtBase = overflow > 0 ? (overflow / LIVE_PLUS_ACCEL_PCT) * LIVE_PLUS_BASE_PCT : 0;
+  const inr = cappedBase + overflowAtBase;
+  return { inr, pct: (inr / amt) * 100, headroom, cappedAccelInr: cappedBase };
+}
+
 function buildLivePlusOption(
   amt: number,
   bucket: "food" | "dining" | "grocery" | "utility" | "shopping",
@@ -1539,10 +1558,11 @@ function ytdForCard(cardId: string, input: RecommendInput): number {
 }
 
 /**
- * Marginal value of pushing THIS spend toward a card's next ANNUAL milestone.
+ * Marginal value of pushing THIS spend toward a card's ANNUAL milestone(s).
  *
- *  1. Completing spend → full unlock value.
- *  2. Otherwise → pro-rata of the FULL threshold (reward × amt/threshold).
+ *  1. Completing spend → full unlock value for EVERY threshold this spend crosses
+ *     (e.g. Amex PT at ₹1.84L + ₹2.2L clears both ₹1.9L and ₹4L — sum both rewards).
+ *  2. Otherwise → pro-rata of the FULL next threshold (reward × amt/threshold).
  *
  * Never use reward×amt/remaining for non-completing spends: when ~₹16k is left on a
  * ₹90k fee-waiver, that formula attributed ~16% on a ₹400 Swiggy order and beat Live+
@@ -1553,7 +1573,7 @@ function annualMilestoneBonus(
   cardId: string,
   input: RecommendInput,
   amt: number
-): { inr: number; note: string; threshold: number; kind: "completing" | "progress" | "close" } | null {
+): { inr: number; note: string; threshold: number; kind: "completing" | "progress" | "close"; thresholds?: number[] } | null {
   const short = getCardById(cardId)?.short ?? cardId;
 
   const scoreGap = (
@@ -1561,7 +1581,7 @@ function annualMilestoneBonus(
     threshold: number,
     reward: number,
     rewardLabel: string
-  ): { inr: number; note: string; threshold: number; kind: "completing" | "progress" | "close" } | null => {
+  ): { inr: number; note: string; threshold: number; kind: "completing" | "progress" | "close"; thresholds?: number[] } | null => {
     if (ytd >= threshold || reward < 1 || amt < 1) return null;
     const remaining = threshold - ytd;
     if (amt >= remaining) {
@@ -1570,6 +1590,7 @@ function annualMilestoneBonus(
         note: `Completes ${short}'s ${inr(threshold)} milestone → unlocks ${rewardLabel} (${inr(reward)})`,
         threshold,
         kind: "completing",
+        thresholds: [threshold],
       };
     }
     const thin = reward * (amt / threshold);
@@ -1609,9 +1630,39 @@ function annualMilestoneBonus(
   // Trust spend first. Ignore stale catalog `m.hit` and stale milestonesHit when YTD is still below the threshold
   // (e.g. Amex PT 1.9L was seeded as hit while till-date was still ~₹1.84L → wrongly jumped to 4L).
   const isUnlocked = (threshold: number) => ytd >= threshold;
+
+  // One large spend can cross several unpaid thresholds — sum every unlock this txn alone delivers.
+  const crossed = ms.filter((m) => !isUnlocked(m.threshold) && ytd + amt >= m.threshold && m.rewardValueInr >= 1);
+  if (crossed.length > 0) {
+    const totalInr = crossed.reduce((s, m) => s + m.rewardValueInr, 0);
+    const thresholds = crossed.map((m) => m.threshold);
+    const parts = crossed.map(
+      (m) => `${inr(m.threshold)} → ${m.reward} (${inr(m.rewardValueInr)})`
+    );
+    return {
+      inr: totalInr,
+      note:
+        crossed.length === 1
+          ? `Completes ${short}'s ${parts[0]}`
+          : `Completes ${short}'s ${crossed.length} milestones in one spend: ${parts.join("; ")} — total unlock ${inr(totalInr)}`,
+      threshold: thresholds[thresholds.length - 1],
+      kind: "completing",
+      thresholds,
+    };
+  }
+
   const next = ms.find((m) => !isUnlocked(m.threshold));
   if (!next) return null;
   return scoreGap(ytd, next.threshold, next.rewardValueInr, next.reward);
+}
+
+function milestoneCompletesLabel(short: string, mb: { kind: string; threshold: number; thresholds?: number[] }): string {
+  if (mb.kind === "completing" && mb.thresholds && mb.thresholds.length > 1) {
+    return `${short} — completes ${mb.thresholds.map((t) => inr(t)).join(" + ")} milestones`;
+  }
+  if (mb.kind === "completing") return `${short} — completes ${inr(mb.threshold)} milestone`;
+  if (mb.kind === "close") return `${short} — near ${inr(mb.threshold)} milestone`;
+  return `${short} — build ${inr(mb.threshold)} milestone`;
 }
 
 /**
@@ -2032,9 +2083,12 @@ export function recommend(input: RecommendInput): RecommendationResult {
       const near = ptSpend >= 350000 || mb.kind === "completing" || mb.kind === "close";
       add({
         cardId: "amex_plat_travel",
-        label: near
-          ? `Amex PT POS — ${mb.kind === "completing" ? "completes" : "near"} ${inr(mb.threshold)} milestone`
-          : `Amex PT POS — build ${inr(mb.threshold)} milestone`,
+        label:
+          mb.kind === "completing"
+            ? milestoneCompletesLabel("Amex PT POS", mb)
+            : near
+              ? `Amex PT POS — near ${inr(mb.threshold)} milestone`
+              : `Amex PT POS — build ${inr(mb.threshold)} milestone`,
         effectivePct: 1.0 + (mb.inr / amt) * 100,
         baseRewardInr: amt * 0.01,
         bonusRewardInr: mb.inr,
@@ -2762,18 +2816,28 @@ export function recommend(input: RecommendInput): RecommendationResult {
       const near = ptSpend >= 350000 || mb.kind === "completing" || mb.kind === "close";
       add({
         cardId: "amex_plat_travel",
-        label: near
-          ? `Amex PT — ${mb.kind === "completing" ? "completes" : "near"} ${inr(mb.threshold)} milestone`
-          : `Amex PT — build ${inr(mb.threshold)} milestone (${mb.kind})`,
+        label:
+          mb.kind === "completing"
+            ? milestoneCompletesLabel("Amex PT", mb)
+            : near
+              ? `Amex PT — near ${inr(mb.threshold)} milestone`
+              : `Amex PT — build ${inr(mb.threshold)} milestone (${mb.kind})`,
         effectivePct: 1.0 + (mb.inr / amt) * 100,
         baseRewardInr: amt * 0.01,
         bonusRewardInr: mb.inr,
         worstCasePct: 1.0,
         bestCasePct: 1.0 + (mb.inr / amt) * 100,
         pros: [mb.note],
-        cons: ["Excludes fuel/insurance/utilities/cash/EMI", "MR is flexible but needs redemption"],
+        cons: ["Excludes fuel/insurance/utilities/cash/EMI — if checkout is EMI, Amex may not count", "MR is flexible but needs redemption"],
         rationale: mb.note,
-        steps: [`Pay ${inr(amt)} with Amex PT`, `Builds toward ${inr(mb.threshold)}`],
+        steps: [
+          `Pay ${inr(amt)} with Amex PT (full amount, not EMI if chasing milestones)`,
+          mb.thresholds && mb.thresholds.length > 1
+            ? `Unlocks ${mb.thresholds.map((t) => inr(t)).join(" + ")} milestones in one swipe`
+            : mb.kind === "completing"
+              ? `Completes ${inr(mb.threshold)} milestone`
+              : `Builds toward ${inr(mb.threshold)}`,
+        ],
       });
     }
   }
@@ -2915,10 +2979,15 @@ function genericCardEval(
     case "hsbc_live_plus": {
       const bucket = livePlusAccelBucket(merch, cat, input.today);
       if (bucket) {
+        const txnAmt = input.amount || 0;
+        const cash = livePlusCashOnTxn(txnAmt, input, true);
         return {
-          pct: LIVE_PLUS_ACCEL_PCT,
+          pct: cash.pct,
           label: "HSBC Live+",
-          reason: `10% accelerated on ${bucket} (shared ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo cap). Category rule should have ranked this already if it's the best route.`,
+          reason:
+            txnAmt > 0 && cash.headroom < txnAmt * (LIVE_PLUS_ACCEL_PCT / 100)
+              ? `10% on ${bucket} but only ~₹${Math.round(cash.headroom)} of the shared ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo cap left — rest at ${LIVE_PLUS_BASE_PCT}% (≈${cash.pct.toFixed(2)}% blended on this txn).`
+              : `10% accelerated on ${bucket} (shared ₹${LIVE_PLUS_ACCEL_CAP_INR.toLocaleString("en-IN")}/mo cap).`,
         };
       }
       if (isLivePlusMarketplaceExcluded(merch, cat, input.today)) {
@@ -3280,7 +3349,12 @@ function finalize(
         existing.effectivePct = amt > 0 ? (existing.totalRewardInr / amt) * 100 : existing.effectivePct;
         existing.pros = [...existing.pros, mb.note];
         if (!/milestone/i.test(existing.label)) {
-          existing.label = `${existing.label} · +${inr(mb.threshold)} milestone`;
+          existing.label =
+            mb.thresholds && mb.thresholds.length > 1
+              ? `${existing.label} · +${mb.thresholds.map((t) => inr(t)).join(" + ")} milestones`
+              : `${existing.label} · +${inr(mb.threshold)} milestone`;
+        } else if (mb.thresholds && mb.thresholds.length > 1 && mb.kind === "completing") {
+          existing.label = milestoneCompletesLabel(getCardById(cardId)?.short ?? cardId, mb);
         }
         continue;
       }
@@ -3292,9 +3366,7 @@ function finalize(
       const short = getCardById(cardId)?.short ?? cardId;
       options.push(mkOption(amt, {
         cardId,
-        label: mb.kind === "completing"
-          ? `${short} — completes ${inr(mb.threshold)} annual milestone`
-          : `${short} — build ${inr(mb.threshold)} annual milestone`,
+        label: milestoneCompletesLabel(short, mb).replace(" milestone", " annual milestone").replace(" milestones", " annual milestones"),
         effectivePct: eff,
         baseRewardInr: (amt * basePct) / 100,
         bonusRewardInr: mb.inr,
@@ -3305,7 +3377,12 @@ function finalize(
             ? [`This spend alone won't unlock — need ≥${inr(mb.threshold - ytdForCard(cardId, input))} more`]
             : ["Annual-milestone value assumes you'll actually reach the threshold this cycle"],
         rationale: `Routing this to ${short}: ${mb.note}`,
-        steps: [`Pay with ${short}`, `Builds toward the ${inr(mb.threshold)} annual milestone`],
+        steps: [
+          `Pay with ${short}`,
+          mb.thresholds && mb.thresholds.length > 1
+            ? `Unlocks ${mb.thresholds.map((t) => inr(t)).join(" + ")} annual milestones`
+            : `Builds toward the ${inr(mb.threshold)} annual milestone`,
+        ],
       }));
     }
   }
@@ -3375,8 +3452,10 @@ function finalize(
     }
   }
 
-  // Tag each option with liquidity + a redemption range, then rank by a LIQUIDITY-WEIGHTED
-  // score so travel-locked coins (Scapia/BluChips) don't out-rank equal-nominal liquid cash.
+  // Tag each option with liquidity + a redemption range, then rank by ₹ return
+  // (matches the Return column). Liquidity is a near-tie breaker only — locked
+  // BluChips/Scapia coins used to dunk a higher-₹ row below a lower cash row and
+  // made the list look "out of order" vs the % shown.
   const LIQ_WEIGHT: Record<string, number> = { cash: 1.0, flexible: 0.9, locked: 0.7 };
   const unique = dedupeGiftCardOptions(options);
   // Keep distinct stacks per card (Agoda vs Booking vs Visa portal; CRED PVR vs Cinepolis).
@@ -3418,6 +3497,11 @@ function finalize(
   const score = (o: RouteOption) => o.totalRewardInr * (LIQ_WEIGHT[o.liquidity ?? "cash"] ?? 1);
   const ranked = [...deduped].sort((a, b) => {
     if (a.feasible !== b.feasible) return a.feasible ? -1 : 1;
+    // Primary: rupee return (same number the Return column shows)
+    const dInr = b.totalRewardInr - a.totalRewardInr;
+    const band = Math.max(25, 0.03 * Math.max(a.totalRewardInr, b.totalRewardInr, 1));
+    if (Math.abs(dInr) > band) return dInr;
+    // Near-ties: prefer more liquid rewards (cash > flexible MR > travel-locked)
     return score(b) - score(a);
   });
 

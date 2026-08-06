@@ -573,6 +573,44 @@ export function detectCategory(merchant: string): CategoryDetection {
     };
   }
 
+  // Phone / laptop / gadget — ask store (Amazon 5% often beats milestone fillers on big tickets).
+  if (
+    /\b(iphone|ipad|macbook|pixel|oneplus|samsung\s*galaxy|smartphone|mobile\s*phone|new\s*phone|phone\s*purchase|laptop|gadget|electronics)\b/.test(t) &&
+    !/\brecharge|bill|prepaid|postpaid\b/.test(t)
+  ) {
+    const offline = /\boffline|croma|vijay\s*sales|reliance\s*digital|store\b/.test(t);
+    if (offline || /\bcroma\b|\bvijay\s*sales\b|reliance\s*digital/.test(t)) {
+      return {
+        category: "electronics (offline)",
+        prettyLabel: "Electronics store",
+        channel: "offline_pos",
+        confidence: "high",
+      };
+    }
+    if (/\bamazon\b/.test(t)) {
+      return { category: "amazon electronics", prettyLabel: "Amazon electronics", channel: "online", confidence: "high" };
+    }
+    if (/\bflipkart\b/.test(t)) {
+      return { category: "flipkart (fashion)", prettyLabel: "Flipkart", channel: "online", confidence: "high" };
+    }
+    return {
+      category: "electronics",
+      prettyLabel: "Electronics / phone",
+      channel: "online",
+      confidence: "medium",
+      clarification: {
+        id: "electronics_store",
+        question: "Where are you buying the phone / gadget?",
+        options: [
+          { value: "amazon", label: "Amazon.in", category: "amazon electronics", channel: "online" },
+          { value: "flipkart", label: "Flipkart", category: "flipkart (fashion)", channel: "online" },
+          { value: "croma", label: "Croma / Reliance Digital / Vijay Sales (store or site)", category: "electronics (offline)", channel: "offline_pos" },
+          { value: "other", label: "Other / brand site / EMI", category: "electronics", channel: "online" },
+        ],
+      },
+    };
+  }
+
   return { category: "general", prettyLabel: raw, channel: "online", confidence: "low" };
 }
 
@@ -580,6 +618,8 @@ export const ALL_CATEGORIES = [
   "general",
   "amazon (general)",
   "amazon electronics",
+  "electronics",
+  "electronics (offline)",
   "flipkart (fashion)",
   "myntra",
   "ajio",
