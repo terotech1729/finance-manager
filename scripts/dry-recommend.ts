@@ -426,6 +426,20 @@ const CASES: Case[] = [
       idfcYtdSpend: 800000,
     },
   },
+  {
+    name: "Kiwi Neon true-up — not 5% on the txn (₹2.2L past ₹1.5L)",
+    query: "restaurant upi",
+    amount: 220000,
+    expect: {
+      channel: "upi",
+      bestCard: ["hsbc_live_plus", "amex_plat_travel", "bob_eterna", "yes_kiwi", "idfc_indigo"],
+      bestLabelAvoid: /~5\.0%|5% with Neon|Neon completing milestone\)/i,
+    },
+    input: {
+      kiwiNeonCycleSpend: 79243, // ₹20,757 short of ₹1L — big spend crosses 1L + 1.5L
+      ptccEligibleSpend: 184231,
+    },
+  },
 ];
 
 let failed = 0;
@@ -589,6 +603,26 @@ function runCase(c: Case) {
       // Dual milestone ₹8750 − 3.5% of 220k (₹7700) ≈ +₹1250 net → should beat Scapia 0
       if (pt && pt.bonusRewardInr >= 8000 && pt.totalRewardInr <= 0) {
         errors.push(`Amex with dual milestones should stay net-positive after 3.5%: got ₹${pt.totalRewardInr}`);
+      }
+    }
+  }
+  // Neon: 5% is YTD true-up, not rate on this txn; after ₹1.5L remainder is 2%
+  if (/Neon true-up/i.test(c.name)) {
+    const kiwi = rows.find((r) => r.cardId === "yes_kiwi");
+    if (!kiwi) errors.push("expected Kiwi row");
+    else {
+      if (kiwi.effectivePct >= 4.9) {
+        errors.push(`Kiwi scored ${kiwi.effectivePct}% — must not treat txn as flat ~5% Neon`);
+      }
+      // Expected ~3.69%: 2% on 2.2L + true-ups capped at 5% on first ₹1.5L only
+      if (kiwi.effectivePct > 4.0 || kiwi.totalRewardInr > 10000) {
+        errors.push(`Kiwi too high after true-up fix: ${kiwi.effectivePct}% / ₹${kiwi.totalRewardInr.toFixed(0)}`);
+      }
+      if (Math.abs(kiwi.baseRewardInr - 220000 * 0.02) > 1) {
+        errors.push(`Kiwi base should be 2% instant (₹4400), got ₹${kiwi.baseRewardInr.toFixed(0)}`);
+      }
+      if (!/true-up|already earned|2% after/i.test(`${kiwi.label} ${kiwi.rationale} ${kiwi.pros.join(" ")} ${kiwi.cons.join(" ")}`)) {
+        errors.push(`Kiwi copy should explain true-up, got: ${kiwi.label} | ${kiwi.rationale}`);
       }
     }
   }

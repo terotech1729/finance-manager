@@ -1725,10 +1725,36 @@ function scapiaExcluded(cat: string, merchant: string): { excluded: boolean; rea
 }
 
 /**
+ * Kiwi Neon lifetime cashback if eligible YTD is `ytd` (scan & pay path).
+ * Per https://gokiwi.in/neon/neon2/ :
+ *  - Instant: 2% on scan & pay
+ *  - Milestones are TRUE-UPS, not a higher rate on the completing txn:
+ *      M1 ₹50k → 3% of eligible YTD − CB already earned
+ *      M2 ₹1L  → 4% of eligible YTD − CB already earned
+ *      M3 ₹1.5L → 5% of eligible YTD − CB already earned
+ *  After M3, further spends only earn the ongoing 2% instant (not 5% on the whole pile).
+ */
+function neonLifetimeCashbackInr(ytd: number): number {
+  if (ytd <= 0) return 0;
+  if (ytd < 50000) return ytd * 0.02;
+  if (ytd < 100000) return ytd * 0.03;
+  if (ytd < 150000) return ytd * 0.04;
+  return 150000 * 0.05 + (ytd - 150000) * 0.02;
+}
+
+function neonRateLabel(ytd: number): string {
+  if (ytd >= 150000) return "5% true-up on first ₹1.5L + 2% after";
+  if (ytd >= 100000) return "4% true-up on eligible YTD";
+  if (ytd >= 50000) return "3% true-up on eligible YTD";
+  return "2% instant only (no milestone yet)";
+}
+
+/**
  * Build the Kiwi route option with correct Neon mechanics:
  *  - exclusion-aware (0% + reason for excluded MCCs)
  *  - 2% on in-person UPI scan & pay; 0.5% on online redirect
- *  - milestone top-up upside (3/5/7% marginal) based on current Neon cycle spend
+ *  - milestone value = lifetime CB after this spend − lifetime CB before
+ *    (true-up minus cashback already earned — NOT “5% on this txn”)
  */
 function buildKiwiOption(input: RecommendInput, amt: number): RouteOption {
   const cat = (input.category || "").toLowerCase();
@@ -1773,9 +1799,6 @@ function buildKiwiOption(input: RecommendInput, amt: number): RouteOption {
     });
   }
 
-  // In-person / merchant-app / explicit UPI → scan & pay 2%, with milestone upside
-  // only when THIS spend completes the next Neon tier OR you're within ₹10k of it.
-  // Early-cycle (e.g. ₹0 of ₹50k) must not score every UPI at ~3% EV.
   // Kiwi cashback floor is ₹500 — below that, don't advertise 2%.
   if (amt < 500) {
     return opt({
@@ -1794,60 +1817,67 @@ function buildKiwiOption(input: RecommendInput, amt: number): RouteOption {
     });
   }
 
-  const k = input.kiwiNeonCycleSpend ?? 0;
-  let nextThreshold = 0;
-  let targetMarginal = 2;
-  let mileNote = "";
-  if (k < 50000) {
-    nextThreshold = 50000;
-    targetMarginal = 3;
-    mileNote = `Counts toward Neon ₹50K milestone (₹${Math.round(k).toLocaleString("en-IN")}/₹50K this cycle). Hitting ₹50K retroactively lifts eligible spends to 3%.`;
+  const k = Math.max(0, input.kiwiNeonCycleSpend ?? 0);
+  const after = k + amt;
+  const beforeCb = neonLifetimeCashbackInr(k);
+  const afterCb = neonLifetimeCashbackInr(after);
+  const marginalInr = Math.max(0, afterCb - beforeCb);
+  const instantInr = amt * 0.02;
+  // True-up only (milestone credit ≈ rate×YTD − CB already earned). Never treat as “5% on this txn”.
+  const trueUpInr = Math.max(0, marginalInr - instantInr);
+  const effective = amt > 0 ? (marginalInr / amt) * 100 : 0;
+
+  const crossed: string[] = [];
+  if (k < 50000 && after >= 50000) crossed.push("₹50k → 3% true-up");
+  if (k < 100000 && after >= 100000) crossed.push("₹1L → 4% true-up");
+  if (k < 150000 && after >= 150000) crossed.push("₹1.5L → 5% true-up");
+
+  let mileNote: string;
+  if (k >= 150000) {
+    mileNote = "All three Neon milestones already cleared — this txn earns flat 2% instant only (not 5%).";
+  } else if (crossed.length) {
+    mileNote = `Neon milestone true-up on crossing ${crossed.join(" + ")}: credit = milestone% × eligible YTD − cashback already earned (incl. your ongoing 2%). Not ${crossed.includes("₹1.5L → 5% true-up") ? "5%" : "a higher %"} on this txn alone. Spends after ₹1.5L stay at 2%.`;
+  } else if (k < 50000) {
+    mileNote = `Toward Neon ₹50k (₹${Math.round(k).toLocaleString("en-IN")}/₹50k). Ranking uses 2% instant until you actually complete a threshold.`;
   } else if (k < 100000) {
-    nextThreshold = 100000;
-    targetMarginal = 5;
-    mileNote = `Past ₹50K — next ₹${(100000 - k).toLocaleString("en-IN")} toward ₹1L unlocks ~5% effective once milestone 2 credits.`;
-  } else if (k < 150000) {
-    nextThreshold = 150000;
-    targetMarginal = 7;
-    mileNote = `Past ₹1L — next ₹${(150000 - k).toLocaleString("en-IN")} toward ₹1.5L unlocks ~7% effective once milestone 3 credits.`;
+    mileNote = `Past ₹50k (3% true-up done). Next ₹${Math.round(100000 - k).toLocaleString("en-IN")} to ₹1L unlocks a 4% YTD true-up (minus CB already earned) — not 5% on this txn.`;
   } else {
-    mileNote = "All three Neon milestones cleared this cycle → flat 2%.";
+    mileNote = `Past ₹1L (4% true-up done). Next ₹${Math.round(150000 - k).toLocaleString("en-IN")} to ₹1.5L unlocks a 5% YTD true-up (minus CB already earned). Further spends after that stay at 2%.`;
   }
 
-  const remaining = nextThreshold > 0 ? nextThreshold - k : 0;
-  const upliftPct = Math.max(0, targetMarginal - 2);
-  const completing = nextThreshold > 0 && amt >= remaining;
-  const close = nextThreshold > 0 && remaining > 0 && remaining <= 10000;
-  const creditedUplift = completing ? upliftPct : close ? upliftPct * (amt / remaining) : 0;
-  const effective = 2 + creditedUplift;
-  const baseInr = amt * 0.02;
-  const milestoneInr = amt * (creditedUplift / 100);
+  const completing = crossed.length > 0;
 
   return opt({
-    label: creditedUplift > 0
-      ? `YES Bank Kiwi — UPI scan & pay (~${effective.toFixed(1)}% with Neon ${completing ? "completing" : "near"} milestone)`
+    label: completing
+      ? `YES Bank Kiwi — UPI scan & pay (2% + Neon true-up ₹${Math.round(trueUpInr).toLocaleString("en-IN")})`
       : "YES Bank Kiwi — UPI scan & pay (2%)",
     effectivePct: +effective.toFixed(2),
-    baseRewardInr: baseInr,
-    bonusRewardInr: milestoneInr,
+    baseRewardInr: instantInr,
+    bonusRewardInr: trueUpInr,
     worstCasePct: 2.0,
-    bestCasePct: targetMarginal,
+    bestCasePct: +effective.toFixed(2),
     pros: [
-      `2% instant${creditedUplift > 0 ? ` + Neon uplift → ~${effective.toFixed(1)}% on this spend` : ""} (1 Kiwi = ₹0.25, cashable)`,
+      "2% instant on scan & pay (1 Kiwi = ₹0.25, cashable)",
       mileNote,
-    ],
-    cons: amt < 100
-      ? ["Kiwis accrue per ₹100 slab; sub-₹100 rounds down"]
-      : (targetMarginal > 2 && creditedUplift === 0
-        ? [`Next Neon uplift (~${targetMarginal}%) only ranks once you're within ₹10k of the threshold or this spend completes it`]
-        : (creditedUplift > 0 && !completing ? ["Near-miss uplift is pro-rata — full ~" + targetMarginal + "% only when the milestone actually credits"] : [])),
+      completing
+        ? `This spend’s total Kiwi value ≈ ${inr(marginalInr)} (= 2% on txn ${inr(instantInr)} + true-up ${inr(trueUpInr)}); post-milestone YTD state: ${neonRateLabel(after)}`
+        : "",
+    ].filter(Boolean),
+    cons: [
+      "Neon 3%/4%/5% is a year true-up on eligible spends minus CB already earned — never a flat 5% on one purchase",
+      completing && after > 150000
+        ? `Only the first ₹1.5L gets the 5% true-up; ₹${Math.round(after - 150000).toLocaleString("en-IN")} of this path earns 2% only`
+        : "",
+    ].filter(Boolean),
     steps: [
       "Open the Kiwi app",
       "Scan the merchant's UPI QR (or enter UPI ID)",
       `Pay ${inr(amt)} via Kiwi (RuPay credit card on UPI)`,
-      `Earn 2% now; the spend counts toward Neon milestones (best case ~${targetMarginal}% once the next threshold credits)`,
+      completing
+        ? `Earn 2% now; Neon true-up (~${inr(trueUpInr)}) credits ~30 days after the milestone month (per Kiwi T&Cs)`
+        : "Earn 2% now; counts toward Neon ₹50k / ₹1L / ₹1.5L true-up thresholds",
     ],
-    rationale: `Kiwi UPI scan & pay guarantees 2% cashable. ${mileNote}${creditedUplift > 0 ? ` This spend is credited with Neon uplift in ranking because you're ${completing ? "completing" : "near"} the next threshold.` : " Ranking uses 2% until you're near / completing the next Neon tier (best-case column shows the uplift)."}`,
+    rationale: `Kiwi scan & pay = 2% instant. ${mileNote}`,
   });
 }
 
@@ -3707,7 +3737,7 @@ function finalize(
     if (feeder) {
       const giveUp = Math.max(0, +(best.effectivePct - feeder.effectivePct).toFixed(2));
       const why = feeder.cardId === "yes_kiwi"
-        ? "progresses your Kiwi Neon cycle toward the 3% / 4% / 5% + lounge milestones"
+        ? "progresses your Kiwi Neon cycle toward the 3% / 4% / 5% YTD true-up milestones (minus CB already earned)"
         : (feeder.pros.find((p) => /milestone|welcome|cycle|fills|completes|builds/i.test(p)) || feeder.rationale || "progresses a milestone");
       milestoneTip = {
         cardId: feeder.cardId,
