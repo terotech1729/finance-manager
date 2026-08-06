@@ -2112,14 +2112,15 @@ export function recommend(input: RecommendInput): RecommendationResult {
       ],
     });
 
-    // Amex PT — 1% MR + annual milestones (finalize subtracts 3.5% forex)
+    // Amex PT — 1% MR + completing annual milestones only (finalize subtracts 3.5% forex)
     if (!amexExcluded(input.category || "")) {
       const mb = annualMilestoneBonus("amex_plat_travel", input, amt);
-      const bonus = mb?.inr ?? 0;
+      const mbUse = mb && mb.kind === "completing" ? mb : null;
+      const bonus = mbUse?.inr ?? 0;
       add({
         cardId: "amex_plat_travel",
-        label: mb
-          ? milestoneCompletesLabel("Amex PT", mb)
+        label: mbUse
+          ? milestoneCompletesLabel("Amex PT", mbUse)
           : "Amex PT (1% MR abroad)",
         effectivePct: 1.0 + (bonus / amt) * 100,
         baseRewardInr: amt * 0.01,
@@ -2127,31 +2128,32 @@ export function recommend(input: RecommendInput): RecommendationResult {
         worstCasePct: 1.0,
         bestCasePct: 1.0 + (bonus / amt) * 100,
         pros: [
-          mb?.note ?? "~1% MR on eligible foreign spends",
+          mbUse?.note ?? "~1% MR on eligible foreign spends",
           "Only worth it if rewards beat the 3.5% forex fee (netted below)",
         ],
         cons: ["3.5% forex markup", "Acceptance spotty abroad vs Visa/MC"],
-        rationale: mb
-          ? `${mb.note} Abroad: net = rewards − 3.5% forex.`
-          : "Amex abroad earns ~1% MR but pays 3.5% forex — usually net negative vs Scapia unless a milestone unlock is large enough.",
+        rationale: mbUse
+          ? `${mbUse.note} Abroad: net = rewards − 3.5% forex.`
+          : "Amex abroad earns ~1% MR but pays 3.5% forex — usually net negative vs Scapia/BOB unless a milestone unlock is large enough.",
         steps: [
           `Pay ${inr(amt)} with Amex PT (foreign currency)`,
-          mb?.thresholds && mb.thresholds.length > 1
-            ? `Unlocks ${mb.thresholds.map((t) => inr(t)).join(" + ")} milestones — confirm net after 3.5% forex still wins`
-            : "Compare net return after 3.5% forex vs Scapia 0%",
+          mbUse?.thresholds && mbUse.thresholds.length > 1
+            ? `Unlocks ${mbUse.thresholds.map((t) => inr(t)).join(" + ")} milestones — confirm net after 3.5% forex still wins`
+            : "Compare net return after 3.5% forex vs Scapia 0% / BOB intl",
         ],
       });
     }
 
-    // IDFC — BluChips + milestones (finalize subtracts 1.49%)
+    // IDFC — BluChips + completing milestones only (finalize subtracts 1.49%)
     {
       const mb = annualMilestoneBonus("idfc_indigo", input, amt);
+      const mbUse = mb && mb.kind === "completing" ? mb : null;
       const basePct = 3 * 0.45; // typical non-IndiGo earn abroad
-      const bonus = mb?.inr ?? 0;
+      const bonus = mbUse?.inr ?? 0;
       add({
         cardId: "idfc_indigo",
-        label: mb
-          ? milestoneCompletesLabel("IDFC Indigo", mb)
+        label: mbUse
+          ? milestoneCompletesLabel("IDFC Indigo", mbUse)
           : "IDFC Indigo (BluChips abroad)",
         effectivePct: basePct + (bonus / amt) * 100,
         baseRewardInr: amt * (basePct / 100),
@@ -2159,13 +2161,13 @@ export function recommend(input: RecommendInput): RecommendationResult {
         worstCasePct: basePct,
         bestCasePct: basePct + (bonus / amt) * 100,
         pros: [
-          mb?.note ?? `~${basePct.toFixed(2)}% as BluChips on eligible foreign spends`,
+          mbUse?.note ?? `~${basePct.toFixed(2)}% as BluChips on eligible foreign spends`,
           "Lower forex (1.49%) than Amex 3.5% — better backup if Scapia declines",
         ],
         cons: ["1.49% forex markup", "BluChips travel-locked to IndiGo"],
-        rationale: mb
-          ? `${mb.note} Abroad: net = BluChips value − 1.49% forex.`
-          : "IDFC 1.49% forex is better than Amex, but Scapia's 0% still wins unless milestone value exceeds the fee.",
+        rationale: mbUse
+          ? `${mbUse.note} Abroad: net = BluChips value − 1.49% forex.`
+          : "IDFC 1.49% forex is better than Amex, but Scapia/BOB still usually win unless a milestone unlock exceeds the fee.",
         steps: [`Pay with IDFC Indigo Mastercard (not RuPay) abroad`, "Confirm net after 1.49% forex"],
       });
     }
