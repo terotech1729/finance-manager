@@ -257,6 +257,31 @@ export function detectCategory(merchant: string): CategoryDetection {
   const brand = detectBrand(t);
   const intent = detectTravelIntent(t);
 
+  // Explicit forex / foreign-currency keywords win over brand/travel (e.g. "foreign hotel usd").
+  if (
+    /\b(usd|eur|gbp|aed|sgd|jpy|forex|foreign\s*currency|intl\s*pos|international\s*(pos|spend|txn))\b/.test(t) ||
+    /\b(openai|chatgpt|claude\.ai|anthropic|netflix|spotify)\b/.test(t) ||
+    /\bamazon\.com\b/.test(t)
+  ) {
+    // Keep merchant context when present (hotel/saas) but force foreign rail.
+    if (/\bhotel\b|booking|agoda|marriott|hilton|hyatt/.test(t)) {
+      return {
+        category: "hotel (foreign currency)",
+        prettyLabel: "Hotel (foreign currency)",
+        channel: "foreign",
+        confidence: "high",
+        forex: true,
+      };
+    }
+    return {
+      category: "online subscription / foreign",
+      prettyLabel: "Foreign / SaaS / non-INR",
+      channel: "foreign",
+      confidence: "high",
+      forex: true,
+    };
+  }
+
   // ---- Payment-rail keywords (before brand/travel) ----
   // Merchant UPI / VPA / "upi payment" — not card POS, not online CNP.
   const upiIntent =

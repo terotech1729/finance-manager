@@ -403,9 +403,36 @@ const CASES: Case[] = [
       bestLabelAvoid: /booking\.com|cleartrip hotels/i,
     },
   },
+  {
+    name: "small forex → Scapia/BOB beat Amex PT after markup (no big milestone)",
+    query: "openai chatgpt usd",
+    amount: 2000,
+    expect: {
+      channel: "foreign",
+      bestCard: ["scapia", "bob_eterna"],
+      bestLabelAvoid: /amex pt|platinum travel/i,
+    },
+  },
+  {
+    name: "large forex + Amex milestones can beat Scapia after netting 3.5%",
+    query: "foreign hotel usd",
+    amount: 220000,
+    expect: {
+      channel: "foreign",
+      bestCard: ["amex_plat_travel", "bob_eterna", "scapia", "idfc_indigo"],
+    },
+    input: {
+      ptccEligibleSpend: 184231,
+      idfcYtdSpend: 800000,
+    },
+  },
 ];
 
 let failed = 0;
+
+function cardLikelyHasForex(cardId: string): boolean {
+  return ["amex_gold", "amex_plat_travel", "amex_mrcc", "idfc_indigo", "bob_eterna", "hsbc_live_plus", "sbi_simplyclick", "yes_kiwi", "amazon_pay_icici"].includes(cardId);
+}
 
 function runCase(c: Case) {
   const det = detectCategory(c.query);
@@ -535,6 +562,33 @@ function runCase(c: Case) {
           `rank not descending by ₹ return: #${i} ${feasible[i - 1].cardId} ₹${feasible[i - 1].totalRewardInr.toFixed(0)} < #${i + 1} ${feasible[i].cardId} ₹${feasible[i].totalRewardInr.toFixed(0)}`
         );
         break;
+      }
+    }
+  }
+  // Forex: every non-Scapia credit route should show forex netting; Amex must not ignore 3.5%
+  if (/forex/i.test(c.name) || det.channel === "foreign" && /usd|foreign|openai/i.test(c.query)) {
+    const fxRows = rows.filter((r) => !["scapia", "upi", "cash"].includes(r.cardId) && r.feasible !== false);
+    for (const r of fxRows.slice(0, 5)) {
+      const blob = `${r.label} ${r.cons.join(" ")}`;
+      if (!/forex|markup/i.test(blob) && cardLikelyHasForex(r.cardId)) {
+        errors.push(`forex netting missing on ${r.cardId}: ${r.label}`);
+      }
+    }
+    if (/small forex/i.test(c.name)) {
+      const pt = rows.find((r) => r.cardId === "amex_plat_travel");
+      if (pt && best.cardId === "amex_plat_travel") {
+        errors.push(`small forex should not crown Amex PT (net ₹${Number(pt.totalRewardInr).toFixed(0)})`);
+      }
+    }
+    if (/large forex/i.test(c.name)) {
+      const pt = rows.find((r) => r.cardId === "amex_plat_travel");
+      if (!pt) errors.push("expected Amex PT row on large forex");
+      else if (!/3\.5%|net after/i.test(`${pt.label} ${pt.cons.join(" ")}`)) {
+        errors.push(`large forex Amex should show 3.5% netting: ${pt.label}`);
+      }
+      // Dual milestone ₹8750 − 3.5% of 220k (₹7700) ≈ +₹1250 net → should beat Scapia 0
+      if (pt && pt.bonusRewardInr >= 8000 && pt.totalRewardInr <= 0) {
+        errors.push(`Amex with dual milestones should stay net-positive after 3.5%: got ₹${pt.totalRewardInr}`);
       }
     }
   }
