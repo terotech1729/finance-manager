@@ -10,8 +10,9 @@ export default function TravelPage() {
       <div>
         <h1 className="page-title">Travel</h1>
         <p className="page-sub">
-          Flights, trains, buses — search like a booking site, then book the <span className="text-fg">lowest all-in</span> path
-          after Instant Discount, Cashkaro, and your cards.
+          Book a single mode with Instant Discount + card stacks, or use{" "}
+          <span className="text-fg">Reach by</span> for multi-leg route trees (via Mumbai hubs, sleep-friendly
+          timing, cost vs time).
         </p>
       </div>
       <TravelAssistant onLogged={() => setRefreshKey((k) => k + 1)} />
