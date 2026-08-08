@@ -12,6 +12,7 @@ type Expect = {
   categoryIncludes?: string | RegExp;
   bestCard?: string | string[];
   bestLabelAvoid?: RegExp;
+  bestLabelIncludes?: RegExp;
   /** Best route steps should mention POS swipe for offline dining */
   stepsMatch?: RegExp;
   /** Every credit-like route must carry ifCardNotAllowed */
@@ -159,15 +160,29 @@ const CASES: Case[] = [
 
   // —— Online daily (sanity) ——
   {
-    name: "Swiggy → Live+ food, no CRED GC ask noise",
+    name: "Swiggy small + Gold open → batch ShopWise ₹1k (fee recovery)",
+    query: "Swiggy",
+    amount: 400,
+    expect: {
+      channel: "merchant_app",
+      bestCard: "amex_gold",
+      bestLabelIncludes: /Batch ShopWise/i,
+      bestLabelAvoid: /dine with visa/i,
+      requireDeclinedFallback: true,
+    },
+    input: { goldMonthlyTxnsDone: 2, goldShopwiseUsedThisMonth: 0 },
+  },
+  {
+    name: "Swiggy small + Gold done → Live+ food (no batch)",
     query: "Swiggy",
     amount: 400,
     expect: {
       channel: "merchant_app",
       bestCard: "hsbc_live_plus",
-      bestLabelAvoid: /dine with visa/i,
+      bestLabelAvoid: /dine with visa|Batch ShopWise/i,
       requireDeclinedFallback: true,
     },
+    input: { goldMonthlyTxnsDone: 6, goldShopwiseUsedThisMonth: 6000 },
   },
   {
     name: "Amazon Now → Amazon Pay ICICI",
@@ -299,14 +314,19 @@ const CASES: Case[] = [
     },
   },
   {
-    name: "Swiggy Live+ still beats MRCC annual thin",
+    name: "Swiggy Live+ beats MRCC annual thin when Gold done",
     query: "Swiggy",
     amount: 400,
     expect: {
       bestCard: "hsbc_live_plus",
       requireDeclinedFallback: true,
     },
-    input: { mrcc20kEnrolled: false, mrccCycleSpend: 73708 },
+    input: {
+      mrcc20kEnrolled: false,
+      mrccCycleSpend: 73708,
+      goldMonthlyTxnsDone: 6,
+      goldShopwiseUsedThisMonth: 6000,
+    },
   },
   {
     name: "Amex PT near milestone → ifAmexNotAccepted is non-Amex",
@@ -486,6 +506,9 @@ function runCase(c: Case) {
   }
   if (c.expect.bestLabelAvoid && c.expect.bestLabelAvoid.test(best.label)) {
     errors.push(`bestLabelAvoid: label matched forbidden pattern: ${best.label}`);
+  }
+  if (c.expect.bestLabelIncludes && !c.expect.bestLabelIncludes.test(best.label)) {
+    errors.push(`bestLabelIncludes: label "${best.label}" did not match ${c.expect.bestLabelIncludes}`);
   }
   if (c.expect.stepsMatch) {
     const steps = best.steps.join(" | ");

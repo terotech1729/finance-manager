@@ -2559,29 +2559,83 @@ export function recommend(input: RecommendInput): RecommendationResult {
       steps: ["Open Swiggy", "Pay with BOB Eterna"],
     });
     {
-      const goldB = goldMilestoneBonus(input, amt);
-      const goldInr = goldB?.inr ?? 0;
-      const netPct = SHOPWISE_NET_PCT + (goldInr / amt) * 100;
-      add({
-        cardId: "amex_gold",
-        label: goldB
-          ? `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) + Gold milestone`
-          : `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) — Gold 6×₹1k milestone`,
-        effectivePct: netPct,
-        baseRewardInr: amt * (SHOPWISE_NET_PCT / 100),
-        bonusRewardInr: goldInr,
-        pros: [
-          `~${SHOPWISE_NET_PCT}% net + counts as a Gold ≥₹1k txn`,
-          "Uses Swiggy spend you already make — no Amazon Pay pile-up",
-          goldB ? goldB.note : "",
-        ].filter(Boolean),
-        cons: [
-          "Worse yield than HSBC Live+ 10% unless milestone value tips it",
-          "Only use this slice for Gold milestone; put leftover Swiggy on Live+",
-        ],
-        rationale: "Amex Gold milestone fuel should be ShopWise Swiggy vouchers (meals you already order), NOT Amazon Pay vouchers.",
-        steps: ["Open ShopWise", "Buy Swiggy voucher ≥₹1k with Amex Gold (up to 6 separate days)", "Redeem in Swiggy for meals you'd buy anyway"],
-      });
+      const goldDone = input.goldThisMonthTxnsAt1k ?? input.goldMonthlyTxnsDone ?? 0;
+      const goldOpen = goldDone < 6;
+      const shopwiseLeft = 10000 - (input.goldShopwiseUsedThisMonth ?? 0);
+      const daysLeft = daysLeftInMonth(input.today);
+      const goldNeed = Math.max(0, 6 - goldDone);
+
+      // Sub-₹1k cart: Live+ wins on THIS txn yield, but Gold fee recovery needs ≥₹1k ShopWise
+      // vouchers. Surface a batch ₹1k Swiggy voucher (covers this meal + next) so Amex can rank.
+      if (amt < 1000 && goldOpen && shopwiseLeft >= 1000 && goldNeed <= daysLeft + 1) {
+        const voucher = 1000;
+        const goldB = goldMilestoneBonus(input, voucher);
+        const goldInr = goldB?.inr ?? 0;
+        const base = voucher * (SHOPWISE_NET_PCT / 100);
+        const total = base + goldInr;
+        add({
+          cardId: "amex_gold",
+          label: `Batch ShopWise → Swiggy ₹1,000 voucher (covers this ${inr(amt)} + next meals) + Gold txn`,
+          effectivePct: (total / voucher) * 100,
+          baseRewardInr: base,
+          bonusRewardInr: goldInr,
+          pros: [
+            `Counts as Gold txn ${goldDone + 1}/6 (≥₹1k) — fee recovery / monthly MR`,
+            `~${SHOPWISE_NET_PCT}% net on the ₹1k voucher after ShopWise fee`,
+            `Redeem ${inr(amt)} now; keep ~${inr(voucher - amt)} for later Swiggy`,
+            goldB ? goldB.note : "",
+          ].filter(Boolean),
+          cons: [
+            `You are buying a ₹1k voucher, not only paying ${inr(amt)}`,
+            "Live+ 10% on this tiny cart is higher yield per rupee — batch only while Gold 6×₹1k is open",
+          ],
+          rationale:
+            "Amex Gold (~₹5.3k fee) needs 6× ≥₹1k ShopWise months to stay worth it. Don't put every ₹300 Swiggy on Live+ while Gold txns are unfinished — batch a ₹1k Swiggy voucher, burn it across meals, then use Live+ for overflow.",
+          steps: [
+            "Open ShopWise / Amex Reward Multiplier → Swiggy voucher ₹1,000 on Amex Gold",
+            `Redeem ${inr(amt)} of it on this order`,
+            "Use the leftover voucher balance on the next few Swiggy orders",
+            `After ${goldNeed} such ≥₹1k days this month, put remaining Swiggy on Live+ 10%`,
+          ],
+        });
+      } else {
+        const goldB = goldMilestoneBonus(input, amt);
+        const goldInr = goldB?.inr ?? 0;
+        const netPct = SHOPWISE_NET_PCT + (amt > 0 ? (goldInr / amt) * 100 : 0);
+        add({
+          cardId: "amex_gold",
+          label: goldB
+            ? `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) + Gold milestone`
+            : amt < 1000
+              ? `Amex Gold ShopWise Swiggy (${SHOPWISE_NET_PCT}% net) — won't count as Gold txn (<₹1k)`
+              : `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) — Gold 6×₹1k milestone`,
+          effectivePct: netPct,
+          baseRewardInr: amt * (SHOPWISE_NET_PCT / 100),
+          bonusRewardInr: goldInr,
+          pros: [
+            amt >= 1000
+              ? `~${SHOPWISE_NET_PCT}% net + counts as a Gold ≥₹1k txn`
+              : `~${SHOPWISE_NET_PCT}% net only — ${inr(amt)} is below the ₹1k Gold txn threshold`,
+            "Uses Swiggy spend you already make — no Amazon Pay pile-up",
+            goldB ? goldB.note : "",
+          ].filter(Boolean),
+          cons: [
+            "Worse yield than HSBC Live+ 10% unless milestone value tips it",
+            amt < 1000
+              ? "Buy ≥₹1k ShopWise Swiggy voucher if you still need Gold monthly txns"
+              : "Only use this slice for Gold milestone; put leftover Swiggy on Live+",
+          ],
+          rationale:
+            "Amex Gold milestone fuel should be ShopWise Swiggy vouchers (meals you already order), NOT Amazon Pay vouchers.",
+          steps: [
+            "Open ShopWise",
+            amt < 1000
+              ? "Buy Swiggy voucher ≥₹1k with Amex Gold (this cart alone won't count)"
+              : "Buy Swiggy voucher ≥₹1k with Amex Gold (up to 6 separate days)",
+            "Redeem in Swiggy for meals you'd buy anyway",
+          ],
+        });
+      }
     }
     return finalize(options, input, amt, isForeign, ck);
   }
@@ -3489,12 +3543,11 @@ function finalize(
   );
 
   // ---- Universal ANNUAL-milestone push (SBI, IDFC, Amex PT/MRCC, BOB ₹5L, Live+ ₹2L) ----
-  // Fold progress into the best existing route for that card (avoids two Live+ rows).
-  // Completing = full unlock; otherwise thin pro-rata (see annualMilestoneBonus).
+  // Fold into ranking ONLY when completing or near-finish (close). Far-away "progress"
+  // (e.g. BOB ₹5L with ₹1L left → +₹3 on a ₹302 Swiggy) must NOT outrank Amex ShopWise
+  // fee-recovery / monthly Gold txn routes. Soft-note progress on existing rows only.
   // Never let thin annual progress outrank intentional 0% advice on fuel/rent/insurance/tax.
-  // UPI rail already has dedicated RuPay routes — don't inflate IDFC/Amex with annual thin EV.
-  // Foreign: still score annual unlocks — applyForexNetting subtracts markup so only
-  // milestones that beat the fee can outrank Scapia 0%.
+  // Foreign: still score completing unlocks — applyForexNetting subtracts markup.
   if (input.channel !== "upi" && input.channel !== "upi_normal") {
     for (const cardId of ["sbi_simplyclick", "idfc_indigo", "amex_plat_travel", "amex_mrcc", "bob_eterna", "hsbc_live_plus"]) {
       if ((cardId === "amex_plat_travel" || cardId === "amex_mrcc") && amexExcluded(input.category || "")) continue;
@@ -3502,31 +3555,35 @@ function finalize(
       const mb = annualMilestoneBonus(cardId, input, amt);
       if (!mb || mb.inr < 0.5) continue;
       if (rewardDeadCat && mb.kind !== "completing") continue;
-      // Foreign: only completing unlocks — thin "build toward" is crushed by markup and
-      // used to invent Live+ 10% via domestic genericCardEval.
       if (isForeign && mb.kind !== "completing") continue;
       if (cardId === "bob_eterna" && mb.threshold === 50000) continue;
       if (cardId === "hsbc_live_plus" && mb.threshold === 25000) continue;
+
+      const ranksBonus = mb.kind === "completing" || mb.kind === "close";
 
       const existing = options
         .filter((o) => o.cardId === cardId && o.feasible !== false)
         .sort((a, b) => b.totalRewardInr - a.totalRewardInr)[0];
       if (existing) {
-        existing.bonusRewardInr += mb.inr;
-        existing.totalRewardInr += mb.inr;
-        existing.effectivePct = amt > 0 ? (existing.totalRewardInr / amt) * 100 : existing.effectivePct;
         existing.pros = [...existing.pros, mb.note];
-        if (!/milestone/i.test(existing.label)) {
-          existing.label =
-            mb.thresholds && mb.thresholds.length > 1
-              ? `${existing.label} · +${mb.thresholds.map((t) => inr(t)).join(" + ")} milestones`
-              : `${existing.label} · +${inr(mb.threshold)} milestone`;
-        } else if (mb.thresholds && mb.thresholds.length > 1 && mb.kind === "completing") {
-          existing.label = milestoneCompletesLabel(getCardById(cardId)?.short ?? cardId, mb);
+        if (ranksBonus) {
+          existing.bonusRewardInr += mb.inr;
+          existing.totalRewardInr += mb.inr;
+          existing.effectivePct = amt > 0 ? (existing.totalRewardInr / amt) * 100 : existing.effectivePct;
+          if (!/milestone/i.test(existing.label)) {
+            existing.label =
+              mb.thresholds && mb.thresholds.length > 1
+                ? `${existing.label} · +${mb.thresholds.map((t) => inr(t)).join(" + ")} milestones`
+                : `${existing.label} · +${inr(mb.threshold)} milestone`;
+          } else if (mb.thresholds && mb.thresholds.length > 1 && mb.kind === "completing") {
+            existing.label = milestoneCompletesLabel(getCardById(cardId)?.short ?? cardId, mb);
+          }
         }
         continue;
       }
 
+      // Standalone annual-only rows: completing/close only (no far progress fillers).
+      if (!ranksBonus) continue;
       const baseEval = genericCardEval(cardId, input, isForeign);
       const basePct = baseEval?.pct ?? 0;
       const eff = basePct + (mb.inr / amt) * 100;
@@ -3539,11 +3596,9 @@ function finalize(
         baseRewardInr: (amt * basePct) / 100,
         bonusRewardInr: mb.inr,
         pros: [mb.note],
-        cons: mb.kind === "progress"
-          ? ["Progress value assumes you'll finish this milestone this cycle"]
-          : mb.kind === "close"
-            ? [`This spend alone won't unlock — need ≥${inr(mb.threshold - ytdForCard(cardId, input))} more`]
-            : ["Annual-milestone value assumes you'll actually reach the threshold this cycle"],
+        cons: mb.kind === "close"
+          ? [`This spend alone won't unlock — need ≥${inr(mb.threshold - ytdForCard(cardId, input))} more`]
+          : ["Annual-milestone value assumes you'll actually reach the threshold this cycle"],
         rationale: `Routing this to ${short}: ${mb.note}`,
         steps: [
           `Pay with ${short}`,
@@ -3710,41 +3765,66 @@ function finalize(
   const card = pickCard(best.cardId);
   const alternatives = ranked.slice(1); // full ranked list, with reasons
 
-  // Milestone nudge: thin annual pro-rata on the winner (e.g. Live+ fee-waiver ₹5) should
-  // NOT suppress tipping a real feeder like Amex PT ₹4L — only skip when the best route
-  // already carries substantial milestone value (≥5% of this spend) or is Kiwi Neon.
+  // Milestone nudge: prefer real monthly Amex fee-recovery (Gold 6×₹1k / MRCC) over thin
+  // far-away annual "build" noise. Don't tip when best already carries substantial milestone value.
   const bestFeedsMilestone =
     best.cardId === "yes_kiwi" ||
     best.bonusRewardInr > Math.max(1, amt * 0.05) ||
-    /completes|welcome|fills monthly|still need|6-txn|4-txn/i.test(`${best.label} ${best.pros.join(" ")}`);
+    /completes|welcome|fills monthly|still need|6-txn|4-txn|Batch ShopWise/i.test(
+      `${best.label} ${best.pros.join(" ")}`
+    );
   let milestoneTip: RecommendationResult["milestoneTip"];
   if (!bestFeedsMilestone) {
-    // Prefer annual/welcome feeders with real progress credit; don't require completing-only.
-    let feeder = ranked.find(
-      (o) =>
-        o.feasible &&
-        o.cardId !== best.cardId &&
-        o.bonusRewardInr > 1 &&
-        /milestone|welcome|build|completes|neon|cycle/i.test(`${o.label} ${o.pros.join(" ")} ${o.rationale}`)
-    );
-    if (!feeder) {
-      feeder = ranked.find((o) => o.feasible && o.cardId !== best.cardId && o.bonusRewardInr > 1);
-    }
+    const tipScore = (o: RouteOption): number => {
+      const text = `${o.label} ${o.pros.join(" ")} ${o.rationale}`;
+      let s = o.bonusRewardInr;
+      if (/Batch ShopWise|Gold txn|6-txn|4-txn|fills monthly|MRCC/i.test(text)) s += 80;
+      if (/Amex Gold|amex_gold|amex_mrcc/i.test(`${o.cardId} ${text}`)) s += 40;
+      if (/welcome|completes/i.test(text)) s += 30;
+      // Far annual progress is noise on small carts
+      if (/Builds .+ left|pro-rata/i.test(text) && o.bonusRewardInr < Math.max(15, amt * 0.05)) s -= 100;
+      return s;
+    };
+    let feeder: RouteOption | undefined = ranked
+      .filter(
+        (o) =>
+          o.feasible &&
+          o.cardId !== best.cardId &&
+          (o.bonusRewardInr > 1 || /Batch ShopWise/i.test(o.label))
+      )
+      .sort((a, b) => tipScore(b) - tipScore(a))[0];
+    if (feeder && tipScore(feeder) < 5) feeder = undefined;
     if (!feeder) {
       const kiwi = ranked.find((o) => o.feasible && o.cardId === "yes_kiwi" && o.effectivePct >= 2);
       if (kiwi && best.effectivePct - kiwi.effectivePct <= 2.5) feeder = kiwi;
+    }
+    // Explicit Amex fee-recovery tip when Live+/BOB win a tiny food cart but Gold still open
+    const merch = (input.merchant || "").toLowerCase();
+    const cat = (input.category || "").toLowerCase();
+    if (!feeder && (merch.includes("swiggy") || cat === "swiggy" || merch.includes("zomato")) && amt < 1000) {
+      const goldDone = input.goldThisMonthTxnsAt1k ?? input.goldMonthlyTxnsDone ?? 0;
+      if (goldDone < 6) {
+        const batch = ranked.find((o) => o.cardId === "amex_gold" && /Batch ShopWise/i.test(o.label));
+        if (batch) feeder = batch;
+      }
     }
     if (feeder) {
       const giveUp = Math.max(0, +(best.effectivePct - feeder.effectivePct).toFixed(2));
       const why = feeder.cardId === "yes_kiwi"
         ? "progresses your Kiwi Neon cycle toward the 3% / 4% / 5% YTD true-up milestones (minus CB already earned)"
-        : (feeder.pros.find((p) => /milestone|welcome|cycle|fills|completes|builds/i.test(p)) || feeder.rationale || "progresses a milestone");
+        : /Batch ShopWise/i.test(feeder.label)
+          ? "keeps Amex Gold fee-positive: one of 6× ≥₹1k ShopWise Swiggy days this month"
+          : (feeder.pros.find((p) => /milestone|welcome|cycle|fills|completes|Gold txn|Builds/i.test(p)) || feeder.rationale || "progresses a milestone");
       milestoneTip = {
         cardId: feeder.cardId,
         label: feeder.label,
         effectivePct: feeder.effectivePct,
         giveUpPct: giveUp,
-        note: `${why} — you'd earn ${feeder.effectivePct.toFixed(2)}% here (giving up ~${giveUp.toFixed(2)}% vs the top pick) but build toward a milestone bonus worth far more.`,
+        note: `${why} — ${
+          /Batch ShopWise/i.test(feeder.label)
+            ? `buy a ₹1k Swiggy voucher now (~${feeder.effectivePct.toFixed(1)}% net on the voucher + Gold progress). Live+ is better ₹/₹ on this tiny cart alone, but skipping Amex while fees are unpaid is the expensive mistake.`
+            : `you'd earn ${feeder.effectivePct.toFixed(2)}% here (giving up ~${giveUp.toFixed(2)}% vs the top pick) but build toward a milestone bonus worth far more.`
+        }`,
       };
     }
   }
