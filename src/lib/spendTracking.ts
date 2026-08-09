@@ -108,3 +108,33 @@ export function reverseCardSpend(
     next.kiwiLifetimeEarned = clamp0(next.kiwiLifetimeEarned - rewardInr);
   }
 }
+
+/**
+ * Record Amex Gold ShopWise Swiggy coupons (always ₹1k face each → one ≥₹1k Gold txn each).
+ * Also tops up Swiggy Money balance to redeem on meals.
+ */
+export function recordGoldShopwiseSwiggyCoupons(
+  next: AppState,
+  count: number,
+  faceInr = 1000
+): { coupons: number; goldDone: number; goldLeft: number; swiggyMoneyBalance: number } {
+  const room = Math.max(0, 6 - (next.goldThisMonthTxnsAt1k ?? 0));
+  const coupons = Math.max(0, Math.min(room, Math.floor(count)));
+  if (coupons < 1) {
+    return {
+      coupons: 0,
+      goldDone: next.goldThisMonthTxnsAt1k ?? 0,
+      goldLeft: room,
+      swiggyMoneyBalance: next.swiggyMoneyBalance ?? 0,
+    };
+  }
+  next.goldThisMonthTxnsAt1k = Math.min(6, (next.goldThisMonthTxnsAt1k ?? 0) + coupons);
+  next.goldShopwiseUsedThisMonth = (next.goldShopwiseUsedThisMonth ?? 0) + coupons * faceInr;
+  next.swiggyMoneyBalance = (next.swiggyMoneyBalance ?? 0) + coupons * faceInr;
+  return {
+    coupons,
+    goldDone: next.goldThisMonthTxnsAt1k,
+    goldLeft: Math.max(0, 6 - next.goldThisMonthTxnsAt1k),
+    swiggyMoneyBalance: next.swiggyMoneyBalance,
+  };
+}

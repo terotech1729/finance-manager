@@ -45,7 +45,8 @@ function pointsRange(cardId: string, label: string, totalRewardInr: number, effe
   const r = findRedemption(cardId);
   if (!r || amt <= 0 || totalRewardInr <= 0) return null;
   if (r.worst === r.best) return null; // fixed-value currency → no range
-  const feeInr = /shopwise/i.test(label) ? amt * 0.0177 : 0; // 1.5% + GST, not scaled by point value
+  const feeInr =
+    /shopwise/i.test(label) && /amazon/i.test(label) ? amt * 0.0177 : 0; // Amazon Pay GC only; Swiggy ShopWise has no fee
   const gross = totalRewardInr + feeInr; // reward value at typical, before fee
   const netAt = (v: number) => Math.max(0, gross * (v / r.typical) - feeInr);
   return {
@@ -173,6 +174,8 @@ export type RecommendInput = {
   mrccThisCycleTxnsAt1500?: number;
   mrccThisCycleAmount?: number;
   goldShopwiseUsedThisMonth?: number;
+  /** Idle Swiggy Money from prior ShopWise ₹1k coupons. */
+  swiggyMoneyBalance?: number;
   bobBogoUsedThisMonth?: boolean;
   /** HSBC Live+ District / BookMyShow cinema BOGO already used this calendar month. */
   livePlusBogoUsedThisMonth?: boolean;
@@ -220,12 +223,15 @@ export type RecommendInput = {
 };
 
 /**
- * ShopWise (Amex Reward Multiplier) charges a 1.5% + 18% GST convenience fee
- * on voucher purchases (= 1.77% effective). 5× MR ≈ 5.8% gross − 1.77% fee ≈ 4.0% net.
+ * ShopWise / Amex Reward Multiplier:
+ *  - 5× MR ≈ 5.8% gross @ ₹0.58/MR
+ *  - Amazon Pay vouchers: +1.5%+GST convenience fee → ~4.03% net
+ *  - Swiggy vouchers: no convenience fee → full ~5.8%
  */
 const SHOPWISE_GROSS_PCT = 5.8;
-const SHOPWISE_FEE_PCT = 1.5 * 1.18; // 1.77%
-const SHOPWISE_NET_PCT = +(SHOPWISE_GROSS_PCT - SHOPWISE_FEE_PCT).toFixed(2); // ≈ 4.03%
+const SHOPWISE_FEE_PCT = 1.5 * 1.18; // 1.77% — Amazon Pay GC only
+const SHOPWISE_NET_PCT = +(SHOPWISE_GROSS_PCT - SHOPWISE_FEE_PCT).toFixed(2); // ≈ 4.03% Amazon Pay
+const SHOPWISE_SWIGGY_PCT = SHOPWISE_GROSS_PCT; // no fee on Swiggy vouchers
 
 /** HSBC Live+ Visa Infinite reval (26 Jul 2026): shared accelerated cashback cap. */
 const LIVE_PLUS_ACCEL_PCT = 10;
@@ -2548,6 +2554,41 @@ export function recommend(input: RecommendInput): RecommendationResult {
 
   // ============ SWIGGY ============
   if (merchant.includes("swiggy") || cat === "swiggy") {
+    const goldDone = input.goldThisMonthTxnsAt1k ?? input.goldMonthlyTxnsDone ?? 0;
+    const goldOpen = goldDone < 6;
+    const shopwiseLeft = 10000 - (input.goldShopwiseUsedThisMonth ?? 0);
+    const daysLeft = daysLeftInMonth(input.today);
+    const goldNeed = Math.max(0, 6 - goldDone);
+    const swBal = input.swiggyMoneyBalance ?? 0;
+
+    // Prepaid Swiggy Money from earlier ShopWise coupons — drain before buying more.
+    if (swBal >= 100) {
+      const used = Math.min(swBal, amt);
+      const covers = used >= amt - 0.5;
+      // When balance covers the meal, prefer redeeming prepaid over Live+ 10% (don't leave GC idle).
+      const rankPct = covers ? 10.5 : (used / amt) * 0.5;
+      add({
+        cardId: "giftcard",
+        label: `Pay with Swiggy Money (${inr(used)} already ShopWise'd)`,
+        effectivePct: rankPct,
+        baseRewardInr: covers ? amt * 0.105 : 0,
+        bonusRewardInr: 0,
+        pros: [
+          `Clears ${inr(used)} prepaid Swiggy Money`,
+          "MR / ShopWise fee already paid when you bought the ₹1k coupon(s)",
+          goldOpen ? `Gold progress ${goldDone}/6 — ${goldNeed} more ₹1k coupon(s) this month` : "Gold 6/6 done this month",
+          covers ? "Ranks above Live+ so you burn prepaid balance first" : "",
+        ].filter(Boolean),
+        cons: ["No new card earn on this redeem — value was captured at coupon purchase"],
+        rationale:
+          "You already bought ShopWise Swiggy coupons on Amex Gold. Redeem that Swiggy Money on this order instead of paying Live+/buying another coupon while balance sits idle.",
+        steps: [
+          "Open Swiggy → pay with Swiggy Money / voucher balance",
+          used < amt ? `Pay remaining ${inr(amt - used)} with HSBC Live+ 10% (food)` : "Full order covered by Swiggy Money",
+        ],
+      });
+    }
+
     options.push(buildLivePlusOption(amt, "food", input));
     add({
       cardId: "bob_eterna",
@@ -2558,84 +2599,83 @@ export function recommend(input: RecommendInput): RecommendationResult {
       rationale: "Backup if Live+'s shared ₹1,200/mo accelerated cap is already used this month.",
       steps: ["Open Swiggy", "Pay with BOB Eterna"],
     });
-    {
-      const goldDone = input.goldThisMonthTxnsAt1k ?? input.goldMonthlyTxnsDone ?? 0;
-      const goldOpen = goldDone < 6;
-      const shopwiseLeft = 10000 - (input.goldShopwiseUsedThisMonth ?? 0);
-      const daysLeft = daysLeftInMonth(input.today);
-      const goldNeed = Math.max(0, 6 - goldDone);
 
-      // Sub-₹1k cart: Live+ wins on THIS txn yield, but Gold fee recovery needs ≥₹1k ShopWise
-      // vouchers. Surface a batch ₹1k Swiggy voucher (covers this meal + next) so Amex can rank.
-      if (amt < 1000 && goldOpen && shopwiseLeft >= 1000 && goldNeed <= daysLeft + 1) {
-        const voucher = 1000;
-        const goldB = goldMilestoneBonus(input, voucher);
-        const goldInr = goldB?.inr ?? 0;
-        const base = voucher * (SHOPWISE_NET_PCT / 100);
-        const total = base + goldInr;
-        add({
-          cardId: "amex_gold",
-          label: `Batch ShopWise → Swiggy ₹1,000 voucher (covers this ${inr(amt)} + next meals) + Gold txn`,
-          effectivePct: (total / voucher) * 100,
-          baseRewardInr: base,
-          bonusRewardInr: goldInr,
-          pros: [
-            `Counts as Gold txn ${goldDone + 1}/6 (≥₹1k) — fee recovery / monthly MR`,
-            `~${SHOPWISE_NET_PCT}% net on the ₹1k voucher after ShopWise fee`,
-            `Redeem ${inr(amt)} now; keep ~${inr(voucher - amt)} for later Swiggy`,
-            goldB ? goldB.note : "",
-          ].filter(Boolean),
-          cons: [
-            `You are buying a ₹1k voucher, not only paying ${inr(amt)}`,
-            "Live+ 10% on this tiny cart is higher yield per rupee — batch only while Gold 6×₹1k is open",
-          ],
-          rationale:
-            "Amex Gold (~₹5.3k fee) needs 6× ≥₹1k ShopWise months to stay worth it. Don't put every ₹300 Swiggy on Live+ while Gold txns are unfinished — batch a ₹1k Swiggy voucher, burn it across meals, then use Live+ for overflow.",
-          steps: [
-            "Open ShopWise / Amex Reward Multiplier → Swiggy voucher ₹1,000 on Amex Gold",
-            `Redeem ${inr(amt)} of it on this order`,
-            "Use the leftover voucher balance on the next few Swiggy orders",
-            `After ${goldNeed} such ≥₹1k days this month, put remaining Swiggy on Live+ 10%`,
-          ],
-        });
-      } else {
-        const goldB = goldMilestoneBonus(input, amt);
-        const goldInr = goldB?.inr ?? 0;
-        const netPct = SHOPWISE_NET_PCT + (amt > 0 ? (goldInr / amt) * 100 : 0);
-        add({
-          cardId: "amex_gold",
-          label: goldB
-            ? `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) + Gold milestone`
-            : amt < 1000
-              ? `Amex Gold ShopWise Swiggy (${SHOPWISE_NET_PCT}% net) — won't count as Gold txn (<₹1k)`
-              : `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_NET_PCT}% net) — Gold 6×₹1k milestone`,
-          effectivePct: netPct,
-          baseRewardInr: amt * (SHOPWISE_NET_PCT / 100),
-          bonusRewardInr: goldInr,
-          pros: [
-            amt >= 1000
-              ? `~${SHOPWISE_NET_PCT}% net + counts as a Gold ≥₹1k txn`
-              : `~${SHOPWISE_NET_PCT}% net only — ${inr(amt)} is below the ₹1k Gold txn threshold`,
-            "Uses Swiggy spend you already make — no Amazon Pay pile-up",
-            goldB ? goldB.note : "",
-          ].filter(Boolean),
-          cons: [
-            "Worse yield than HSBC Live+ 10% unless milestone value tips it",
-            amt < 1000
-              ? "Buy ≥₹1k ShopWise Swiggy voucher if you still need Gold monthly txns"
-              : "Only use this slice for Gold milestone; put leftover Swiggy on Live+",
-          ],
-          rationale:
-            "Amex Gold milestone fuel should be ShopWise Swiggy vouchers (meals you already order), NOT Amazon Pay vouchers.",
-          steps: [
-            "Open ShopWise",
-            amt < 1000
-              ? "Buy Swiggy voucher ≥₹1k with Amex Gold (this cart alone won't count)"
-              : "Buy Swiggy voucher ≥₹1k with Amex Gold (up to 6 separate days)",
-            "Redeem in Swiggy for meals you'd buy anyway",
-          ],
-        });
-      }
+    // Batch ₹1k ShopWise only when Gold still needs txns AND you're not sitting on enough prepaid money.
+    const shouldBatch =
+      amt < 1000 &&
+      goldOpen &&
+      shopwiseLeft >= 1000 &&
+      goldNeed <= daysLeft + 1 &&
+      swBal < 500;
+
+    if (shouldBatch) {
+      const voucher = 1000;
+      const goldB = goldMilestoneBonus(input, voucher);
+      const goldInr = goldB?.inr ?? 0;
+      const base = voucher * (SHOPWISE_SWIGGY_PCT / 100);
+      const total = base + goldInr;
+      add({
+        cardId: "amex_gold",
+        label: `Batch ShopWise → Swiggy ₹1,000 voucher (covers this ${inr(amt)} + next meals) + Gold txn ${goldDone + 1}/6`,
+        effectivePct: (total / voucher) * 100,
+        baseRewardInr: base,
+        bonusRewardInr: goldInr,
+        pros: [
+          `Counts as Gold txn ${goldDone + 1}/6 (≥₹1k) — ${goldNeed} more needed this month after this`,
+          `~${SHOPWISE_SWIGGY_PCT}% MR (no ShopWise convenience fee on Swiggy vouchers)`,
+          `Redeem ${inr(amt)} now; keep ~${inr(voucher - amt)} as Swiggy Money`,
+          goldB ? goldB.note : "",
+        ].filter(Boolean),
+        cons: [
+          `You are buying a ₹1k voucher, not only paying ${inr(amt)}`,
+          "Log the coupon purchase in Recommend (coupons panel) so Gold 6×₹1k stays accurate",
+        ],
+        rationale:
+          "Amex Gold (~₹5.3k fee) needs 6× ≥₹1k ShopWise months. Buy ₹1k Swiggy coupons (no convenience fee, unlike Amazon Pay GC), top up Swiggy Money, then redeem across meals. Live+ for overflow after Gold is done or balance is empty.",
+        steps: [
+          "Open ShopWise → Swiggy voucher ₹1,000 on Amex Gold",
+          "Log that coupon in the Gold coupons panel (so progress shows X/6)",
+          `Redeem ${inr(amt)} of Swiggy Money on this order`,
+          `After ${goldNeed} such ₹1k days, put remaining Swiggy on Live+ 10%`,
+        ],
+      });
+    } else {
+      const goldB = goldMilestoneBonus(input, amt);
+      const goldInr = goldB?.inr ?? 0;
+      const netPct = SHOPWISE_SWIGGY_PCT + (amt > 0 ? (goldInr / amt) * 100 : 0);
+      add({
+        cardId: "amex_gold",
+        label: goldB
+          ? `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_SWIGGY_PCT}%, no fee) + Gold milestone`
+          : amt < 1000
+            ? `Amex Gold ShopWise Swiggy (${SHOPWISE_SWIGGY_PCT}%, no fee) — won't count as Gold txn (<₹1k)`
+            : `Amex Gold via ShopWise → Swiggy voucher (${SHOPWISE_SWIGGY_PCT}%, no fee) — Gold ${goldDone}/6`,
+        effectivePct: netPct,
+        baseRewardInr: amt * (SHOPWISE_SWIGGY_PCT / 100),
+        bonusRewardInr: goldInr,
+        pros: [
+          amt >= 1000
+            ? `~${SHOPWISE_SWIGGY_PCT}% MR (no fee) + counts as a Gold ≥₹1k txn (${goldDone}/6)`
+            : `~${SHOPWISE_SWIGGY_PCT}% MR only — ${inr(amt)} is below the ₹1k Gold txn threshold`,
+          swBal >= 100 ? `You still have ${inr(swBal)} Swiggy Money — prefer redeeming that first` : "",
+          goldB ? goldB.note : "",
+        ].filter(Boolean),
+        cons: [
+          "Worse yield than HSBC Live+ 10% unless milestone value tips it",
+          amt < 1000
+            ? "Always buy ₹1k ShopWise Swiggy coupons (never this cart amount) if Gold txns remain"
+            : "Only use this slice for Gold milestone; put leftover Swiggy on Live+",
+        ],
+        rationale:
+          "Amex Gold milestone fuel = ShopWise Swiggy ₹1k coupons (no convenience fee). Don't buy odd-sized vouchers for a ₹300 meal.",
+        steps: [
+          "Open ShopWise",
+          amt < 1000
+            ? "Buy Swiggy voucher ₹1,000 with Amex Gold (this cart alone won't count)"
+            : "Buy Swiggy voucher ≥₹1k with Amex Gold",
+          "Redeem in Swiggy for meals you'd buy anyway",
+        ],
+      });
     }
     return finalize(options, input, amt, isForeign, ck);
   }
@@ -2681,7 +2721,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
         bestCasePct: realApRate + (ckAmz && amt > 0 ? (ckAmz.bestInr / amt) * 100 : 0),
         pros: [`${realApRate}% uncapped on Amazon.in / Amazon Now`, ckInr > 0 ? `+ Cashkaro ${inr(ckInr)}` : "Enter order-level cashback ₹ in the widget if shown"].filter(Boolean),
         cons: ["Do NOT pay with Amazon Pay balance if you want this 5%", "Save ShopWise Amazon vouchers for Amex milestone days, not every milk order"],
-        rationale: `For routine Amazon Now (milk, yoghurt, misc) and shopping, Amazon Pay ICICI at ${realApRate}% (Prime) beats ShopWise (~${SHOPWISE_NET_PCT}% net). Use ShopWise only as deliberate Amex milestone fuel (see below), then drain that AP balance on later Amazon orders.`,
+        rationale: `For routine Amazon Now (milk, yoghurt, misc) and shopping, Amazon Pay ICICI at ${realApRate}% (Prime) beats ShopWise Amazon Pay GC (~${SHOPWISE_NET_PCT}% net after fee; Swiggy vouchers are ~${SHOPWISE_SWIGGY_PCT}% with no fee). Use ShopWise Amazon only as deliberate Amex milestone fuel, then drain that AP balance on later Amazon orders.`,
         steps: [
           ckInr > 0 ? "Open Cashkaro → Amazon first" : "Open Amazon / Amazon Now",
           `Pay with Amazon Pay ICICI card (${realApRate}%) — not AP balance`,
@@ -3822,7 +3862,7 @@ function finalize(
         giveUpPct: giveUp,
         note: `${why} — ${
           /Batch ShopWise/i.test(feeder.label)
-            ? `buy a ₹1k Swiggy voucher now (~${feeder.effectivePct.toFixed(1)}% net on the voucher + Gold progress). Live+ is better ₹/₹ on this tiny cart alone, but skipping Amex while fees are unpaid is the expensive mistake.`
+            ? `buy a ₹1k Swiggy voucher now (~${feeder.effectivePct.toFixed(1)}% MR, no ShopWise fee + Gold progress). Live+ is better ₹/₹ on this tiny cart alone, but skipping Amex while fees are unpaid is the expensive mistake.`
             : `you'd earn ${feeder.effectivePct.toFixed(2)}% here (giving up ~${giveUp.toFixed(2)}% vs the top pick) but build toward a milestone bonus worth far more.`
         }`,
       };

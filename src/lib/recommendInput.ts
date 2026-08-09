@@ -59,6 +59,7 @@ export function buildRecommendInputFromState(st: AppState, req: RecommendRequest
     mrccThisCycleTxnsAt1500: st.mrccThisCycleTxnsAt1500,
     mrccThisCycleAmount: st.mrccThisCycleAmount,
     goldShopwiseUsedThisMonth: st.goldShopwiseUsedThisMonth,
+    swiggyMoneyBalance: st.swiggyMoneyBalance ?? 0,
     bobBogoUsedThisMonth: req.bobBogoUsedThisMonth ?? st.bobBogoUsedThisMonth,
     livePlusBogoUsedThisMonth: req.livePlusBogoUsedThisMonth ?? st.livePlusBogoUsedThisMonth,
     scapiaMonthlySpend: st.scapiaMonthlySpend,

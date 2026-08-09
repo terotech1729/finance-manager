@@ -160,7 +160,7 @@ const CASES: Case[] = [
 
   // —— Online daily (sanity) ——
   {
-    name: "Swiggy small + Gold open → batch ShopWise ₹1k (fee recovery)",
+    name: "Swiggy small + Gold open → batch ShopWise ₹1k (milestone, no fee)",
     query: "Swiggy",
     amount: 400,
     expect: {
@@ -170,7 +170,18 @@ const CASES: Case[] = [
       bestLabelAvoid: /dine with visa/i,
       requireDeclinedFallback: true,
     },
-    input: { goldMonthlyTxnsDone: 2, goldShopwiseUsedThisMonth: 0 },
+    input: { goldMonthlyTxnsDone: 2, goldShopwiseUsedThisMonth: 0, swiggyMoneyBalance: 0 },
+  },
+  {
+    name: "Swiggy with prepaid Money → redeem before more coupons",
+    query: "Swiggy",
+    amount: 374,
+    expect: {
+      bestCard: "giftcard",
+      bestLabelIncludes: /Swiggy Money/i,
+      requireDeclinedFallback: true,
+    },
+    input: { goldMonthlyTxnsDone: 2, swiggyMoneyBalance: 2000 },
   },
   {
     name: "Swiggy small + Gold done → Live+ food (no batch)",
@@ -182,7 +193,7 @@ const CASES: Case[] = [
       bestLabelAvoid: /dine with visa|Batch ShopWise/i,
       requireDeclinedFallback: true,
     },
-    input: { goldMonthlyTxnsDone: 6, goldShopwiseUsedThisMonth: 6000 },
+    input: { goldMonthlyTxnsDone: 6, goldShopwiseUsedThisMonth: 6000, swiggyMoneyBalance: 0 },
   },
   {
     name: "Amazon Now → Amazon Pay ICICI",

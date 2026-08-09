@@ -7,14 +7,14 @@ import { buildRecommendInputFromState } from "@/lib/recommendInput";
 import { detectCategory, ALL_CATEGORIES, ALL_CHANNELS, type ChannelType } from "@/lib/categorize";
 import { findWelcomeOffer, findGiftCardDeals } from "@/lib/stacking";
 import { addTransaction, loadState, loadTransactions, saveState, onStorageChange, type AppState } from "@/lib/storage";
-import { applyCardSpend } from "@/lib/spendTracking";
+import { applyCardSpend, recordGoldShopwiseSwiggyCoupons } from "@/lib/spendTracking";
 import { toast } from "./Toast";
 import { getCardById } from "@/lib/cards";
 
 function routeName(cardId: string): string {
   const c = getCardById(cardId);
   if (c) return c.short;
-  if (cardId === "giftcard") return "Gift-card route";
+  if (cardId === "giftcard") return "Swiggy Money / GC";
   if (cardId === "upi") return "UPI (PhonePe/GPay)";
   if (cardId === "cash") return "Cash";
   if (cardId === "amazon_pay_balance") return "Amazon Pay balance";
@@ -47,6 +47,7 @@ export function RecommendationWidget({ onLogged }: Props) {
   const [showAlts, setShowAlts] = useState(false);
   /** Which ranked route to log — 0 = best, 1+ = alternatives index + 1 conceptually; we store the route itself. */
   const [selectedRoute, setSelectedRoute] = useState<RouteOption | null>(null);
+  const [couponCount, setCouponCount] = useState("1");
 
   useEffect(() => {
     // Always start from saved milestone counters (Milestones / Settings / Claims).
@@ -115,6 +116,8 @@ export function RecommendationWidget({ onLogged }: Props) {
   }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride, amazonOrderCashback, indigoVoucher, credGiftCardPct, movieTheatre]);
 
   const isAmazon = /amazon/i.test(merchant) || /amazon/i.test(finalCategory);
+  const isSwiggy =
+    /swiggy/i.test(merchant) || /swiggy/i.test(finalCategory);
   const isTravel =
     /hotel|flight|bus|train|travel|agoda|cleartrip|makemytrip|\bmmt\b|booking\.com|indigo|irctc|redbus/i.test(
       `${merchant} ${finalCategory}`
@@ -141,6 +144,7 @@ export function RecommendationWidget({ onLogged }: Props) {
 
   const pathForRoute = (r: RouteOption): Transaction["path"] => {
     const l = r.label.toLowerCase();
+    if (/swiggy money/i.test(l)) return "amazon_brand"; // prepaid balance drain (reuse path bucket)
     if (r.cardId === "giftcard" || l.includes("gift card")) return "dreamplug";
     if (l.includes("cashkaro")) return "cashkaro";
     if (l.includes("shopwise")) return "shopwise";
@@ -152,9 +156,81 @@ export function RecommendationWidget({ onLogged }: Props) {
     return "direct";
   };
 
+  const goldDone = state?.goldThisMonthTxnsAt1k ?? 0;
+  const goldLeft = Math.max(0, 6 - goldDone);
+  const swiggyBal = state?.swiggyMoneyBalance ?? 0;
+
+  const onLogCoupons = () => {
+    const n = Math.max(1, Math.min(6, Number(couponCount) || 1));
+    const next: AppState = { ...loadState() };
+    const before = next.goldThisMonthTxnsAt1k ?? 0;
+    const res = recordGoldShopwiseSwiggyCoupons(next, n, 1000);
+    if (res.coupons < 1) {
+      toast(before >= 6 ? "Gold 6/6 already done this month" : "Nothing to log", "error");
+      return;
+    }
+    const t: Transaction = {
+      id: newId(),
+      date: localDateToISO(date),
+      merchant: "ShopWise Swiggy",
+      category: "swiggy",
+      amount: res.coupons * 1000,
+      channel: "online",
+      cardId: "amex_gold",
+      path: "shopwise",
+      effectivePct: 5.8,
+      rewardInr: res.coupons * 1000 * 0.058,
+      notes: `${res.coupons}× ₹1k ShopWise Swiggy coupon(s) → Gold ${res.goldDone}/6`,
+    };
+    addTransaction(t);
+    // Coupon face already counted in recordGoldShopwiseSwiggyCoupons — don't double via applyCardSpend.
+    setStateLocal(next);
+    saveState(next);
+    toast(
+      `Logged ${res.coupons}× ₹1k coupon(s) · Gold ${res.goldDone}/6 (${res.goldLeft} left) · Swiggy Money ${inr(res.swiggyMoneyBalance)}`,
+      "success"
+    );
+    onLogged?.();
+  };
+
   const onLog = (route?: RouteOption) => {
     const chosen = route ?? routeToLog;
     if (!rec || !chosen || !state) return;
+    const isBatchShopwise =
+      chosen.cardId === "amex_gold" && /batch shopwise|₹1,?000 voucher/i.test(chosen.label);
+    const isSwiggyMoney = /swiggy money/i.test(chosen.label);
+
+    // Selecting "Batch ShopWise ₹1k" while entering a meal total → log the ₹1k coupon, not the meal.
+    if (isBatchShopwise) {
+      const next: AppState = { ...loadState() };
+      const res = recordGoldShopwiseSwiggyCoupons(next, 1, 1000);
+      if (res.coupons < 1) {
+        toast("Gold 6/6 already done — use Live+ or Swiggy Money", "error");
+        return;
+      }
+      const t: Transaction = {
+        id: newId(),
+        date: localDateToISO(date),
+        merchant: "ShopWise Swiggy",
+        category: "swiggy",
+        amount: 1000,
+        channel: "online",
+        cardId: "amex_gold",
+        path: "shopwise",
+        effectivePct: chosen.effectivePct,
+        rewardInr: chosen.totalRewardInr,
+        notes: `1× ₹1k coupon (from meal recommend ${inr(amt)}) · Gold ${res.goldDone}/6`,
+      };
+      addTransaction(t);
+      setStateLocal(next);
+      saveState(next);
+      toast(`Logged ₹1k ShopWise coupon · Gold ${res.goldDone}/6 · Swiggy Money ${inr(res.swiggyMoneyBalance)}`, "success");
+      setAmount("");
+      setSelectedRoute(null);
+      onLogged?.();
+      return;
+    }
+
     const t: Transaction = {
       id: newId(),
       date: localDateToISO(date),
@@ -168,11 +244,16 @@ export function RecommendationWidget({ onLogged }: Props) {
       rewardInr: chosen.totalRewardInr,
     };
     addTransaction(t);
-    // Past counters are manual (Milestones) — bump them for this new spend, don't wipe from log.
     const next: AppState = { ...loadState() };
-    applyCardSpend(next, chosen.cardId, amt, chosen.totalRewardInr, chosen.effectivePct, finalCategory, merchant.trim());
-    if (chosen.cardId === "amex_gold" && chosen.label.toLowerCase().includes("shopwise")) {
-      next.goldShopwiseUsedThisMonth += amt;
+    if (isSwiggyMoney) {
+      next.swiggyMoneyBalance = Math.max(0, (next.swiggyMoneyBalance ?? 0) - Math.min(next.swiggyMoneyBalance ?? 0, amt));
+    } else {
+      applyCardSpend(next, chosen.cardId, amt, chosen.totalRewardInr, chosen.effectivePct, finalCategory, merchant.trim());
+      // Real ShopWise purchase (≥₹1k) — bump ShopWise cap; Gold txn already via applyCardSpend.
+      if (chosen.cardId === "amex_gold" && /shopwise/i.test(chosen.label) && amt >= 1000) {
+        next.goldShopwiseUsedThisMonth += amt;
+        next.swiggyMoneyBalance = (next.swiggyMoneyBalance ?? 0) + (/swiggy/i.test(`${merchant} ${finalCategory}`) ? amt : 0);
+      }
     }
     if (chosen.cardId === "amazon_pay_icici" && chosen.label.toLowerCase().includes("balance")) {
       next.amazonPayBalance = Math.max(0, next.amazonPayBalance - Math.min(next.amazonPayBalance, amt));
@@ -391,6 +472,58 @@ export function RecommendationWidget({ onLogged }: Props) {
           </div>
         )}
 
+        {state && (
+          <div
+            className={`rounded-lg p-3 border space-y-2 ${
+              isSwiggy
+                ? "border-accent/40 bg-accent/5"
+                : "border-border bg-bg-chrome/40"
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold">
+                Amex Gold · ShopWise Swiggy coupons{" "}
+                <span className="text-accent">
+                  {goldDone}/6
+                </span>
+                {goldLeft > 0 ? (
+                  <span className="text-fg-muted font-normal"> · {goldLeft} more ₹1k this month</span>
+                ) : (
+                  <span className="text-success font-normal"> · done this month</span>
+                )}
+              </div>
+              <div className="text-xs text-fg-muted">
+                Swiggy Money {inr(swiggyBal)}
+                {state.goldShopwiseUsedThisMonth > 0
+                  ? ` · ShopWise used ${inr(state.goldShopwiseUsedThisMonth)}/₹10k`
+                  : ""}
+              </div>
+            </div>
+            <p className="text-xs text-fg-muted leading-relaxed">
+              Always buy <b className="text-fg">₹1,000</b> ShopWise Swiggy coupons (each = 1 Gold txn). Top up Swiggy Money, then redeem meals. Log coupons here before logging the food order.
+            </p>
+            {goldLeft > 0 && (
+              <div className="flex flex-wrap items-end gap-2">
+                <div>
+                  <label className="label mb-1 block text-xs">Coupons just bought</label>
+                  <input
+                    className="input w-20"
+                    type="number"
+                    min={1}
+                    max={goldLeft}
+                    value={couponCount}
+                    onChange={(e) => setCouponCount(e.target.value)}
+                  />
+                </div>
+                <button type="button" className="btn-primary text-sm" onClick={onLogCoupons}>
+                  Log {Math.max(1, Math.min(goldLeft, Number(couponCount) || 1))}× ₹1k coupon
+                  {Math.max(1, Math.min(goldLeft, Number(couponCount) || 1)) > 1 ? "s" : ""}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {rec?.askLiveRates?.giftCard && !isMovie && !merchantTooShort && (
           <div className="bg-sky-50 dark:bg-sky-950/20 rounded-lg p-3 border border-sky-400/70 dark:border-sky-600/50 space-y-2">
             <div className="text-sm font-semibold flex items-center gap-1.5">
@@ -555,27 +688,6 @@ export function RecommendationWidget({ onLogged }: Props) {
               </div>
             )}
 
-            {routeToLog.ifCardNotAllowed && (
-              <div className="rounded-lg p-4 border border-border bg-bg-chrome/60">
-                <div className="text-sm font-semibold mb-1">If card not allowed</div>
-                <div className="text-sm text-accent font-medium">{routeToLog.ifCardNotAllowed.label}</div>
-                <div className="text-xs text-fg-muted mt-1 leading-relaxed">{routeToLog.ifCardNotAllowed.rationale}</div>
-                {routeToLog.ifCardNotAllowed.steps.length > 0 && (
-                  <ol className="mt-2 space-y-1 text-sm text-fg-muted list-decimal pl-4">
-                    {routeToLog.ifCardNotAllowed.steps.map((step, i) => (
-                      <li key={i}>{step}</li>
-                    ))}
-                  </ol>
-                )}
-                <div className="text-xs text-fg-muted mt-2">
-                  Fallback value ≈ {routeToLog.ifCardNotAllowed.effectivePct.toFixed(2)}%
-                  {routeToLog.ifCardNotAllowed.cardId !== routeToLog.cardId
-                    ? ` via ${routeName(routeToLog.ifCardNotAllowed.cardId)}`
-                    : ""}
-                </div>
-              </div>
-            )}
-
             {routeToLog.ifAmexNotAccepted && (
               <div className="rounded-lg p-4 border border-warning/40 bg-warning/5">
                 <div className="text-sm font-semibold mb-1">If Amex not accepted</div>
@@ -648,25 +760,6 @@ export function RecommendationWidget({ onLogged }: Props) {
                   <div className="text-sm">
                     <span className="font-semibold text-info">Milestone tip — </span>
                     consider <b>{routeName(rec.milestoneTip.cardId)}</b> instead ({rec.milestoneTip.effectivePct.toFixed(2)}%): {rec.milestoneTip.note}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {rec.claimTips && rec.claimTips.length > 0 && (
-              <div className="rounded-lg p-3 border border-warning/40 bg-warning/10">
-                <div className="flex items-start gap-2">
-                  <Icon.Sparkles size={16} className="text-warning shrink-0 mt-0.5" />
-                  <div className="text-sm space-y-1.5">
-                    <div className="font-semibold text-warning">
-                      Benefit claims —{" "}
-                      <Link href="/claims" className="underline hover:no-underline">mark what’s done</Link>
-                    </div>
-                    <ul className="list-disc pl-4 text-fg-muted space-y-0.5">
-                      {rec.claimTips.map((t, i) => (
-                        <li key={i}>{t}</li>
-                      ))}
-                    </ul>
                   </div>
                 </div>
               </div>
@@ -759,12 +852,6 @@ function AltTableRow({
             <div className="text-xs text-fg-muted mt-0.5 leading-relaxed">
               <span className={notSuitable ? "text-warning font-medium" : "text-fg-muted"}>{notSuitable ? "Why not: " : "Note: "}</span>
               {reason}
-            </div>
-          )}
-          {alt.ifCardNotAllowed && (
-            <div className="text-xs text-fg-muted mt-0.5">
-              <span className="font-medium text-fg">If card not allowed: </span>
-              {alt.ifCardNotAllowed.label}
             </div>
           )}
           {alt.ifAmexNotAccepted && (
