@@ -109,32 +109,110 @@ export function reverseCardSpend(
   }
 }
 
+/** Amex program thresholds — used for counting milestone txns, not for forcing voucher face. */
+export const GOLD_TXN_MIN_INR = 1000;
+export const GOLD_TXN_TARGET = 6;
+export const MRCC_TXN_MIN_INR = 1500;
+export const MRCC_TXN_TARGET = 4;
+
+export type ShopwiseBalanceKind = "swiggy" | "amazon_pay" | "none";
+
+export type ShopwiseVoucherLog = {
+  cardId: string;
+  /** Number of separate ShopWise voucher purchases. */
+  units: number;
+  /** Face value of each voucher (₹). Any amount; milestone count only if ≥ card threshold. */
+  facePerUnit: number;
+  balanceKind?: ShopwiseBalanceKind;
+};
+
+export type ShopwiseVoucherResult = {
+  ok: boolean;
+  units: number;
+  facePerUnit: number;
+  totalInr: number;
+  qualifyingTxns: number;
+  goldDone: number;
+  goldLeft: number;
+  mrccTxnsDone: number;
+  mrccTxnsLeft: number;
+  mrccAmount: number;
+  swiggyMoneyBalance: number;
+  amazonPayBalance: number;
+  message?: string;
+};
+
 /**
- * Record Amex Gold ShopWise Swiggy coupons (always ₹1k face each → one ≥₹1k Gold txn each).
- * Also tops up Swiggy Money balance to redeem on meals.
+ * Log ShopWise voucher purchases on an Amex card.
+ * Units × face are user-entered; Gold counts each unit with face ≥₹1k (cap 6),
+ * MRCC counts each unit with face ≥₹1.5k (cap 4) and adds total to cycle amount.
  */
-export function recordGoldShopwiseSwiggyCoupons(
+export function recordShopwiseVouchers(
   next: AppState,
-  count: number,
-  faceInr = 1000
-): { coupons: number; goldDone: number; goldLeft: number; swiggyMoneyBalance: number } {
-  const room = Math.max(0, 6 - (next.goldThisMonthTxnsAt1k ?? 0));
-  const coupons = Math.max(0, Math.min(room, Math.floor(count)));
-  if (coupons < 1) {
-    return {
-      coupons: 0,
-      goldDone: next.goldThisMonthTxnsAt1k ?? 0,
-      goldLeft: room,
-      swiggyMoneyBalance: next.swiggyMoneyBalance ?? 0,
-    };
+  log: ShopwiseVoucherLog
+): ShopwiseVoucherResult {
+  const units = Math.max(0, Math.floor(Number(log.units) || 0));
+  const facePerUnit = Math.max(0, Math.round(Number(log.facePerUnit) || 0));
+  const totalInr = units * facePerUnit;
+  const snapshot = (): ShopwiseVoucherResult => ({
+    ok: false,
+    units: 0,
+    facePerUnit,
+    totalInr: 0,
+    qualifyingTxns: 0,
+    goldDone: next.goldThisMonthTxnsAt1k ?? 0,
+    goldLeft: Math.max(0, GOLD_TXN_TARGET - (next.goldThisMonthTxnsAt1k ?? 0)),
+    mrccTxnsDone: next.mrccThisCycleTxnsAt1500 ?? 0,
+    mrccTxnsLeft: Math.max(0, MRCC_TXN_TARGET - (next.mrccThisCycleTxnsAt1500 ?? 0)),
+    mrccAmount: next.mrccThisCycleAmount ?? 0,
+    swiggyMoneyBalance: next.swiggyMoneyBalance ?? 0,
+    amazonPayBalance: next.amazonPayBalance ?? 0,
+  });
+
+  if (units < 1 || facePerUnit < 1) {
+    return { ...snapshot(), message: "Enter units and face ₹ per voucher" };
   }
-  next.goldThisMonthTxnsAt1k = Math.min(6, (next.goldThisMonthTxnsAt1k ?? 0) + coupons);
-  next.goldShopwiseUsedThisMonth = (next.goldShopwiseUsedThisMonth ?? 0) + coupons * faceInr;
-  next.swiggyMoneyBalance = (next.swiggyMoneyBalance ?? 0) + coupons * faceInr;
+
+  next.goldShopwiseUsedThisMonth = (next.goldShopwiseUsedThisMonth ?? 0) + totalInr;
+
+  let qualifyingTxns = 0;
+  if (log.cardId === "amex_gold") {
+    qualifyingTxns = facePerUnit >= GOLD_TXN_MIN_INR ? units : 0;
+    next.goldThisMonthTxnsAt1k = Math.min(
+      GOLD_TXN_TARGET,
+      (next.goldThisMonthTxnsAt1k ?? 0) + qualifyingTxns
+    );
+  } else if (log.cardId === "amex_mrcc") {
+    qualifyingTxns = facePerUnit >= MRCC_TXN_MIN_INR ? units : 0;
+    next.mrccThisCycleAmount = (next.mrccThisCycleAmount ?? 0) + totalInr;
+    next.mrccCycleSpend = (next.mrccCycleSpend ?? 0) + totalInr;
+    next.mrccThisCycleTxnsAt1500 = Math.min(
+      MRCC_TXN_TARGET,
+      (next.mrccThisCycleTxnsAt1500 ?? 0) + qualifyingTxns
+    );
+  } else if (log.cardId === "amex_plat_travel") {
+    next.ptccEligibleSpend = (next.ptccEligibleSpend ?? 0) + totalInr;
+  }
+
+  const balanceKind = log.balanceKind ?? "none";
+  if (balanceKind === "swiggy") {
+    next.swiggyMoneyBalance = (next.swiggyMoneyBalance ?? 0) + totalInr;
+  } else if (balanceKind === "amazon_pay") {
+    next.amazonPayBalance = (next.amazonPayBalance ?? 0) + totalInr;
+  }
+
   return {
-    coupons,
-    goldDone: next.goldThisMonthTxnsAt1k,
-    goldLeft: Math.max(0, 6 - next.goldThisMonthTxnsAt1k),
-    swiggyMoneyBalance: next.swiggyMoneyBalance,
+    ok: true,
+    units,
+    facePerUnit,
+    totalInr,
+    qualifyingTxns,
+    goldDone: next.goldThisMonthTxnsAt1k ?? 0,
+    goldLeft: Math.max(0, GOLD_TXN_TARGET - (next.goldThisMonthTxnsAt1k ?? 0)),
+    mrccTxnsDone: next.mrccThisCycleTxnsAt1500 ?? 0,
+    mrccTxnsLeft: Math.max(0, MRCC_TXN_TARGET - (next.mrccThisCycleTxnsAt1500 ?? 0)),
+    mrccAmount: next.mrccThisCycleAmount ?? 0,
+    swiggyMoneyBalance: next.swiggyMoneyBalance ?? 0,
+    amazonPayBalance: next.amazonPayBalance ?? 0,
   };
 }

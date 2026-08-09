@@ -27,7 +27,7 @@ export type AppState = {
   mrccThisCycleTxnsAt1500: number;
   mrccThisCycleAmount: number;
   goldShopwiseUsedThisMonth: number;
-  /** Idle Swiggy Money from ShopWise ₹1k coupons (spend here before buying more). */
+  /** Idle Swiggy Money from ShopWise vouchers (spend here before buying more). */
   swiggyMoneyBalance: number;
   bobBogoUsedThisMonth: boolean; // BOB Eterna District BOGO movie used this calendar month
   livePlusBogoUsedThisMonth: boolean; // HSBC Live+ District/BMS cinema BOGO used this calendar month
@@ -266,6 +266,8 @@ export function loadState(): AppState {
     st.mrccThisCycleTxnsAt1500 = 0;
     st.mrccThisCycleAmount = 0;
     st.goldShopwiseUsedThisMonth = 0;
+    st.bobBogoUsedThisMonth = false;
+    st.livePlusBogoUsedThisMonth = false;
     st.scapiaMonthlySpend = 0;
     st.bobCycleSpend5x = 0;
     st.livePlusAccelCashbackUsedThisMonth = 0;

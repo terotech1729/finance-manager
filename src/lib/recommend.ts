@@ -2575,13 +2575,13 @@ export function recommend(input: RecommendInput): RecommendationResult {
         bonusRewardInr: 0,
         pros: [
           `Clears ${inr(used)} prepaid Swiggy Money`,
-          "MR / ShopWise fee already paid when you bought the ₹1k coupon(s)",
-          goldOpen ? `Gold progress ${goldDone}/6 — ${goldNeed} more ₹1k coupon(s) this month` : "Gold 6/6 done this month",
+          "MR already earned when you bought the ShopWise voucher(s)",
+          goldOpen ? `Gold progress ${goldDone}/6 — ${goldNeed} more ≥₹1k voucher(s) this month` : "Gold 6/6 done this month",
           covers ? "Ranks above Live+ so you burn prepaid balance first" : "",
         ].filter(Boolean),
-        cons: ["No new card earn on this redeem — value was captured at coupon purchase"],
+        cons: ["No new card earn on this redeem — value was captured at voucher purchase"],
         rationale:
-          "You already bought ShopWise Swiggy coupons on Amex Gold. Redeem that Swiggy Money on this order instead of paying Live+/buying another coupon while balance sits idle.",
+          "You already bought ShopWise Swiggy vouchers on Amex Gold. Redeem that Swiggy Money on this order instead of paying Live+/buying another voucher while balance sits idle.",
         steps: [
           "Open Swiggy → pay with Swiggy Money / voucher balance",
           used < amt ? `Pay remaining ${inr(amt - used)} with HSBC Live+ 10% (food)` : "Full order covered by Swiggy Money",
@@ -2628,15 +2628,15 @@ export function recommend(input: RecommendInput): RecommendationResult {
         ].filter(Boolean),
         cons: [
           `You are buying a ₹1k voucher, not only paying ${inr(amt)}`,
-          "Log the coupon purchase in Recommend (coupons panel) so Gold 6×₹1k stays accurate",
+          "Log the purchase in the ShopWise voucher panel (units × face ₹) so Gold / MRCC progress stays accurate",
         ],
         rationale:
-          "Amex Gold (~₹5.3k fee) needs 6× ≥₹1k ShopWise months. Buy ₹1k Swiggy coupons (no convenience fee, unlike Amazon Pay GC), top up Swiggy Money, then redeem across meals. Live+ for overflow after Gold is done or balance is empty.",
+          "Amex Gold (~₹5.3k fee) needs 6× ≥₹1k ShopWise months. Buy Swiggy vouchers at any face ≥₹1k (no convenience fee, unlike Amazon Pay GC), top up Swiggy Money, then redeem across meals. Live+ for overflow after Gold is done or balance is empty.",
         steps: [
-          "Open ShopWise → Swiggy voucher ₹1,000 on Amex Gold",
-          "Log that coupon in the Gold coupons panel (so progress shows X/6)",
+          "Open ShopWise → Swiggy voucher on Amex Gold (face ≥₹1k to count)",
+          "Log units × face ₹ in the ShopWise voucher panel",
           `Redeem ${inr(amt)} of Swiggy Money on this order`,
-          `After ${goldNeed} such ₹1k days, put remaining Swiggy on Live+ 10%`,
+          `After ${goldNeed} qualifying days, put remaining Swiggy on Live+ 10%`,
         ],
       });
     } else {
@@ -2663,16 +2663,17 @@ export function recommend(input: RecommendInput): RecommendationResult {
         cons: [
           "Worse yield than HSBC Live+ 10% unless milestone value tips it",
           amt < 1000
-            ? "Always buy ₹1k ShopWise Swiggy coupons (never this cart amount) if Gold txns remain"
+            ? "Buy ShopWise Swiggy vouchers with face ≥₹1k (any amount above threshold) if Gold txns remain"
             : "Only use this slice for Gold milestone; put leftover Swiggy on Live+",
         ],
         rationale:
-          "Amex Gold milestone fuel = ShopWise Swiggy ₹1k coupons (no convenience fee). Don't buy odd-sized vouchers for a ₹300 meal.",
+          "Amex Gold milestone fuel = ShopWise Swiggy vouchers with face ≥₹1k (no convenience fee). Don't buy odd-sized vouchers for a ₹300 meal.",
         steps: [
           "Open ShopWise",
           amt < 1000
-            ? "Buy Swiggy voucher ₹1,000 with Amex Gold (this cart alone won't count)"
+            ? "Buy Swiggy voucher with face ≥₹1k on Amex Gold (this cart alone won't count)"
             : "Buy Swiggy voucher ≥₹1k with Amex Gold",
+          "Log units × face ₹ in the ShopWise voucher panel",
           "Redeem in Swiggy for meals you'd buy anyway",
         ],
       });

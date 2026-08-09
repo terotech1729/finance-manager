@@ -7,7 +7,7 @@ import { buildRecommendInputFromState } from "@/lib/recommendInput";
 import { detectCategory, ALL_CATEGORIES, ALL_CHANNELS, type ChannelType } from "@/lib/categorize";
 import { findWelcomeOffer, findGiftCardDeals } from "@/lib/stacking";
 import { addTransaction, loadState, loadTransactions, saveState, onStorageChange, type AppState } from "@/lib/storage";
-import { applyCardSpend, recordGoldShopwiseSwiggyCoupons } from "@/lib/spendTracking";
+import { applyCardSpend, recordShopwiseVouchers, GOLD_TXN_MIN_INR, MRCC_TXN_MIN_INR } from "@/lib/spendTracking";
 import { toast } from "./Toast";
 import { getCardById } from "@/lib/cards";
 
@@ -47,7 +47,10 @@ export function RecommendationWidget({ onLogged }: Props) {
   const [showAlts, setShowAlts] = useState(false);
   /** Which ranked route to log — 0 = best, 1+ = alternatives index + 1 conceptually; we store the route itself. */
   const [selectedRoute, setSelectedRoute] = useState<RouteOption | null>(null);
-  const [couponCount, setCouponCount] = useState("1");
+  const [voucherUnits, setVoucherUnits] = useState("1");
+  const [voucherFace, setVoucherFace] = useState("");
+  /** How the Amex spend actually happened — milestones can be direct/online, not only ShopWise. */
+  const [amexPayPath, setAmexPayPath] = useState<"direct" | "online" | "shopwise" | null>(null);
 
   useEffect(() => {
     // Always start from saved milestone counters (Milestones / Settings / Claims).
@@ -62,6 +65,7 @@ export function RecommendationWidget({ onLogged }: Props) {
     setAmazonOrderCashback("");
     setIndigoVoucher("");
     setSelectedRoute(null);
+    setAmexPayPath(null);
   }, [merchant]);
 
   const amt = Number((amount || "0").replace(/[^0-9.]/g, "")) || 0;
@@ -142,6 +146,44 @@ export function RecommendationWidget({ onLogged }: Props) {
   const alts = rec?.alternatives ?? [];
   const routeToLog = selectedRoute ?? best;
 
+  // Ask Direct/Online/ShopWise for whichever Amex route is selected to log (#1 or an alt).
+  const amexCardId =
+    routeToLog && /^amex_/.test(routeToLog.cardId) ? routeToLog.cardId : null;
+  const isAmexLogging = !!amexCardId;
+  const shopwiseSuggestedFace =
+    amexCardId === "amex_mrcc"
+      ? MRCC_TXN_MIN_INR
+      : amexCardId === "amex_gold"
+        ? GOLD_TXN_MIN_INR
+        : amt >= 1
+          ? Math.round(amt)
+          : "";
+  const shopwiseTxnMin =
+    amexCardId === "amex_mrcc"
+      ? MRCC_TXN_MIN_INR
+      : amexCardId === "amex_gold"
+        ? GOLD_TXN_MIN_INR
+        : null;
+  const shopwiseBalanceKind: "swiggy" | "amazon_pay" | "none" = isSwiggy
+    ? "swiggy"
+    : isAmazon
+      ? "amazon_pay"
+      : "none";
+
+  // Suggest a path from the route label/channel, but always let the user confirm.
+  useEffect(() => {
+    if (!amexCardId || !routeToLog) {
+      setAmexPayPath(null);
+      return;
+    }
+    if (/shopwise/i.test(routeToLog.label)) setAmexPayPath("shopwise");
+    else if (finalChannel === "offline_pos") setAmexPayPath("direct");
+    else setAmexPayPath("online");
+    setVoucherUnits("1");
+    setVoucherFace(shopwiseSuggestedFace === "" ? "" : String(shopwiseSuggestedFace));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-seed when Amex route / channel flips
+  }, [amexCardId, routeToLog?.label, finalChannel]);
+
   const pathForRoute = (r: RouteOption): Transaction["path"] => {
     const l = r.label.toLowerCase();
     if (/swiggy money/i.test(l)) return "amazon_brand"; // prepaid balance drain (reuse path bucket)
@@ -158,75 +200,159 @@ export function RecommendationWidget({ onLogged }: Props) {
 
   const goldDone = state?.goldThisMonthTxnsAt1k ?? 0;
   const goldLeft = Math.max(0, 6 - goldDone);
+  const mrccDone = state?.mrccThisCycleTxnsAt1500 ?? 0;
+  const mrccLeft = Math.max(0, 4 - mrccDone);
   const swiggyBal = state?.swiggyMoneyBalance ?? 0;
 
-  const onLogCoupons = () => {
-    const n = Math.max(1, Math.min(6, Number(couponCount) || 1));
-    const next: AppState = { ...loadState() };
-    const before = next.goldThisMonthTxnsAt1k ?? 0;
-    const res = recordGoldShopwiseSwiggyCoupons(next, n, 1000);
-    if (res.coupons < 1) {
-      toast(before >= 6 ? "Gold 6/6 already done this month" : "Nothing to log", "error");
-      return;
+  const shopwiseEarnPct = shopwiseBalanceKind === "amazon_pay" ? 4.03 : 5.8;
+
+  const logShopwisePurchase = (cardId: string, chosen?: RouteOption) => {
+    const units = Math.max(0, Math.floor(Number(voucherUnits) || 0));
+    const face = Math.max(0, Math.round(Number(String(voucherFace).replace(/[^0-9.]/g, "")) || 0));
+    if (units < 1 || face < 1) {
+      toast("Enter ShopWise units and face ₹, then log", "error");
+      return false;
     }
-    const t: Transaction = {
-      id: newId(),
-      date: localDateToISO(date),
-      merchant: "ShopWise Swiggy",
-      category: "swiggy",
-      amount: res.coupons * 1000,
-      channel: "online",
-      cardId: "amex_gold",
-      path: "shopwise",
-      effectivePct: 5.8,
-      rewardInr: res.coupons * 1000 * 0.058,
-      notes: `${res.coupons}× ₹1k ShopWise Swiggy coupon(s) → Gold ${res.goldDone}/6`,
-    };
-    addTransaction(t);
-    // Coupon face already counted in recordGoldShopwiseSwiggyCoupons — don't double via applyCardSpend.
+    const next: AppState = { ...loadState() };
+    const balanceKind = shopwiseBalanceKind;
+    const earnPct =
+      chosen?.effectivePct && chosen.effectivePct > 0
+        ? chosen.effectivePct
+        : balanceKind === "amazon_pay"
+          ? 4.03
+          : shopwiseEarnPct;
+    const res = recordShopwiseVouchers(next, {
+      cardId,
+      units,
+      facePerUnit: face,
+      balanceKind,
+    });
+    if (!res.ok) {
+      toast(res.message ?? "Nothing to log", "error");
+      return false;
+    }
+    const progressNote =
+      cardId === "amex_gold"
+        ? `Gold ${res.goldDone}/6 (${res.qualifyingTxns} counted${face < GOLD_TXN_MIN_INR ? `, face < ₹${GOLD_TXN_MIN_INR}` : ""})`
+        : cardId === "amex_mrcc"
+          ? `MRCC ${res.mrccTxnsDone}/4 ≥₹${MRCC_TXN_MIN_INR} · cycle ${inr(res.mrccAmount)}`
+          : "Amex spend logged";
+    // One txn per unit so monthly recompute / history counts milestones correctly.
+    const rewardPer =
+      chosen?.totalRewardInr && units > 0 ? chosen.totalRewardInr / units : face * (earnPct / 100);
+    for (let i = 0; i < res.units; i++) {
+      addTransaction({
+        id: newId(),
+        date: localDateToISO(date),
+        merchant: `ShopWise${balanceKind === "swiggy" ? " Swiggy" : balanceKind === "amazon_pay" ? " Amazon Pay" : ""}`,
+        category:
+          balanceKind === "swiggy"
+            ? "swiggy"
+            : balanceKind === "amazon_pay"
+              ? "amazon"
+              : finalCategory || "gift card",
+        amount: face,
+        channel: "online",
+        cardId,
+        path: "shopwise",
+        effectivePct: earnPct,
+        rewardInr: rewardPer,
+        notes: `${i + 1}/${res.units} · face ${inr(face)} → ${progressNote}`,
+      });
+    }
     setStateLocal(next);
     saveState(next);
+    const balNote =
+      balanceKind === "swiggy"
+        ? ` · Swiggy Money ${inr(res.swiggyMoneyBalance)}`
+        : balanceKind === "amazon_pay"
+          ? ` · Amazon Pay ${inr(res.amazonPayBalance)}`
+          : "";
     toast(
-      `Logged ${res.coupons}× ₹1k coupon(s) · Gold ${res.goldDone}/6 (${res.goldLeft} left) · Swiggy Money ${inr(res.swiggyMoneyBalance)}`,
+      `Logged ${res.units}× ${inr(face)} ShopWise on ${routeName(cardId)} · ${progressNote}${balNote}`,
       "success"
     );
     onLogged?.();
+    return true;
   };
 
   const onLog = (route?: RouteOption) => {
     const chosen = route ?? routeToLog;
     if (!rec || !chosen || !state) return;
-    const isBatchShopwise =
-      chosen.cardId === "amex_gold" && /batch shopwise|₹1,?000 voucher/i.test(chosen.label);
+    const isAmexChosen = /^amex_/.test(chosen.cardId);
     const isSwiggyMoney = /swiggy money/i.test(chosen.label);
 
-    // Selecting "Batch ShopWise ₹1k" while entering a meal total → log the ₹1k coupon, not the meal.
-    if (isBatchShopwise) {
-      const next: AppState = { ...loadState() };
-      const res = recordGoldShopwiseSwiggyCoupons(next, 1, 1000);
-      if (res.coupons < 1) {
-        toast("Gold 6/6 already done — use Live+ or Swiggy Money", "error");
+    // Amex: confirm Direct / Online / ShopWise — milestones aren't ShopWise-only.
+    if (isAmexChosen) {
+      if (!amexPayPath) {
+        toast("How did you pay with Amex — Direct, Online, or ShopWise?", "error");
         return;
       }
+      if (amexPayPath === "shopwise") {
+        if (!logShopwisePurchase(chosen.cardId, chosen)) return;
+        setAmount("");
+        setSelectedRoute(null);
+        return;
+      }
+
+      const channel =
+        amexPayPath === "direct"
+          ? ("offline_pos" as const)
+          : finalChannel === "foreign"
+            ? finalChannel
+            : ("online" as const);
+      const milestoneMin =
+        chosen.cardId === "amex_mrcc"
+          ? MRCC_TXN_MIN_INR
+          : chosen.cardId === "amex_gold"
+            ? GOLD_TXN_MIN_INR
+            : null;
       const t: Transaction = {
         id: newId(),
         date: localDateToISO(date),
-        merchant: "ShopWise Swiggy",
-        category: "swiggy",
-        amount: 1000,
-        channel: "online",
-        cardId: "amex_gold",
-        path: "shopwise",
+        merchant: merchant.trim() || finalCategory,
+        category: finalCategory,
+        amount: amt,
+        channel,
+        cardId: chosen.cardId,
+        path: "direct",
         effectivePct: chosen.effectivePct,
         rewardInr: chosen.totalRewardInr,
-        notes: `1× ₹1k coupon (from meal recommend ${inr(amt)}) · Gold ${res.goldDone}/6`,
+        notes:
+          milestoneMin != null && amt >= milestoneMin
+            ? `Amex ${amexPayPath} · counts toward monthly txn milestone`
+            : `Amex ${amexPayPath}`,
       };
       addTransaction(t);
+      const next: AppState = { ...loadState() };
+      applyCardSpend(
+        next,
+        chosen.cardId,
+        amt,
+        chosen.totalRewardInr,
+        chosen.effectivePct,
+        finalCategory,
+        merchant.trim()
+      );
       setStateLocal(next);
       saveState(next);
-      toast(`Logged ₹1k ShopWise coupon · Gold ${res.goldDone}/6 · Swiggy Money ${inr(res.swiggyMoneyBalance)}`, "success");
+      toast(
+        `Logged ${inr(amt)} on ${routeName(chosen.cardId)} (${amexPayPath}) · ${inr(chosen.totalRewardInr)} reward`,
+        "success"
+      );
       setAmount("");
+      setMerchant("");
+      setDate(todayLocal());
+      setClarificationAnswer(null);
+      setOverrideCategory("");
+      setOverrideChannel("");
+      setCashkaroOverride("");
+      setAmazonOrderCashback("");
+      setMovieTheatre("");
+      setCredGiftCardPct("");
       setSelectedRoute(null);
+      setShowOverride(false);
+      setShowAlts(false);
       onLogged?.();
       return;
     }
@@ -246,14 +372,20 @@ export function RecommendationWidget({ onLogged }: Props) {
     addTransaction(t);
     const next: AppState = { ...loadState() };
     if (isSwiggyMoney) {
-      next.swiggyMoneyBalance = Math.max(0, (next.swiggyMoneyBalance ?? 0) - Math.min(next.swiggyMoneyBalance ?? 0, amt));
+      next.swiggyMoneyBalance = Math.max(
+        0,
+        (next.swiggyMoneyBalance ?? 0) - Math.min(next.swiggyMoneyBalance ?? 0, amt)
+      );
     } else {
-      applyCardSpend(next, chosen.cardId, amt, chosen.totalRewardInr, chosen.effectivePct, finalCategory, merchant.trim());
-      // Real ShopWise purchase (≥₹1k) — bump ShopWise cap; Gold txn already via applyCardSpend.
-      if (chosen.cardId === "amex_gold" && /shopwise/i.test(chosen.label) && amt >= 1000) {
-        next.goldShopwiseUsedThisMonth += amt;
-        next.swiggyMoneyBalance = (next.swiggyMoneyBalance ?? 0) + (/swiggy/i.test(`${merchant} ${finalCategory}`) ? amt : 0);
-      }
+      applyCardSpend(
+        next,
+        chosen.cardId,
+        amt,
+        chosen.totalRewardInr,
+        chosen.effectivePct,
+        finalCategory,
+        merchant.trim()
+      );
     }
     if (chosen.cardId === "amazon_pay_icici" && chosen.label.toLowerCase().includes("balance")) {
       next.amazonPayBalance = Math.max(0, next.amazonPayBalance - Math.min(next.amazonPayBalance, amt));
@@ -472,54 +604,126 @@ export function RecommendationWidget({ onLogged }: Props) {
           </div>
         )}
 
-        {state && (
-          <div
-            className={`rounded-lg p-3 border space-y-2 ${
-              isSwiggy
-                ? "border-accent/40 bg-accent/5"
-                : "border-border bg-bg-chrome/40"
-            }`}
-          >
+        {state && isAmexLogging && amexCardId && (
+          <div className="rounded-lg p-3 border space-y-3 border-accent/40 bg-accent/5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm font-semibold">
-                Amex Gold · ShopWise Swiggy coupons{" "}
-                <span className="text-accent">
-                  {goldDone}/6
-                </span>
-                {goldLeft > 0 ? (
-                  <span className="text-fg-muted font-normal"> · {goldLeft} more ₹1k this month</span>
-                ) : (
-                  <span className="text-success font-normal"> · done this month</span>
+                {routeName(amexCardId)} · how are you paying?
+                {amexCardId === "amex_gold" && (
+                  <>
+                    {" "}
+                    <span className="text-accent">{goldDone}/6</span>
+                    {goldLeft > 0 ? (
+                      <span className="text-fg-muted font-normal">
+                        {" "}
+                        · {goldLeft} more ≥{inr(GOLD_TXN_MIN_INR)} this month
+                      </span>
+                    ) : (
+                      <span className="text-success font-normal"> · done this month</span>
+                    )}
+                  </>
+                )}
+                {amexCardId === "amex_mrcc" && (
+                  <>
+                    {" "}
+                    <span className="text-accent">{mrccDone}/4</span>
+                    {mrccLeft > 0 ? (
+                      <span className="text-fg-muted font-normal">
+                        {" "}
+                        · {mrccLeft} more ≥{inr(MRCC_TXN_MIN_INR)} this month
+                      </span>
+                    ) : (
+                      <span className="text-success font-normal"> · 4-txn done</span>
+                    )}
+                    <span className="text-fg-muted font-normal">
+                      {" "}
+                      · cycle {inr(state.mrccThisCycleAmount ?? 0)}/₹20k
+                    </span>
+                  </>
+                )}
+                {amexCardId === "amex_plat_travel" && (
+                  <span className="text-fg-muted font-normal">
+                    {" "}
+                    · PT eligible {inr(state.ptccEligibleSpend ?? 0)}
+                  </span>
                 )}
               </div>
               <div className="text-xs text-fg-muted">
-                Swiggy Money {inr(swiggyBal)}
-                {state.goldShopwiseUsedThisMonth > 0
-                  ? ` · ShopWise used ${inr(state.goldShopwiseUsedThisMonth)}/₹10k`
-                  : ""}
+                {(state.goldShopwiseUsedThisMonth ?? 0) > 0
+                  ? `ShopWise used ${inr(state.goldShopwiseUsedThisMonth)}/₹10k`
+                  : "Resets on the 1st of each month"}
               </div>
             </div>
             <p className="text-xs text-fg-muted leading-relaxed">
-              Always buy <b className="text-fg">₹1,000</b> ShopWise Swiggy coupons (each = 1 Gold txn). Top up Swiggy Money, then redeem meals. Log coupons here before logging the food order.
+              Milestone txns can be Direct POS, Online, or ShopWise — pick what you actually used. ShopWise unlocks the voucher tracker.
             </p>
-            {goldLeft > 0 && (
-              <div className="flex flex-wrap items-end gap-2">
-                <div>
-                  <label className="label mb-1 block text-xs">Coupons just bought</label>
-                  <input
-                    className="input w-20"
-                    type="number"
-                    min={1}
-                    max={goldLeft}
-                    value={couponCount}
-                    onChange={(e) => setCouponCount(e.target.value)}
-                  />
-                </div>
-                <button type="button" className="btn-primary text-sm" onClick={onLogCoupons}>
-                  Log {Math.max(1, Math.min(goldLeft, Number(couponCount) || 1))}× ₹1k coupon
-                  {Math.max(1, Math.min(goldLeft, Number(couponCount) || 1)) > 1 ? "s" : ""}
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["direct", "Direct (POS)"],
+                  ["online", "Online"],
+                  ["shopwise", "ShopWise"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`px-3 py-1.5 rounded-md text-sm border transition ${
+                    amexPayPath === value
+                      ? "bg-accent text-white border-accent"
+                      : "bg-bg-elevated border-border text-fg hover:border-accent/50"
+                  }`}
+                  onClick={() => setAmexPayPath(value)}
+                >
+                  {label}
                 </button>
+              ))}
+            </div>
+            {amexPayPath === "shopwise" && (
+              <div className="space-y-2 pt-1 border-t border-border/60">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs font-medium text-fg">ShopWise vouchers bought</div>
+                  <div className="text-xs text-fg-muted">
+                    {shopwiseBalanceKind === "swiggy"
+                      ? `Swiggy Money ${inr(swiggyBal)}`
+                      : shopwiseBalanceKind === "amazon_pay"
+                        ? `Amazon Pay ${inr(state.amazonPayBalance ?? 0)}`
+                        : "Enter units × face ₹"}
+                  </div>
+                </div>
+                {shopwiseTxnMin != null && (
+                  <p className="text-xs text-fg-muted">
+                    Each unit counts toward the milestone only if face ≥{inr(shopwiseTxnMin)}.
+                  </p>
+                )}
+                <div className="flex flex-wrap items-end gap-2">
+                  <div>
+                    <label className="label mb-1 block text-xs">Units</label>
+                    <input
+                      className="input w-20"
+                      type="number"
+                      min={1}
+                      value={voucherUnits}
+                      onChange={(e) => setVoucherUnits(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="label mb-1 block text-xs">Face ₹ each</label>
+                    <input
+                      className="input w-28"
+                      inputMode="numeric"
+                      placeholder={shopwiseTxnMin != null ? String(shopwiseTxnMin) : "amount"}
+                      value={voucherFace}
+                      onChange={(e) => setVoucherFace(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
+            )}
+            {amexPayPath && amexPayPath !== "shopwise" && (
+              <p className="text-xs text-fg-muted">
+                Logging will use the checkout amount ({amt > 0 ? inr(amt) : "enter ₹ above"}) as one {amexPayPath} Amex txn.
+              </p>
             )}
           </div>
         )}
@@ -804,8 +1008,17 @@ export function RecommendationWidget({ onLogged }: Props) {
 
             <div className="flex justify-end gap-2 pt-1">
               <button className="btn-secondary" onClick={() => { setMerchant(""); setAmount(""); setClarificationAnswer(null); setSelectedRoute(null); }}>Clear</button>
-              <button className="btn-primary" onClick={() => onLog()}>
-                <Icon.Plus size={16} /> Log {selectedRoute && selectedRoute !== best ? "selected" : "this"} expense
+              <button
+                className="btn-primary"
+                onClick={() => onLog()}
+                disabled={isAmexLogging && !amexPayPath}
+              >
+                <Icon.Plus size={16} />{" "}
+                {isAmexLogging && amexPayPath === "shopwise"
+                  ? `Log ${Math.max(1, Math.floor(Number(voucherUnits) || 1))}× ShopWise`
+                  : isAmexLogging && amexPayPath
+                    ? `Log Amex ${amexPayPath}`
+                    : `Log ${selectedRoute && selectedRoute !== best ? "selected" : "this"} expense`}
               </button>
             </div>
           </div>

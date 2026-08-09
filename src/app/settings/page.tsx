@@ -20,11 +20,11 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "scapiaMonthlySpend", label: "Scapia — current month spend (₹)", group: "Monthly tracking", numeric: true },
   { key: "kiwiNeonCycleSpend", label: "Kiwi Neon cycle (Apr–Mar) spend (₹)", group: "Monthly tracking", numeric: true },
   { key: "livePlusAccelCashbackUsedThisMonth", label: "HSBC Live+ — 10% cashback used this month (cap ₹1,200)", group: "Monthly milestone counters", numeric: true },
-  { key: "goldThisMonthTxnsAt1k", label: "Amex Gold — ₹1k ShopWise coupons this month (0-6)", group: "Monthly milestone counters", numeric: true },
-  { key: "mrccThisCycleTxnsAt1500", label: "Amex MRCC — ≥₹1.5K txns this calendar month (0-4)", group: "Monthly milestone counters", numeric: true },
+  { key: "goldThisMonthTxnsAt1k", label: "Amex Gold — ≥₹1k txns this calendar month (0-6)", group: "Monthly milestone counters", numeric: true },
+  { key: "mrccThisCycleTxnsAt1500", label: "Amex MRCC — ≥₹1.5k txns this calendar month (0-4)", group: "Monthly milestone counters", numeric: true },
   { key: "mrccThisCycleAmount", label: "Amex MRCC — total this calendar month (toward ₹20K)", group: "Monthly milestone counters", numeric: true },
-  { key: "goldShopwiseUsedThisMonth", label: "Amex Gold — ShopWise voucher spend this month (cap ₹10K)", group: "Monthly milestone counters", numeric: true },
-  { key: "swiggyMoneyBalance", label: "Swiggy Money balance (from ShopWise ₹1k coupons)", group: "Monthly milestone counters", numeric: true },
+  { key: "goldShopwiseUsedThisMonth", label: "Amex — ShopWise voucher spend this month (cap ₹10K)", group: "Monthly milestone counters", numeric: true },
+  { key: "swiggyMoneyBalance", label: "Swiggy Money balance (from ShopWise vouchers)", group: "Monthly milestone counters", numeric: true },
   { key: "bobCycleSpend5x", label: "BOB Eterna — 5× spend this cycle (cap ~₹33K)", group: "Monthly milestone counters", numeric: true },
   { key: "amazonPayBalance", label: "Amazon Pay balance (₹, idle gift-card money)", group: "Amazon Pay & welcome windows", numeric: true },
   { key: "bobEternaIssueDate", label: "BOB Eterna issue date (YYYY-MM-DD, drives 60-day welcome)", group: "Amazon Pay & welcome windows", numeric: false },
@@ -87,7 +87,7 @@ export default function SettingsPage() {
       <Callout tone="info">
         <div className="font-medium mb-1">Milestone periods (not all calendar year)</div>
         <ul className="text-sm space-y-1 list-disc pl-4">
-          <li><b>Amex Gold / MRCC monthly</b> — calendar month</li>
+          <li><b>Amex Gold 6×≥₹1k / MRCC 4×≥₹1.5k + ₹20k</b> — calendar month (auto-reset on the 1st; Direct, Online, or ShopWise all count)</li>
           <li><b>Amex PT annual</b> — membership year (ends ~3 Dec), not Jan–Dec</li>
           <li><b>Amex MRCC fee waiver</b> — renewal / membership year (see card cycle end), not calendar year</li>
           <li><b>SBI fee waiver</b> — fee anniversary (~21 Oct); spend counts from the day after the fee posts</li>
