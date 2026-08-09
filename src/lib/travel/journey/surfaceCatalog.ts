@@ -143,7 +143,49 @@ export const SURFACE_CATALOG: SurfaceService[] = [
     note: "Day Volvo typical. Confirm RedBus.",
   },
 
+  // —— Pune → Delhi overnight trains (rail gateway for Rishikesh last-mile) ——
+  {
+    id: "pnq-nzm-goa-exp",
+    mode: "train",
+    fromPlaceId: "stn-pune",
+    toPlaceId: "stn-nzm",
+    departLocal: "15:15",
+    arriveLocal: "14:05",
+    arrivesNextDay: true,
+    durationMin: 1370,
+    costInr: 1650,
+    name: "Goa Express (3A typ.)",
+    note: "Pune→Hazrat Nizamuddin overnight (typical). Confirm IRCTC for your date.",
+    overnightSleep: true,
+  },
+  {
+    id: "pnq-ndls-duronto",
+    mode: "train",
+    fromPlaceId: "stn-pune",
+    toPlaceId: "stn-ndls",
+    departLocal: "17:00",
+    arriveLocal: "10:55",
+    arrivesNextDay: true,
+    durationMin: 1075,
+    costInr: 2100,
+    name: "Pune–Delhi Duronto / Rajdhani-style (3A typ.)",
+    note: "Faster overnight Pune→New Delhi when available. Confirm IRCTC.",
+    overnightSleep: true,
+  },
+
   // —— Dehradun → Rishikesh ——
+  {
+    id: "ded-rsh-bus-flex",
+    mode: "bus",
+    fromPlaceId: "apt-ded",
+    toPlaceId: "city-rsh",
+    departLocal: "00:00", // flexible — after landing
+    arriveLocal: "01:10",
+    durationMin: 70,
+    costInr: 400,
+    name: "Bus / shared cab DED→Rishikesh",
+    note: "Frequent airport-area buses & shared cabs ~₹300–500, ~1–1.5 hrs to Rishikesh. Confirm on landing.",
+  },
   {
     id: "ded-rsh-cab",
     mode: "cab",
@@ -153,8 +195,8 @@ export const SURFACE_CATALOG: SurfaceService[] = [
     arriveLocal: "01:15",
     durationMin: 75,
     costInr: 1800,
-    name: "Cab DED→Rishikesh",
-    note: "Airport cab ~45–60 km / ~1–1.5 hrs.",
+    name: "Private cab DED→Rishikesh",
+    note: "Private airport cab ~45–60 km / ~1–1.5 hrs.",
   },
 ];
 
@@ -176,4 +218,14 @@ export function feederServicesToHub(originCityId: string, hubAirportId: string):
 
 export function lastMileServices(fromPlaceId: string, destPlaceId: string): SurfaceService[] {
   return SURFACE_CATALOG.filter((s) => s.fromPlaceId === fromPlaceId && s.toPlaceId === destPlaceId);
+}
+
+/** Overnight / long-haul trains from origin city toward Delhi rail heads. */
+export function railToDelhiServices(originCityId: string): SurfaceService[] {
+  if (originCityId === "city-pnq") {
+    return SURFACE_CATALOG.filter((s) =>
+      ["pnq-nzm-goa-exp", "pnq-ndls-duronto"].includes(s.id)
+    );
+  }
+  return [];
 }

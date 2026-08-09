@@ -22,10 +22,17 @@ export const DESTINATION_GATEWAYS: Record<string, DestinationGateways> = {
     lastMile: [
       {
         fromPlaceId: "apt-ded",
+        mode: "bus",
+        durationMin: 70,
+        costInr: 400,
+        note: "Bus / shared cab Dehradun airport → Rishikesh (~1 hr)",
+      },
+      {
+        fromPlaceId: "apt-ded",
         mode: "cab",
         durationMin: 75,
         costInr: 1800,
-        note: "Cab Dehradun airport → Rishikesh (~45–60 km)",
+        note: "Private cab Dehradun airport → Rishikesh (~45–60 km)",
       },
       {
         fromPlaceId: "apt-del",

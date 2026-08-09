@@ -127,6 +127,7 @@ export function JourneyReach() {
   const [protectSleep, setProtectSleep] = useState(true);
   const [allowOvernightBus, setAllowOvernightBus] = useState(true);
   const [includeStay, setIncludeStay] = useState(true);
+  const [hotelBudget, setHotelBudget] = useState("");
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<JourneyPlanResult | null>(null);
@@ -152,6 +153,7 @@ export function JourneyReach() {
           prefs: {
             includeStayCost: includeStay,
             allowOvernightAsStay: allowOvernightBus,
+            hotelBudgetPerNight: Number((hotelBudget || "").replace(/[^0-9.]/g, "")) || undefined,
             ...(protectSleep
               ? { sleepWeight: 0.4, costWeight: 0.35, timeWeight: 0.25, avoidOvernightSurface: !allowOvernightBus }
               : { sleepWeight: 0.15, costWeight: 0.5, timeWeight: 0.35, avoidOvernightSurface: false }),
@@ -275,6 +277,18 @@ export function JourneyReach() {
                 />
                 Allow overnight bus/train as sleep (skip hotel — e.g. Delhi→Rishikesh)
               </label>
+              {includeStay && (
+                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
+                  <span className="text-slate-400">Hotel budget ₹/room/night (optional)</span>
+                  <input
+                    className="input bg-black/20 border-white/15 w-28"
+                    inputMode="numeric"
+                    placeholder="e.g. 1900"
+                    value={hotelBudget}
+                    onChange={(e) => setHotelBudget(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
             {!origin && (
               <p className="text-xs text-slate-400">Home base defaults to Pune if From is empty.</p>

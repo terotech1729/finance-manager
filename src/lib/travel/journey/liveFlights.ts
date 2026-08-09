@@ -1,6 +1,11 @@
 /**
  * Live timed flight offers from Travelpayouts Aviasales v3 prices_for_dates.
  * Only returns flights that appear in the market cache (real departure_at).
+ *
+ * Fetch strategy:
+ *  - Month query (broad, cheap fares)
+ *  - Per-day query inside the planner window (schedule diversity — month+price
+ *    alone often returns only 1 cheap row for thin ODs like BOM→DED)
  */
 export type LiveFlightOffer = {
   origin: string;
@@ -41,6 +46,16 @@ function addDaysISO(dateISO: string, days: number): string {
   d.setDate(d.getDate() + days);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function daysInRange(fromDate: string, toDate: string): string[] {
+  const out: string[] = [];
+  let cursor = fromDate;
+  for (let i = 0; i < 14 && cursor <= toDate; i++) {
+    out.push(cursor);
+    cursor = addDaysISO(cursor, 1);
+  }
+  return out;
 }
 
 function parseOffer(row: ApiRow): LiveFlightOffer | null {
@@ -87,19 +102,20 @@ export function flightArriveLocal(offer: LiveFlightOffer): Date {
   return new Date(flightDepartLocal(offer).getTime() + offer.durationMin * 60_000);
 }
 
-async function fetchMonth(
+async function fetchPricesForDates(
   origin: string,
   destination: string,
-  month: string,
-  token: string
+  departureAt: string,
+  token: string,
+  limit: number
 ): Promise<LiveFlightOffer[]> {
   const url = new URL("https://api.travelpayouts.com/aviasales/v3/prices_for_dates");
   url.searchParams.set("origin", origin);
   url.searchParams.set("destination", destination);
-  url.searchParams.set("departure_at", month);
+  url.searchParams.set("departure_at", departureAt);
   url.searchParams.set("one_way", "true");
   url.searchParams.set("currency", "inr");
-  url.searchParams.set("limit", "30");
+  url.searchParams.set("limit", String(limit));
   url.searchParams.set("sorting", "price");
   url.searchParams.set("unique", "false");
   url.searchParams.set("token", token);
@@ -115,9 +131,48 @@ async function fetchMonth(
   return rows.map(parseOffer).filter((x): x is LiveFlightOffer => Boolean(x));
 }
 
+function offerKey(f: LiveFlightOffer): string {
+  return `${f.airline}${f.flightNumber}|${f.departureAt}|${f.fareInr}|${f.transfers}`;
+}
+
+/**
+ * Prefer schedule diversity over pure cheapest: keep cheapest + earliest/latest
+ * useful departures + nonstops when present.
+ */
+export function diversifyFlightPicks(offers: LiveFlightOffer[], max = 12): LiveFlightOffer[] {
+  if (offers.length <= max) return offers;
+  const picked = new Map<string, LiveFlightOffer>();
+  const take = (f: LiveFlightOffer | undefined) => {
+    if (!f || picked.size >= max) return;
+    picked.set(offerKey(f), f);
+  };
+
+  const byPrice = [...offers].sort((a, b) => a.fareInr - b.fareInr || a.departureAt.localeCompare(b.departureAt));
+  const byDepart = [...offers].sort((a, b) => a.departureAt.localeCompare(b.departureAt));
+  const nonstop = byPrice.filter((f) => f.transfers === 0);
+
+  for (const f of byPrice.slice(0, 4)) take(f);
+  for (const f of nonstop.slice(0, 4)) take(f);
+  take(byDepart[0]);
+  take(byDepart[byDepart.length - 1]);
+  // Mid-day and evening buckets
+  for (const f of byDepart) {
+    const hour = Number(f.departureAt.slice(11, 13));
+    if (hour >= 6 && hour < 12) take(f);
+    if (hour >= 12 && hour < 18) take(f);
+    if (hour >= 18) take(f);
+    if (picked.size >= max) break;
+  }
+  for (const f of byPrice) {
+    take(f);
+    if (picked.size >= max) break;
+  }
+  return [...picked.values()].sort((a, b) => a.fareInr - b.fareInr || a.departureAt.localeCompare(b.departureAt));
+}
+
 /**
  * Live timed offers for origin→dest on dates in [fromDate, toDate] inclusive.
- * Uses month queries (exact-day cache is often empty).
+ * Combines month cache + per-day queries so thin ODs aren't stuck with one cheap row.
  */
 export async function fetchLiveFlightOffers(
   origin: string,
@@ -130,34 +185,56 @@ export async function fetchLiveFlightOffers(
   const o = origin.toUpperCase();
   const d = destination.toUpperCase();
   const months = new Set<string>([monthKey(fromDate), monthKey(toDate)]);
-  // also cover if range crosses a third month
-  let cursor = fromDate;
-  for (let i = 0; i < 40 && cursor <= toDate; i++) {
-    months.add(monthKey(cursor));
-    cursor = addDaysISO(cursor, 1);
-  }
+  const days = daysInRange(fromDate, toDate);
+  for (const day of days) months.add(monthKey(day));
 
   const all: LiveFlightOffer[] = [];
+  const seen = new Set<string>();
+  const pushBatch = (batch: LiveFlightOffer[]) => {
+    for (const f of batch) {
+      const k = offerKey(f);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      all.push(f);
+    }
+  };
+
+  // 1) Month queries — broad fare coverage
   for (const month of months) {
-    const key = `${o}-${d}-${month}`;
+    const key = `${o}-${d}-M-${month}`;
     let batch = cache.get(key);
     if (!batch) {
       try {
-        batch = await fetchMonth(o, d, month, token);
+        batch = await fetchPricesForDates(o, d, month, token, 100);
       } catch {
         batch = [];
       }
       cache.set(key, batch);
     }
-    all.push(...batch);
+    pushBatch(batch);
   }
 
-  const from = fromDate;
-  const to = toDate;
+  // 2) Per-day queries — schedule diversity for the planner window
+  await Promise.all(
+    days.map(async (day) => {
+      const key = `${o}-${d}-D-${day}`;
+      let batch = cache.get(key);
+      if (!batch) {
+        try {
+          batch = await fetchPricesForDates(o, d, day, token, 30);
+        } catch {
+          batch = [];
+        }
+        cache.set(key, batch);
+      }
+      pushBatch(batch);
+    })
+  );
+
   return all
     .filter((f) => {
       const day = f.departureAt.slice(0, 10);
-      return day >= from && day <= to;
+      return day >= fromDate && day <= toDate;
     })
     .sort((a, b) => a.fareInr - b.fareInr || a.departureAt.localeCompare(b.departureAt));
 }

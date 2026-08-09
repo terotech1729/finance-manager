@@ -13,13 +13,14 @@ export type StayAssessment = {
 };
 
 const HOTEL_PER_NIGHT: Record<string, number> = {
-  Rishikesh: 1800,
-  Dehradun: 2000,
-  Delhi: 2500,
-  Mumbai: 2800,
-  Pune: 2200,
-  Manali: 2200,
-  Goa: 2500,
+  // Double-room ballpark (shared → ~half per head when 2 adults)
+  Rishikesh: 1900,
+  Dehradun: 2200,
+  Delhi: 3000,
+  Mumbai: 3500,
+  Pune: 2800,
+  Manali: 2500,
+  Goa: 3000,
 };
 
 function parseLocal(iso: string): Date {
@@ -37,7 +38,7 @@ function midnightsBetween(start: Date, end: Date): number {
   return n;
 }
 
-function hotelRate(city: string, prefs: JourneyPrefs): number {
+export function hotelRate(city: string, prefs: JourneyPrefs): number {
   return prefs.hotelBudgetPerNight || HOTEL_PER_NIGHT[city] || 2000;
 }
 
@@ -106,12 +107,21 @@ export function assessStay(
   }
 
   const place = destNights > 0 ? last.to.city : layoverCity || last.to.city;
-  const perNight = hotelRate(place, prefs);
-  const costInr = perNight * nights * adults;
+  const destRate = hotelRate(last.to.city, prefs);
+  const layoverRate = hotelRate(layoverCity || last.to.city, prefs);
+  // Rates are double-room; charge by rooms (solo still pays ~1 room).
+  const rooms = Math.max(1, Math.ceil(adults / 2));
+  const costInr =
+    destNights * destRate * rooms + layoverNights * layoverRate * rooms;
   const bits: string[] = [];
-  if (destNights) bits.push(`${destNights} night(s) in ${last.to.city} before your deadline`);
-  if (layoverNights) bits.push(`${layoverNights} layover night(s) in ${layoverCity}`);
-  bits.push(`~₹${perNight.toLocaleString("en-IN")}/night`);
+  if (destNights)
+    bits.push(
+      `${destNights} night(s) in ${last.to.city} (~₹${destRate.toLocaleString("en-IN")}/room × ${rooms})`
+    );
+  if (layoverNights)
+    bits.push(
+      `${layoverNights} layover night(s) in ${layoverCity} (~₹${layoverRate.toLocaleString("en-IN")}/room × ${rooms})`
+    );
 
   return {
     nights,
