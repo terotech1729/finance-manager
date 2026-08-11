@@ -279,7 +279,10 @@ function livePlusAccelBucket(merchant: string, category: string, today?: string)
   if (
     c.includes("utility") || c.includes("electric") || c.includes("mobile") ||
     c.includes("recharge") || c.includes("broadband") || c.includes("dth") ||
-    (c.includes("tv") && !c.includes("movie")) || c.includes("gas") || c.includes("water")
+    (c.includes("tv") && !c.includes("movie")) || c.includes("gas") || c.includes("water") ||
+    m.includes("utility") || m.includes("electric") || m.includes("recharge") ||
+    m.includes("broadband") || m.includes("dth") || m.includes("bbps") ||
+    /\b(gas|water)\s*bill\b/.test(m)
   ) return "utility";
   if (
     c.includes("shopping") || c.includes("fashion") || c.includes("electronics") ||
@@ -2390,7 +2393,14 @@ export function recommend(input: RecommendInput): RecommendationResult {
   // (UPI rail handled early above — IDFC RuPay + Kiwi + bank UPI)
 
   // ============ UTILITIES (electricity / mobile / broadband / TV / gas / water) ============
-  if (cat.includes("utility") || cat.includes("electric") || cat.includes("mobile") || cat.includes("recharge") || cat.includes("broadband") || cat.includes("tv") || cat.includes("gas") || cat.includes("water") || cat.includes("dth")) {
+  {
+  const utilText = `${cat} ${merchant}`.toLowerCase();
+  if (
+    utilText.includes("utility") || utilText.includes("electric") || utilText.includes("mobile") ||
+    utilText.includes("recharge") || utilText.includes("broadband") || utilText.includes("tv") ||
+    utilText.includes("gas") || utilText.includes("water") || utilText.includes("dth") ||
+    utilText.includes("bbps")
+  ) {
     // Live+ 10% on utilities (from 26 Jul 2026) — primary bills card; pay biller DIRECT (not Amazon).
     options.push(buildLivePlusOption(amt, "utility", input));
 
@@ -2476,6 +2486,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
     });
 
     return finalize(options, input, amt, isForeign, ck);
+  }
   }
 
   // ============ FUEL ============

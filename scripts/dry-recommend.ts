@@ -202,6 +202,18 @@ const CASES: Case[] = [
     expect: { channel: "online", bestCard: "amazon_pay_icici", requireDeclinedFallback: true },
   },
   {
+    name: "utility bill → Live+ 10% (not general 1.5%)",
+    query: "utility bill",
+    amount: 1000,
+    expect: {
+      categoryIncludes: /utility/,
+      bestCard: "hsbc_live_plus",
+      bestLabelIncludes: /10%|utilit/i,
+      bestLabelAvoid: /1\.5%|Not an accelerated/i,
+    },
+    input: { livePlusAccelCashbackUsedThisMonth: 0, goldMonthlyTxnsDone: 6 },
+  },
+  {
     name: "Uber ride → Kiwi UPI",
     query: "Uber",
     amount: 280,

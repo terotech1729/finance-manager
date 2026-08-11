@@ -194,6 +194,14 @@ const FALLBACK_RULES: Rule[] = [
   { match: /tata\s*sky|dish\s*tv|\bdth\b|cable\s*recharge|sun\s*direct|\btatasky\b/i, category: "utility (tv)", prettyLabel: "DTH / Cable", channel: "online", confidence: "high" },
   { match: /\bgas\s*bill\b|\bigl\b|\bmgl\b|\bggl\b|\badani\s*gas\b/i, category: "utility (gas)", prettyLabel: "Gas bill", channel: "online", confidence: "high" },
   { match: /\bwater\s*bill\b|bwssb|kwa/i, category: "utility (water)", prettyLabel: "Water bill", channel: "online", confidence: "high" },
+  // Generic "utility / utilities / utility bill" when type isn't specified
+  {
+    match: /\butilit(y|ies)\b|\bbill\s*payment\b|\bbbps\b/i,
+    category: "utility (general)",
+    prettyLabel: "Utility bill",
+    channel: "online",
+    confidence: "medium",
+  },
   {
     match: /\b(bike|car|vehicle|scooter|motorcycle|two.?wheeler|auto)\s*(service|servicing|repair|repairs)\b|\bservice\s*(centre|center)\b|\bgarage\b|\bworkshop\b/i,
     category: "vehicle service / repair",
@@ -704,6 +712,7 @@ export const ALL_CATEGORIES = [
   "utility (tv)",
   "utility (gas)",
   "utility (water)",
+  "utility (general)",
   "fuel",
   "insurance",
   "rent",
