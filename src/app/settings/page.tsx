@@ -17,7 +17,7 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "idfcYtdSpend", label: "IDFC Indigo — YTD spend (₹)", group: "Annual milestone progress", numeric: true },
   { key: "bobYtdSpend", label: "BOB Eterna — spend since issuance (₹)", group: "Annual milestone progress", numeric: true },
   { key: "hsbcLivePlusYtdSpend", label: "HSBC Live+ — YTD spend (₹, fee waiver @ ₹2L)", group: "Annual milestone progress", numeric: true },
-  { key: "scapiaMonthlySpend", label: "Scapia — current month spend (₹)", group: "Monthly tracking", numeric: true },
+  { key: "scapiaMonthlySpend", label: "Scapia — billing-cycle spend (₹, 25→24; auto from txns when logged)", group: "Monthly tracking", numeric: true },
   { key: "kiwiNeonCycleSpend", label: "Kiwi Neon cycle (Apr–Mar) spend (₹)", group: "Monthly tracking", numeric: true },
   { key: "livePlusAccelCashbackUsedThisMonth", label: "HSBC Live+ — 10% cashback used this month (cap ₹1,200)", group: "Monthly milestone counters", numeric: true },
   { key: "goldThisMonthTxnsAt1k", label: "Amex Gold — ≥₹1k txns this calendar month (0-6)", group: "Monthly milestone counters", numeric: true },
@@ -94,7 +94,7 @@ export default function SettingsPage() {
           <li><b>SBI online vouchers</b> — separate year (statement reset ~22 May); not the Oct fee year</li>
           <li><b>Kiwi Neon</b> — 1 Apr → 31 Mar</li>
           <li><b>IDFC / Live+ fee YTD</b> — tracked as calendar year here (confirm on issuer app if unsure)</li>
-          <li><b>Scapia lounge</b> — calendar month ₹20k · <b>BOB lounge</b> — ₹75k prior quarter · <b>BOB welcome</b> — 60 days from issue</li>
+          <li><b>Scapia lounge</b> — ₹20k per billing cycle (25→24; from logged txns) · <b>BOB lounge</b> — ₹75k prior quarter · <b>BOB welcome</b> — 60 days from issue</li>
         </ul>
       </Callout>
 

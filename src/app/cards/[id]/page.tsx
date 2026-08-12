@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ANNUAL_MILESTONES, MONTHLY_MILESTONES, getCardById } from "@/lib/cards";
-import { loadState, loadTransactions, type AppState } from "@/lib/storage";
+import { loadState, loadTransactions, getScapiaBillingCycleSpend, type AppState } from "@/lib/storage";
 import type { Transaction } from "@/lib/types";
 import { CardVisual } from "@/components/CardVisual";
 import { CheckpointedProgress } from "@/components/CheckpointedProgress";
@@ -29,9 +29,9 @@ const CARD_TIPS: Record<string, { useFor: string[]; dontUseFor: string[]; primar
     dontUseFor: ["Same exclusions as PT (fuel/insurance/utilities/cash/merchant-EMI)", "Reward Multiplier (only 2× = 2.3% — worse than BOB Eterna)"],
   },
   scapia: {
-    primaryRole: "International (0% forex) + 2% on all eligible spends (travel-locked coins) + lounge (≥₹20K/mo)",
+    primaryRole: "International (0% forex) + 2% on all eligible spends (travel-locked coins) + lounge (≥₹20K/billing cycle)",
     useFor: ["Foreign currency transactions (0% forex — saves ~3.5% vs Amex)", "Travel via Scapia app (20% coins = 4%)", "General domestic spends (10% coins = 2% value) — since you travel, the coins are usable"],
-    dontUseFor: ["Utility/insurance/rent/fuel/wallet/gift-card/govt (excluded from coins)", "If you won't redeem coins on Scapia-app travel (they only redeem there)", "Don't fall below ₹20K/mo (lose lounge)"],
+    dontUseFor: ["Utility/insurance/rent/fuel/wallet/gift-card/govt (excluded from coins)", "If you won't redeem coins on Scapia-app travel (they only redeem there)", "Don't miss ₹20K/billing cycle (25→24) — lounge unlocks next statement"],
   },
   idfc_indigo: {
     primaryRole: "IndiGo flights (up to 22 BluChips/₹100 ≈ 9.9%) + low-forex backup (1.49%)",
@@ -102,13 +102,15 @@ export default function CardDetailPage({ params }: { params: { id: string } }) {
 
   const cardYtdSpend = (() => {
     if (!state) return 0;
+    if (id === "scapia") {
+      return getScapiaBillingCycleSpend(allTxns).spend;
+    }
     return id === "amex_plat_travel" ? state.ptccEligibleSpend :
       id === "amex_mrcc" ? state.mrccCycleSpend :
       id === "sbi_simplyclick" ? state.sbiYtdSpend :
       id === "idfc_indigo" ? state.idfcYtdSpend :
       id === "bob_eterna" ? state.bobYtdSpend :
       id === "hsbc_live_plus" ? state.hsbcLivePlusYtdSpend :
-      id === "scapia" ? state.scapiaMonthlySpend :
       id === "yes_kiwi" ? state.kiwiNeonCycleSpend :
       0;
   })();

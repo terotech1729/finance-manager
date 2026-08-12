@@ -7,8 +7,10 @@ import { isBenefitClaimed } from "./benefitClaims";
 import { sbiFeeWaiverEligible } from "./spendTracking";
 import type { Card, RecommendationResult, RouteOption } from "./types";
 
-/** Scapia combined V+R monthly lounge unlock. */
+/** Scapia combined V+R lounge unlock — ₹20k per billing cycle (statement day 24 → 25…24). */
 const SCAPIA_LOUNGE_MONTH_INR = 20000;
+/** Soft ₹ value of unlocking Scapia lounge / airport dining-spa for the cycle (2–3 visits). */
+const SCAPIA_LOUNGE_UNLOCK_VALUE_INR = 2500;
 
 function visaInfiniteOffer(id: string): { title: string; link?: string; howToClaim?: string } | null {
   const perk = VISA_TIER_GUIDES.find((g) => g.tier === "infinite")?.perks.find((p) => p.id === id);
@@ -493,9 +495,13 @@ function buildClaimTips(input: RecommendInput, best: RouteOption, ranked: RouteO
   if (has("scapia")) {
     const spent = input.scapiaMonthlySpend ?? 0;
     if (spent < SCAPIA_LOUNGE_MONTH_INR) {
-      tips.push(`Scapia lounge / airport dining-spa unlock: ${inr(spent)} / ${inr(SCAPIA_LOUNGE_MONTH_INR)} this month.`);
+      tips.push(
+        `Scapia lounge / airport privileges: ${inr(spent)} / ${inr(SCAPIA_LOUNGE_MONTH_INR)} this billing cycle (25→24; unlocks on next statement).`
+      );
     } else {
-      tips.push("Scapia unlock active — pick lounge OR airport dining/shop/spa coin-back in the Scapia app.");
+      tips.push(
+        "Scapia ₹20k billing-cycle gate hit — privileges activate on next statement; pick lounge OR airport dining/shop/spa in the Scapia app."
+      );
     }
   }
   if ((input.idfcYtdSpend ?? 0) >= 200000 && !claimed(input, "idfc_bluchip_2l")) {
@@ -1718,6 +1724,29 @@ function kiwiExcluded(cat: string, merchant: string): { excluded: boolean; reaso
   return { excluded: false };
 }
 
+/**
+ * Soft value of putting spend on Scapia toward the ₹20k/billing-cycle lounge unlock (25→24).
+ * Used so thin forex yields (e.g. BOB ~1.75% net) don't outrank Scapia while the gate is open.
+ */
+function scapiaLoungeProgressBonus(
+  monthlySpend: number,
+  amt: number
+): { inr: number; completes: boolean; after: number; note: string } | null {
+  if (amt < 1 || monthlySpend >= SCAPIA_LOUNGE_MONTH_INR) return null;
+  const left = SCAPIA_LOUNGE_MONTH_INR - monthlySpend;
+  const applied = Math.min(amt, left);
+  const after = monthlySpend + amt;
+  const completes = after >= SCAPIA_LOUNGE_MONTH_INR;
+  const proRata = (applied / SCAPIA_LOUNGE_MONTH_INR) * SCAPIA_LOUNGE_UNLOCK_VALUE_INR;
+  // Completing unlock gets a floor so a tiny leftover ₹ doesn't undervalue cycle access.
+  const bonusInr = completes ? Math.max(proRata, 600) : proRata;
+  if (bonusInr < 1) return null;
+  const note = completes
+    ? `Completes Scapia ₹20k billing-cycle gate (${inr(monthlySpend)} → ${inr(SCAPIA_LOUNGE_MONTH_INR)}; privileges on next statement) — ~${inr(bonusInr)} soft value vs thin forex yields`
+    : `Scapia lounge progress ${inr(monthlySpend)} → ${inr(Math.min(after, SCAPIA_LOUNGE_MONTH_INR))} / ${inr(SCAPIA_LOUNGE_MONTH_INR)} this cycle (~${inr(bonusInr)} soft value)`;
+  return { inr: bonusInr, completes, after, note };
+}
+
 /** Scapia excludes the same MCC families from coins (rent/forex/insurance/utility/wallet/education/gift/EMI/cash/govt/fuel). */
 function scapiaExcluded(cat: string, merchant: string): { excluded: boolean; reason?: string } {
   const c = `${cat} ${merchant}`.toLowerCase();
@@ -1904,8 +1933,8 @@ function cardForexPct(cardId: string): number {
 
 /**
  * On foreign-currency txns, net each route as rewards − forex markup.
- * Scapia (0% forex, 0 coins on forex MCC) stays ~0; Amex/IDFC can still win
- * if milestone unlocks exceed their 3.5% / 1.49% fees.
+ * Scapia (0% forex) keeps lounge-progress soft value when unlock is open;
+ * Amex/IDFC can still win if milestone unlocks exceed their 3.5% / 1.49% fees.
  */
 function applyForexNetting(options: RouteOption[], amt: number): void {
   if (amt < 1) return;
@@ -2124,30 +2153,61 @@ export function recommend(input: RecommendInput): RecommendationResult {
   // --- Foreign currency → net rewards after each card's forex markup ---
   if (isForeign) {
     const ckUsable = ck && ck.zone !== "na";
-    // Scapia: 0% forex, 0 coins on forex MCC → net 0 (wins unless another card's
-    // rewards exceed that card's markup — e.g. Amex clearing a big milestone).
+    // Scapia: 0% forex, 0 coins on forex MCC → base net 0. While lounge unlock is open,
+    // credit soft lounge value so BOB's ~1.75% net doesn't outrank the privilege path.
+    const lounge = scapiaLoungeProgressBonus(input.scapiaMonthlySpend ?? 0, amt);
+    const scapiaCk = ckUsable ? amt * (ck!.mid / 100) * 0.7 : 0;
+    const scapiaBonus = (lounge?.inr ?? 0);
+    const scapiaTotal = scapiaCk + scapiaBonus;
     add({
       cardId: "scapia",
-      label: ckUsable ? "Scapia (0% forex) + Cashkaro" : "Scapia (0% forex)",
-      effectivePct: ckUsable ? ck!.mid * 0.7 : 0,
-      baseRewardInr: ckUsable ? amt * (ck!.mid / 100) * 0.7 : 0,
+      label: lounge
+        ? lounge.completes
+          ? ckUsable
+            ? "Scapia (0% forex) + lounge unlock + Cashkaro"
+            : "Scapia (0% forex) + lounge unlock"
+          : ckUsable
+            ? "Scapia (0% forex) + lounge progress + Cashkaro"
+            : "Scapia (0% forex) + lounge progress"
+        : ckUsable
+          ? "Scapia (0% forex) + Cashkaro"
+          : "Scapia (0% forex)",
+      effectivePct: (scapiaTotal / amt) * 100,
+      baseRewardInr: scapiaCk,
+      bonusRewardInr: scapiaBonus,
       worstCasePct: 0,
-      bestCasePct: ckUsable ? ck!.max : 0,
+      bestCasePct: ckUsable ? ck!.max + (scapiaBonus / amt) * 100 : (scapiaBonus / amt) * 100,
       cashkaroSuggested: !!ckUsable,
       pros: [
         "0% forex markup — no conversion fee on non-INR",
-        "Best default abroad unless another card's rewards clearly beat its forex fee",
+        ...(lounge
+          ? [
+              lounge.completes
+                ? `Hits Scapia ₹${SCAPIA_LOUNGE_MONTH_INR / 1000}k billing-cycle gate (privileges on next statement)`
+                : `Counts toward Scapia ₹${SCAPIA_LOUNGE_MONTH_INR / 1000}k billing-cycle lounge gate (25→24)`,
+            ]
+          : ["Best default abroad unless another card's rewards clearly beat its forex fee"]),
       ],
       cons: [
-        "Scapia earns no coins on forex spends (excluded) — value is the avoided markup",
-        `Maintain ≥₹${(SCAPIA_LOUNGE_MONTH_INR / 1000)}K/mo for lounge`,
+        "Scapia earns no coins on forex spends (excluded) — value is avoided markup" +
+          (lounge ? " + lounge progress" : ""),
+        lounge
+          ? `Lounge soft-valued at ~${inr(lounge.inr)} so thin forex yields don't outrank it`
+          : `Maintain ≥₹${SCAPIA_LOUNGE_MONTH_INR / 1000}K/mo for lounge`,
       ],
-      rationale:
-        "Scapia charges 0% forex. Other cards are scored as rewards − markup (Amex 3.5%, IDFC 1.49%, Live+ 1.99%, BOB 2%). A large Amex/IDFC milestone can still net positive and outrank Scapia.",
+      rationale: lounge
+        ? `${lounge.note}. Prefer this over BOB's ~1.75% net forex while the ₹20k cycle gate is open — 0% markup + privilege path beats petty RP.`
+        : "Scapia charges 0% forex. Other cards are scored as rewards − markup (Amex 3.5%, IDFC 1.49%, Live+ 1.99%, BOB 2%). A large Amex/IDFC milestone can still net positive and outrank Scapia. ₹20k billing-cycle gate already hit — yield ranking applies.",
       steps: [
         ckUsable ? "If on Cashkaro (Booking/Agoda), open via Cashkaro first" : `Pay with Scapia at the foreign merchant / POS`,
         "Scapia charges 0% forex markup",
-        "See Network perks → Visa Infinite Meet & Greet if you still need $1k intl POS on Live+ or BOB",
+        ...(lounge
+          ? [
+              lounge.completes
+                ? "This spend unlocks lounge / airport dining-spa — claim in the Scapia app"
+                : `After this: ~${inr(Math.min(lounge.after, SCAPIA_LOUNGE_MONTH_INR))} / ${inr(SCAPIA_LOUNGE_MONTH_INR)} toward lounge`,
+            ]
+          : ["See Network perks → Visa Infinite Meet & Greet if you still need $1k intl POS on Live+ or BOB"]),
       ],
     });
 
@@ -2220,8 +2280,14 @@ export function recommend(input: RecommendInput): RecommendationResult {
       worstCasePct: 0.75,
       bestCasePct: 3.75,
       pros: ["5× on international POS when it codes correctly"],
-      cons: ["2% forex markup", "5× cap 5,000 RP/cycle"],
-      rationale: "BOB intl 5× minus 2% forex can net ~1.75% — still usually behind a large Amex milestone or equal-ish to thin IDFC, and behind Scapia when rewards are small.",
+      cons: [
+        "2% forex markup",
+        "5× cap 5,000 RP/cycle",
+        ...(lounge ? ["Behind Scapia while lounge unlock is open — ~1.75% net is petty vs privilege"] : []),
+      ],
+      rationale: lounge
+        ? "BOB intl 5× − 2% forex ≈ ~1.75% net — use only after Scapia’s ₹20k billing-cycle gate is hit, or if Scapia declines."
+        : "BOB intl 5× minus 2% forex can net ~1.75% — fine once Scapia’s ₹20k cycle gate is already hit; still usually behind a large Amex milestone.",
       steps: ["Pay with BOB Eterna abroad", "Net after 2% forex is what counts"],
     });
 

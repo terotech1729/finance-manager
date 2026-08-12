@@ -1,6 +1,10 @@
 import type { Transaction, Investment, Holding, Contribution } from "./types";
-import { thisMonthKey, newId } from "./utils";
+import { thisMonthKey, newId, statementCycleRange, todayLocal } from "./utils";
 import { sbiFeeWaiverEligible } from "./spendTracking";
+
+/** Scapia Federal lounge / airport privileges — ₹20k per billing cycle (statement day 24 → 25…24). */
+export const SCAPIA_LOUNGE_CYCLE_INR = 20000;
+export const SCAPIA_STATEMENT_DAY = 24;
 
 const KEYS = {
   TXNS: "ccm.transactions.v1",
@@ -20,6 +24,7 @@ export type AppState = {
   idfcYtdSpend: number;
   hsbcLivePlusYtdSpend: number;
   livePlusAccelCashbackUsedThisMonth: number;
+  /** Scapia spend in current statement cycle (25→24); lounge unlock at ₹20k. */
   scapiaMonthlySpend: number;
   kiwiNeonCycleSpend: number;
   // Calendar-month / cycle milestone counters
@@ -50,6 +55,8 @@ export type AppState = {
   bills: Record<string, { billAmount: number; paid: boolean }>;
   // Calendar month the monthly counters belong to (auto-resets when the month rolls over).
   monthKey: string;
+  /** Scapia billing-cycle key (`start_end`) for lounge-spend reset. */
+  scapiaCycleKey?: string;
   // Calendar year for IDFC / HSBC Live+ annual counters (SBI uses its own keys below).
   yearKey?: string;
   // Amex Plat Travel membership year (boundary 3 Dec) for eligible-spend reset.
@@ -110,7 +117,7 @@ export const DEFAULT_STATE: AppState = {
   idfcYtdSpend: 508923,
   hsbcLivePlusYtdSpend: 0,
   livePlusAccelCashbackUsedThisMonth: 0,
-  scapiaMonthlySpend: 44009,
+  scapiaMonthlySpend: 0, // derived from logged Scapia txns in current 25→24 cycle
   kiwiNeonCycleSpend: 11849,
   goldThisMonthTxnsAt1k: 0,
   mrccThisCycleTxnsAt1500: 4,
@@ -215,6 +222,74 @@ function anniversaryYearKey(anniversaryIso: string, d = new Date()): string {
   return String(d >= boundary ? y : y - 1);
 }
 
+/** Non-spend rows that Scapia excludes from the ₹20k lounge gate. */
+function scapiaCountsTowardLounge(t: Transaction): boolean {
+  if (!t.amount || t.amount <= 0) return false;
+  const blob = `${t.merchant || ""} ${t.category || ""} ${t.notes || ""}`.toLowerCase();
+  if (/\b(emi|interest|finance\s*charge|late\s*fee|annual\s*fee|joining\s*fee|gst\s*on\s*fee)\b/.test(blob)) {
+    return false;
+  }
+  return true;
+}
+
+function sumScapiaSpendInRange(txns: Transaction[], start: string, end: string): number {
+  let sum = 0;
+  for (const t of txns) {
+    if (t.cardId !== "scapia" || !scapiaCountsTowardLounge(t)) continue;
+    const d = (t.date || "").slice(0, 10);
+    if (d >= start && d <= end) sum += t.amount;
+  }
+  return sum;
+}
+
+function sumScapiaSpendInCycle(txns: Transaction[], cycleKey: string): number {
+  const [start, end] = cycleKey.split("_");
+  if (!start || !end) return 0;
+  return sumScapiaSpendInRange(txns, start, end);
+}
+
+/**
+ * Scapia lounge / airport privileges: ₹20k spend in the current billing cycle
+ * (statement day 24 → window 25th … 24th). Privileges activate on the *next* statement date.
+ */
+export function getScapiaBillingCycleSpend(
+  txns: Transaction[] = typeof window !== "undefined" ? loadTransactions() : [],
+  on: Date | string = todayLocal(),
+  statementDay = SCAPIA_STATEMENT_DAY
+): {
+  spend: number;
+  start: string;
+  end: string;
+  key: string;
+  unlocked: boolean;
+  left: number;
+} {
+  const range = statementCycleRange(statementDay, on);
+  const spend = sumScapiaSpendInRange(txns, range.start, range.end);
+  return {
+    spend,
+    start: range.start,
+    end: range.end,
+    key: range.key,
+    unlocked: spend >= SCAPIA_LOUNGE_CYCLE_INR,
+    left: Math.max(0, SCAPIA_LOUNGE_CYCLE_INR - spend),
+  };
+}
+
+/**
+ * Prefer logged Scapia txns in the current 25→24 cycle; fall back to the settings
+ * counter only when nothing has ever been logged on Scapia.
+ */
+export function resolveScapiaCycleSpend(
+  st: AppState,
+  txns: Transaction[] = typeof window !== "undefined" ? loadTransactions() : [],
+  on: Date | string = todayLocal()
+): number {
+  const hasScapiaLog = txns.some((t) => t.cardId === "scapia");
+  if (hasScapiaLog) return getScapiaBillingCycleSpend(txns, on).spend;
+  return st.scapiaMonthlySpend ?? 0;
+}
+
 export function loadState(): AppState {
   if (!isClient()) return DEFAULT_STATE;
   const raw = localStorage.getItem(KEYS.STATE);
@@ -259,6 +334,7 @@ export function loadState(): AppState {
 
   // MONTHLY (calendar month) — only reset calendar-month fields.
   // Do NOT reset mrccCycleSpend here: that tracks fee-waiver annual progress (₹90k/₹1.5L).
+  // Do NOT reset scapiaMonthlySpend here — Scapia lounge uses statement cycle (25→24).
   if (!st.monthKey) { st.monthKey = mk; changed = true; }
   else if (st.monthKey !== mk) {
     st.monthKey = mk;
@@ -268,10 +344,31 @@ export function loadState(): AppState {
     st.goldShopwiseUsedThisMonth = 0;
     st.bobBogoUsedThisMonth = false;
     st.livePlusBogoUsedThisMonth = false;
-    st.scapiaMonthlySpend = 0;
     st.bobCycleSpend5x = 0;
     st.livePlusAccelCashbackUsedThisMonth = 0;
     changed = true;
+  }
+  // Scapia lounge cycle (statement day 24 → spend window 25…24)
+  {
+    const sk = statementCycleRange(SCAPIA_STATEMENT_DAY).key;
+    const txns = loadTransactions();
+    const hasLog = txns.some((t) => t.cardId === "scapia");
+    if (!st.scapiaCycleKey) {
+      st.scapiaCycleKey = sk;
+      if (hasLog) st.scapiaMonthlySpend = sumScapiaSpendInCycle(txns, sk);
+      else if ((st.scapiaMonthlySpend ?? 0) === 44009) st.scapiaMonthlySpend = 0; // drop old calendar demo seed
+      changed = true;
+    } else if (st.scapiaCycleKey !== sk) {
+      st.scapiaCycleKey = sk;
+      st.scapiaMonthlySpend = hasLog ? sumScapiaSpendInCycle(txns, sk) : 0;
+      changed = true;
+    } else if (hasLog) {
+      const summed = sumScapiaSpendInCycle(txns, sk);
+      if (summed !== (st.scapiaMonthlySpend ?? 0)) {
+        st.scapiaMonthlySpend = summed;
+        changed = true;
+      }
+    }
   }
   // ANNUAL — calendar year (IDFC / HSBC Live+ only; SBI has its own anniversary keys)
   if (!st.yearKey) { st.yearKey = yk; changed = true; }
@@ -363,6 +460,7 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
   })();
   const sok = anniversaryYearKey(sbiOnlineStart);
   const sfk = anniversaryYearKey(feeBoundaryMd);
+  const scapiaCycle = statementCycleRange(SCAPIA_STATEMENT_DAY);
   const next: AppState = {
     ...st,
     ptccEligibleSpend: 0,
@@ -377,6 +475,7 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
     hsbcLivePlusYtdSpend: 0,
     livePlusAccelCashbackUsedThisMonth: 0,
     scapiaMonthlySpend: 0,
+    scapiaCycleKey: scapiaCycle.key,
     goldThisMonthTxnsAt1k: 0,
     goldShopwiseUsedThisMonth: 0,
     kiwiNeonCycleSpend: 0,
@@ -391,6 +490,8 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
     const inKiwi = kiwiNeonYearKey(d) === kk;
     const inSbiOnline = anniversaryYearKey(sbiOnlineStart, d) === sok;
     const inSbiFee = anniversaryYearKey(feeBoundaryMd, d) === sfk;
+    const day = (t.date || "").slice(0, 10);
+    const inScapiaCycle = day >= scapiaCycle.start && day <= scapiaCycle.end;
     const amt = t.amount;
     switch (t.cardId) {
       case "amex_plat_travel": if (inPt) next.ptccEligibleSpend += amt; break;
@@ -419,7 +520,9 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
         }
         break;
       }
-      case "scapia": if (inMonth) next.scapiaMonthlySpend += amt; break;
+      case "scapia":
+        if (inScapiaCycle && scapiaCountsTowardLounge(t)) next.scapiaMonthlySpend += amt;
+        break;
       case "amex_gold":
         if (inMonth && amt >= 1000) next.goldThisMonthTxnsAt1k = Math.min(6, next.goldThisMonthTxnsAt1k + 1);
         if (inMonth && t.path === "shopwise") next.goldShopwiseUsedThisMonth += amt;

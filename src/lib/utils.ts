@@ -47,6 +47,46 @@ export function thisMonthKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** YYYY-MM-DD from a local Date (no UTC shift). */
+export function toLocalISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Credit-card statement cycle: day after previous statement → statement day inclusive.
+ * Scapia Federal statementDay=24 → 25th … 24th next month (user billing cycle).
+ */
+export function statementCycleRange(
+  statementDay: number,
+  on: Date | string = new Date()
+): { start: string; end: string; key: string } {
+  const ref =
+    typeof on === "string"
+      ? new Date(/^\d{4}-\d{2}-\d{2}/.test(on) ? `${on.slice(0, 10)}T12:00:00` : on)
+      : on;
+  const y = ref.getFullYear();
+  const m = ref.getMonth();
+  const d = ref.getDate();
+  const day = Math.min(Math.max(1, Math.floor(statementDay) || 1), 28);
+  let start: Date;
+  let end: Date;
+  if (d <= day) {
+    // Still in the cycle that closes on this month's statement day.
+    start = new Date(y, m - 1, day + 1);
+    end = new Date(y, m, day);
+  } else {
+    // Past statement day — new cycle opened the next calendar day.
+    start = new Date(y, m, day + 1);
+    end = new Date(y, m + 1, day);
+  }
+  const startIso = toLocalISODate(start);
+  const endIso = toLocalISODate(end);
+  return { start: startIso, end: endIso, key: `${startIso}_${endIso}` };
+}
+
 export function daysBetween(aISO: string, bISO: string): number {
   const a = new Date(aISO).getTime();
   const b = new Date(bISO).getTime();

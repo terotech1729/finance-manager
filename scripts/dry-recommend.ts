@@ -447,13 +447,31 @@ const CASES: Case[] = [
     },
   },
   {
-    name: "small forex → Scapia/BOB beat Amex PT after markup (no big milestone)",
+    name: "small forex → Scapia preferred for lounge over thin BOB net",
     query: "openai chatgpt usd",
     amount: 2000,
     expect: {
       channel: "foreign",
-      bestCard: ["scapia", "bob_eterna"],
+      bestCard: ["scapia"],
       bestLabelAvoid: /amex pt|platinum travel/i,
+    },
+    input: {
+      scapiaMonthlySpend: 5000, // lounge unlock still open
+    },
+  },
+  {
+    name: "forex after Scapia lounge unlocked → BOB ~1.75% can beat Scapia 0%",
+    query: "openai chatgpt usd",
+    amount: 12000,
+    expect: {
+      channel: "foreign",
+      bestCard: ["bob_eterna"],
+      bestLabelAvoid: /lounge progress|lounge unlock/i,
+    },
+    input: {
+      scapiaMonthlySpend: 25000, // lounge already unlocked this month
+      ptccEligibleSpend: 500000, // past PT annual milestones — no completing unlock
+      idfcYtdSpend: 800000,
     },
   },
   {

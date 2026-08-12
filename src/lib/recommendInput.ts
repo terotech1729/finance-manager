@@ -4,9 +4,10 @@
  */
 import { isBenefitClaimed } from "./benefitClaims";
 import { AMAZON_WELCOME_OFFERS } from "./stacking";
-import { getLivePlusWelcomeSpend, type AppState } from "./storage";
+import { getLivePlusWelcomeSpend, loadTransactions, resolveScapiaCycleSpend, type AppState } from "./storage";
 import type { RecommendInput } from "./recommend";
 import type { ChannelType } from "./categorize";
+import { todayLocal } from "./utils";
 
 export type RecommendRequest = {
   merchant: string;
@@ -38,6 +39,8 @@ export function resolvedAmazonWelcomeClaimed(st: AppState): string[] {
  * welcome booleans so ticking /claims immediately changes ranking.
  */
 export function buildRecommendInputFromState(st: AppState, req: RecommendRequest): RecommendInput {
+  const on = req.today || todayLocal();
+  const txns = typeof window !== "undefined" ? loadTransactions() : [];
   return {
     merchant: req.merchant,
     category: req.category,
@@ -62,7 +65,8 @@ export function buildRecommendInputFromState(st: AppState, req: RecommendRequest
     swiggyMoneyBalance: st.swiggyMoneyBalance ?? 0,
     bobBogoUsedThisMonth: req.bobBogoUsedThisMonth ?? st.bobBogoUsedThisMonth,
     livePlusBogoUsedThisMonth: req.livePlusBogoUsedThisMonth ?? st.livePlusBogoUsedThisMonth,
-    scapiaMonthlySpend: st.scapiaMonthlySpend,
+    // Prefer logged Scapia spends in the 25→24 billing cycle over the settings counter.
+    scapiaMonthlySpend: resolveScapiaCycleSpend(st, txns, on),
     kiwiNeonCycleSpend: st.kiwiNeonCycleSpend,
 
     amazonPayIciciIssued: st.amazonPayIciciIssued,
