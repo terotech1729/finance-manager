@@ -14,7 +14,7 @@ import { getCardById } from "@/lib/cards";
 function routeName(cardId: string): string {
   const c = getCardById(cardId);
   if (c) return c.short;
-  if (cardId === "giftcard") return "Swiggy Money / GC";
+  if (cardId === "giftcard") return "Movie / shopping GC";
   if (cardId === "upi") return "UPI (PhonePe/GPay)";
   if (cardId === "cash") return "Cash";
   if (cardId === "amazon_pay_balance") return "Amazon Pay balance";
@@ -23,6 +23,8 @@ function routeName(cardId: string): string {
 }
 import { inr, newId, todayLocal, localDateToISO } from "@/lib/utils";
 import type { Transaction, RouteOption } from "@/lib/types";
+import type { MovieGiftCardLiveResult, MovieGiftCardOffer } from "@/lib/movieGiftCards";
+import { catalogOffersForTheatre, rankMovieOffers } from "@/lib/movieGiftCards";
 import { Icon } from "./Icons";
 import { Callout } from "./Callout";
 
@@ -44,6 +46,9 @@ export function RecommendationWidget({ onLogged }: Props) {
   const [movieTheatre, setMovieTheatre] = useState<"pvr" | "cinepolis" | "inox" | "bms" | "district" | "other" | "">("");
   const [indigoVoucher, setIndigoVoucher] = useState<string>("");
   const [credGiftCardPct, setCredGiftCardPct] = useState<string>("");
+  const [movieGcLive, setMovieGcLive] = useState<MovieGiftCardLiveResult | null>(null);
+  const [movieGcLoading, setMovieGcLoading] = useState(false);
+  const [movieGcError, setMovieGcError] = useState<string | null>(null);
   const [showAlts, setShowAlts] = useState(false);
   /** Which ranked route to log — 0 = best, 1+ = alternatives index + 1 conceptually; we store the route itself. */
   const [selectedRoute, setSelectedRoute] = useState<RouteOption | null>(null);
@@ -89,6 +94,47 @@ export function RecommendationWidget({ onLogged }: Props) {
   const merchantTooShort = merchant.trim().length < 2;
   const noAmount = !amt;
 
+  const isMovie =
+    /movie|event|bookmyshow|\bbms\b|district|pvr|inox|cinepolis|cinema|imax|insignia|4dx|luxe/i.test(
+      `${merchant} ${finalCategory}`
+    );
+
+  // Live-fetch movie GC discounts when movies detected
+  useEffect(() => {
+    if (!isMovie || merchantTooShort || needsClarification) {
+      setMovieGcLive(null);
+      setMovieGcError(null);
+      setMovieGcLoading(false);
+      return;
+    }
+    const theatre = movieTheatre || "other";
+    let cancelled = false;
+    setMovieGcLoading(true);
+    setMovieGcError(null);
+    setMovieGcLive({
+      fetchedAt: new Date().toISOString(),
+      offers: catalogOffersForTheatre(theatre || "other"),
+    });
+    fetch(`/api/movie-gift-cards?theatre=${encodeURIComponent(theatre || "other")}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<MovieGiftCardLiveResult>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setMovieGcLive(data);
+        setMovieGcLoading(false);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setMovieGcError((e as Error).message || "Live fetch failed — using catalog");
+        setMovieGcLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isMovie, merchantTooShort, needsClarification, movieTheatre, merchant, finalCategory]);
+
   const rec = useMemo(() => {
     if (!state || noAmount || merchantTooShort || needsClarification) return null;
     // Past first: re-read saved counters every ranking (edits on Milestones / Claims apply immediately).
@@ -113,11 +159,12 @@ export function RecommendationWidget({ onLogged }: Props) {
       indigoBluChipVoucherInr: Number((indigoVoucher || "").replace(/[^0-9.]/g, "")) || undefined,
       credGiftCardPctOverride: Number((credGiftCardPct || "").replace(/[^0-9.]/g, "")) || undefined,
       movieTheatre: movieTheatre || undefined,
+      movieGiftCardOffers: isMovie ? movieGcLive?.offers : undefined,
       bobBogoUsedThisMonth,
       livePlusBogoUsedThisMonth,
     });
     return recommend(input);
-  }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride, amazonOrderCashback, indigoVoucher, credGiftCardPct, movieTheatre]);
+  }, [merchant, finalCategory, amt, finalChannel, state, needsClarification, merchantTooShort, noAmount, detection.forex, date, cashkaroOverride, amazonOrderCashback, indigoVoucher, credGiftCardPct, movieTheatre, isMovie, movieGcLive]);
 
   const isAmazon = /amazon/i.test(merchant) || /amazon/i.test(finalCategory);
   const isSwiggy =
@@ -129,17 +176,18 @@ export function RecommendationWidget({ onLogged }: Props) {
   const isIndigoFlight =
     /indigo|6e\b/i.test(`${merchant} ${finalCategory}`) ||
     (/flight/i.test(finalCategory) && /indigo/i.test(merchant));
-  const isMovie =
-    /movie|event|bookmyshow|\bbms\b|district|pvr|inox|cinepolis|cinema|imax|insignia|4dx|luxe/i.test(`${merchant} ${finalCategory}`);
   // Only show CRED/CheQ override when catalog actually has a GC for this brand (not Swiggy/food).
   const hasCatalogGiftCard = findGiftCardDeals(merchant, finalCategory).length > 0;
   const isCredGcCandidate = isMovie || hasCatalogGiftCard;
 
+  const rankedMovieOffers = useMemo(
+    () => (movieGcLive?.offers ? rankMovieOffers(movieGcLive.offers) : []),
+    [movieGcLive]
+  );
+
   const credPctHint =
-    movieTheatre === "cinepolis" ? "28" :
-    movieTheatre === "pvr" || movieTheatre === "inox" ? "24" :
     movieTheatre === "bms" || movieTheatre === "district" ? "3.75" :
-    isMovie ? "3.75–28" :
+    isMovie ? "optional" :
     "e.g. 5";
 
   const best = rec?.best;
@@ -551,22 +599,22 @@ export function RecommendationWidget({ onLogged }: Props) {
           <div className="bg-sky-50 dark:bg-sky-950/20 rounded-lg p-3 border border-sky-300/60 dark:border-sky-700/40 space-y-3">
             <div className="text-sm font-semibold flex items-center gap-1.5">
               <Icon.Sparkles size={14} className="text-sky-600" />
-              Cinema chain (CRED gift card uses catalog rates)
+              Cinema chain + live movie gift-card rates
+              {movieGcLoading && <span className="text-xs font-normal text-fg-muted">· fetching…</span>}
             </div>
             <div className="text-xs text-fg-muted">
-              We rank CRED GCs with stable catalog rates (Cinepolis ~28%, PVR/INOX ~24%, BMS/District ~3.75%).
-              Optionally enter a live % if CRED shows something different.
+              CRED dropped PVR / Cinepolis GCs (Aug 2026). We live-check Woohoo &amp; GyFTR, then rank with magicpin / Amazon catalog backups.
               <span className="block mt-1">
                 <b>Insignia / Luxe</b> → PVR. <b>IMAX / 4DX</b> = format — pick the operator on BMS.
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
               {([
-                ["cinepolis", "Cinepolis ~28%"],
-                ["pvr", "PVR ~24%"],
-                ["inox", "INOX ~24%"],
-                ["bms", "BMS ~3.75%"],
-                ["district", "District ~3.75%"],
+                ["cinepolis", "Cinepolis"],
+                ["pvr", "PVR"],
+                ["inox", "INOX"],
+                ["bms", "BMS"],
+                ["district", "District"],
                 ["other", "Not sure — show all"],
               ] as const).map(([value, label]) => (
                 <button
@@ -579,9 +627,7 @@ export function RecommendationWidget({ onLogged }: Props) {
                   }`}
                   onClick={() => {
                     setMovieTheatre(value);
-                    if (value === "cinepolis") setCredGiftCardPct("28");
-                    else if (value === "pvr" || value === "inox") setCredGiftCardPct("24");
-                    else if (value === "bms" || value === "district") setCredGiftCardPct("3.75");
+                    if (value === "bms" || value === "district") setCredGiftCardPct("3.75");
                     else setCredGiftCardPct("");
                   }}
                 >
@@ -589,18 +635,81 @@ export function RecommendationWidget({ onLogged }: Props) {
                 </button>
               ))}
             </div>
-            <div className="grid sm:grid-cols-[180px_1fr] gap-2 items-center">
-              <input
-                className="input"
-                inputMode="decimal"
-                placeholder={`Override live % (optional)`}
-                value={credGiftCardPct}
-                onChange={(e) => setCredGiftCardPct(e.target.value)}
-              />
-              <span className="text-xs text-fg-muted">
-                Pre-filled from catalog when you pick a chain — change only if CRED differs.
-              </span>
-            </div>
+
+            {(rankedMovieOffers.length > 0 || movieGcLive?.offers?.some((o) => o.status === "unavailable")) && (
+              <div className="rounded-md border border-sky-200/80 dark:border-sky-800/50 overflow-hidden bg-white/60 dark:bg-black/20">
+                <div className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-fg-muted border-b border-sky-200/60 dark:border-sky-800/40 flex justify-between gap-2">
+                  <span>Where to buy the GC</span>
+                  <span>
+                    {movieGcLoading ? "updating…" : movieGcError ? "catalog fallback" : "live + catalog"}
+                  </span>
+                </div>
+                <ul className="divide-y divide-sky-100 dark:divide-sky-900/40">
+                  {rankedMovieOffers.slice(0, 6).map((o) => (
+                    <li key={`${o.sourceId}-${o.brand}-${o.pct}`} className="px-3 py-2 flex items-start justify-between gap-3 text-sm">
+                      <div className="min-w-0">
+                        <div className="font-medium">
+                          {o.sourceLabel} · {o.brandLabel}
+                          {o.status === "live" && (
+                            <span className="ml-1.5 text-[10px] uppercase text-success">live</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-fg-muted truncate">
+                          {o.note}
+                          {o.promoCode ? ` · code ${o.promoCode}` : ""}
+                          {o.caveats?.[0] ? ` · ${o.caveats[0]}` : ""}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="font-semibold text-success">{o.pct}%</div>
+                        <a
+                          href={o.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-sky-700 dark:text-sky-300 hover:underline"
+                        >
+                          open
+                        </a>
+                      </div>
+                    </li>
+                  ))}
+                  {(movieGcLive?.offers || [])
+                    .filter((o) => o.status === "unavailable" || o.pct <= 0)
+                    .slice(0, 2)
+                    .map((o) => (
+                      <li key={`na-${o.sourceId}-${o.brand}`} className="px-3 py-2 flex justify-between gap-3 text-sm opacity-70">
+                        <div>
+                          <div className="font-medium line-through decoration-rose-400/80">
+                            {o.sourceLabel} · {o.brandLabel}
+                          </div>
+                          <div className="text-xs text-fg-muted">{o.note || "Unavailable"}</div>
+                        </div>
+                        <div className="text-xs text-rose-600 dark:text-rose-400 shrink-0">gone</div>
+                      </li>
+                    ))}
+                </ul>
+                {movieGcError && (
+                  <div className="px-3 py-1.5 text-[11px] text-amber-700 dark:text-amber-300 border-t border-sky-200/60">
+                    Live scrape issue: {movieGcError}. Ranking still uses catalog rates.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(movieTheatre === "bms" || movieTheatre === "district") && (
+              <div className="grid sm:grid-cols-[180px_1fr] gap-2 items-center">
+                <input
+                  className="input"
+                  inputMode="decimal"
+                  placeholder="CRED live % (optional)"
+                  value={credGiftCardPct}
+                  onChange={(e) => setCredGiftCardPct(e.target.value)}
+                />
+                <span className="text-xs text-fg-muted">
+                  Only for thin CRED BMS/District GCs if still listed.
+                </span>
+              </div>
+            )}
           </div>
         )}
 

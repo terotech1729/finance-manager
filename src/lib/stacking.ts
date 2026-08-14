@@ -11,7 +11,7 @@
  * Only "volatile" deals or unknown brands require a live % prompt.
  */
 
-export type GiftCardStore = "CRED" | "CheQ" | "ShopWise" | "Brand";
+export type GiftCardStore = "CRED" | "CheQ" | "ShopWise" | "Brand" | "Woohoo" | "GyFTR" | "magicpin" | "Amazon";
 
 /** How confidently we can rank without asking the user. */
 export type GiftCardConfidence = "stable" | "typical" | "volatile";
@@ -23,7 +23,7 @@ export type GiftCardDeal = {
   discountPct: number;
   coinFunded?: boolean;
   /**
-   * stable  = long-standing rates (cinema GCs) — rank freely
+   * stable  = long-standing rates — rank freely
    * typical = usual in-app band — rank freely; optional live override
    * volatile = rotates hard — ask before ranking
    */
@@ -33,15 +33,19 @@ export type GiftCardDeal = {
 
 /**
  * Catalog of gift-card discounts we trust enough to rank.
- * Cinema CRED GCs are especially sticky; shopping GC % sits in a usable band.
+ * CRED PVR/Cinepolis removed Aug 2026 — use Woohoo / GyFTR / magicpin instead.
  */
 export const GIFT_CARD_DEALS: GiftCardDeal[] = [
-  // CRED — cinema (stable)
-  { store: "CRED", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 28, coinFunded: true, confidence: "stable", notes: "CRED Store Cinepolis GC — long-standing ~28%; custom denomination." },
-  { store: "CRED", match: /\bpvr\b/i, merchantLabel: "PVR", discountPct: 24, coinFunded: true, confidence: "stable", notes: "CRED Store PVR GC — long-standing ~24%." },
-  { store: "CRED", match: /\binox\b/i, merchantLabel: "INOX", discountPct: 24, coinFunded: true, confidence: "stable", notes: "INOX / PVR INOX GC ~24% like PVR." },
-  { store: "CRED", match: /bookmyshow|\bbms\b/i, merchantLabel: "BookMyShow", discountPct: 3.75, coinFunded: true, confidence: "stable", notes: "BMS GC ~3.75%; prefer chain GCs when theatre known." },
-  { store: "CRED", match: /\bdistrict\b/i, merchantLabel: "District", discountPct: 3.75, coinFunded: true, confidence: "stable", notes: "District GC ~3.75%." },
+  // Cinema — post-CRED alternatives (Aug 2026)
+  { store: "Woohoo", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 28, confidence: "typical", notes: "Woohoo Cinepolis GC — often ~28% with code WOOHOO; confirm live." },
+  { store: "Woohoo", match: /\bpvr\b|\binox\b/i, merchantLabel: "PVR INOX", discountPct: 25, confidence: "typical", notes: "Woohoo PVR INOX — often ~25% when promo live." },
+  { store: "magicpin", match: /\bpvr\b/i, merchantLabel: "PVR", discountPct: 19, confidence: "typical", notes: "magicpin PVR ~19–20%; may exclude Opulent / some INOX." },
+  { store: "GyFTR", match: /\bpvr\b|\binox\b/i, merchantLabel: "PVR INOX", discountPct: 16, confidence: "stable", notes: "GyFTR public PVR INOX ~16%." },
+  { store: "GyFTR", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 14, confidence: "stable", notes: "GyFTR Cinepolis ~14%." },
+  { store: "Amazon", match: /\bpvr\b|\binox\b/i, merchantLabel: "PVR INOX", discountPct: 12, confidence: "typical", notes: "Amazon Pine Labs PVR INOX e-GC ~12%." },
+  // CRED — cinema mostly gone; keep thin BMS/District only
+  { store: "CRED", match: /bookmyshow|\bbms\b/i, merchantLabel: "BookMyShow", discountPct: 3.75, coinFunded: true, confidence: "typical", notes: "BMS GC ~3.75%; prefer chain GCs when theatre known." },
+  { store: "CRED", match: /\bdistrict\b/i, merchantLabel: "District", discountPct: 3.75, coinFunded: true, confidence: "typical", notes: "District GC ~3.75%." },
   // CRED — shopping / food (typical band)
   { store: "CRED", match: /amazon/i, merchantLabel: "Amazon", discountPct: 2, coinFunded: true, confidence: "typical", notes: "CRED Amazon Pay GC ~2%." },
   { store: "CRED", match: /flipkart/i, merchantLabel: "Flipkart", discountPct: 3, coinFunded: true, confidence: "typical", notes: "Flipkart GC usually 2–5%." },
@@ -65,7 +69,7 @@ export const GIFT_CARD_DEALS: GiftCardDeal[] = [
   { store: "CheQ", match: /myntra/i, merchantLabel: "Myntra", discountPct: 4, coinFunded: true, confidence: "typical", notes: "" },
   // Amazon brand vouchers
   { store: "Brand", match: /mainland\s*china/i, merchantLabel: "Mainland China", discountPct: 20, confidence: "typical", notes: "Amazon brand voucher." },
-  { store: "Brand", match: /pvr|inox/i, merchantLabel: "PVR INOX (Amazon)", discountPct: 17, confidence: "typical", notes: "Amazon brand voucher for PVR/INOX." },
+  { store: "Brand", match: /pvr|inox/i, merchantLabel: "PVR INOX (Amazon)", discountPct: 12, confidence: "typical", notes: "Amazon brand voucher for PVR/INOX (~12% live)." },
   { store: "Brand", match: /\baldo\b/i, merchantLabel: "Aldo", discountPct: 12, confidence: "typical", notes: "Amazon brand voucher." },
   { store: "Brand", match: /jockey/i, merchantLabel: "Jockey", discountPct: 12, confidence: "typical", notes: "Amazon brand voucher." },
   { store: "Brand", match: /lifestyle/i, merchantLabel: "Lifestyle", discountPct: 5, confidence: "typical", notes: "Amazon brand voucher." },

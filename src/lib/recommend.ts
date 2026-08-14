@@ -5,6 +5,11 @@ import { findRedemption } from "./redemptions";
 import { VISA_TIER_GUIDES } from "./visaBenefits";
 import { isBenefitClaimed } from "./benefitClaims";
 import { sbiFeeWaiverEligible } from "./spendTracking";
+import {
+  catalogOffersForTheatre,
+  rankMovieOffers,
+  type MovieGiftCardOffer,
+} from "./movieGiftCards";
 import type { Card, RecommendationResult, RouteOption } from "./types";
 
 /** Scapia combined V+R lounge unlock — ₹20k per billing cycle (statement day 24 → 25…24). */
@@ -193,10 +198,12 @@ export type RecommendInput = {
   amazonOrderCashbackInr?: number; // order-level Amazon offer cashback you see at checkout (e.g. ₹200 on orders > ₹1398)
   /** IndiGo BluChip voucher ₹ you will apply at IndiGo checkout (e.g. 5,000 from IDFC milestone). */
   indigoBluChipVoucherInr?: number;
-  /** Live CRED gift-card discount % you see in CRED Store (e.g. PVR 24%, Cinepolis 28%). */
+  /** Live CRED gift-card discount % (shopping / BMS if still listed — not PVR/Cinepolis). */
   credGiftCardPctOverride?: number;
-  /** Cinema chain for movie bookings — drives CRED GC merchant label / ranking. */
+  /** Cinema chain for movie bookings — drives GC merchant label / ranking. */
   movieTheatre?: "pvr" | "cinepolis" | "inox" | "bms" | "district" | "other";
+  /** Live movie GC offers from /api/movie-gift-cards (preferred over catalog). */
+  movieGiftCardOffers?: MovieGiftCardOffer[];
   bobEternaIssueDate?: string;
   bobWelcomeUnlocked?: boolean;
   hsbcLivePlusIssueDate?: string;
@@ -1395,81 +1402,118 @@ function theatreLabelOf(theatre: RecommendInput["movieTheatre"] | undefined): st
   return "cinema";
 }
 
-/** CRED Store movie GC brands — catalog % is stable enough to rank; live override optional. */
-const MOVIE_CRED_GC_DEFAULTS: { id: NonNullable<RecommendInput["movieTheatre"]>; label: string; pct: number }[] = [
-  { id: "cinepolis", label: "Cinepolis", pct: 28 },
-  { id: "pvr", label: "PVR", pct: 24 },
-  { id: "inox", label: "INOX", pct: 24 },
+/** Movie GC brands for thin CRED leftovers (BMS/District) + live multi-source ranking. */
+const MOVIE_THIN_CRED: { id: NonNullable<RecommendInput["movieTheatre"]>; label: string; pct: number }[] = [
   { id: "bms", label: "BookMyShow", pct: 3.75 },
   { id: "district", label: "District", pct: 3.75 },
 ];
 
-function resolveMovieCredPct(
-  brand: (typeof MOVIE_CRED_GC_DEFAULTS)[number],
+function bestMovieOfferPct(
   input: RecommendInput,
-  selected: RecommendInput["movieTheatre"] | undefined
-): { pct: number; source: "live" | "settings" | "catalog" } {
-  const live = input.credGiftCardPctOverride && input.credGiftCardPctOverride > 0
-    ? input.credGiftCardPctOverride
-    : undefined;
-  const selectedMatches =
-    selected === brand.id ||
-    (selected === "inox" && brand.id === "pvr") ||
-    (selected === "pvr" && brand.id === "inox") ||
-    !selected ||
-    selected === "other";
-  if (live != null && selectedMatches) return { pct: live, source: "live" };
-  const ov = input.giftCardRateOverrides?.[`CRED:${brand.label}`];
-  if (ov != null && Number.isFinite(ov) && ov > 0) return { pct: ov, source: "settings" };
-  return { pct: brand.pct, source: "catalog" };
+  theatre: RecommendInput["movieTheatre"] | undefined
+): { pct: number; offer?: MovieGiftCardOffer } {
+  const offers = rankMovieOffers(
+    input.movieGiftCardOffers?.length
+      ? input.movieGiftCardOffers
+      : catalogOffersForTheatre(theatre === "other" ? "other" : theatre)
+  );
+  // Prefer offers matching selected theatre; else best overall
+  const selected = theatre && theatre !== "other" ? theatre : undefined;
+  const match = selected
+    ? offers.find((o) => o.brand === selected || (selected === "inox" && o.brand === "pvr") || (selected === "pvr" && o.brand === "pvr"))
+    : offers[0];
+  const top = match ?? offers[0];
+  if (top) return { pct: top.pct, offer: top };
+  return { pct: 0 };
 }
 
-/** CRED cinema GCs — ranked from catalog; live % upgrades when entered. */
-function addMovieCredGiftCardRoutes(
+/** Multi-source cinema GCs (Woohoo / GyFTR / magicpin / Amazon). CRED PVR/Cinepolis skipped. */
+function addMovieGiftCardRoutes(
   input: RecommendInput,
   amt: number,
   add: (o: Partial<RouteOption> & { cardId: string; label: string; effectivePct: number }) => void,
   bogoSavingsCap: number
 ) {
   const selected = theatreFromInput(input, input.merchant || "", input.category || "");
-  const brands =
-    selected && selected !== "other"
-      ? MOVIE_CRED_GC_DEFAULTS.filter((b) => b.id === selected || (selected === "inox" && b.id === "inox") || (selected === "pvr" && b.id === "pvr"))
-      : MOVIE_CRED_GC_DEFAULTS.filter((b) => b.id !== "inox");
+  const raw = input.movieGiftCardOffers?.length
+    ? input.movieGiftCardOffers
+    : catalogOffersForTheatre(selected === "other" ? "other" : selected);
+  const offers = rankMovieOffers(raw).filter((o) => {
+    if (o.sourceId === "cred" && (o.brand === "pvr" || o.brand === "cinepolis" || o.brand === "inox")) {
+      return false; // removed from CRED Store
+    }
+    if (!selected || selected === "other") return true;
+    if (selected === "inox") return o.brand === "pvr" || o.brand === "inox";
+    if (selected === "pvr") return o.brand === "pvr" || o.brand === "inox";
+    return o.brand === selected;
+  });
 
-  for (const brand of brands) {
-    const { pct, source } = resolveMovieCredPct(brand, input, selected);
+  // Cap how many GC rows we inject so the list stays readable
+  const seen = new Set<string>();
+  for (const o of offers.slice(0, 5)) {
+    const key = `${o.sourceId}:${o.brandLabel}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const pct = o.pct;
     if (pct <= 0) continue;
     const saveInr = amt * (pct / 100);
     const beatsBogo = saveInr > bogoSavingsCap;
-    const liveTag = source === "live" ? " · live" : source === "catalog" ? "" : " · saved";
+    const liveTag = o.status === "live" ? " · live" : o.status === "catalog" ? "" : "";
     add({
       cardId: "giftcard",
-      label: `CRED ${brand.label} gift card (${pct}% off${liveTag}) → pay tickets with GC`,
+      label: `${o.sourceLabel} ${o.brandLabel} GC (${pct}% off${liveTag}) → pay tickets`,
       effectivePct: pct,
       baseRewardInr: saveInr,
       worstCasePct: pct,
       bestCasePct: pct,
       pros: [
-        `${pct}% off via CRED Store ${brand.label}${source === "live" ? " (you entered)" : source === "catalog" ? " (catalog)" : " (Settings)"}`,
+        `${pct}% off via ${o.sourceLabel}${o.status === "live" ? " (live fetch)" : " (catalog)"}`,
         `≈ ${inr(saveInr)} saved on this ${inr(amt)} booking`,
-        "Custom amount — buy GC for the exact ticket total",
+        o.promoCode ? `Try code ${o.promoCode} at checkout` : "Buy GC first, then pay tickets with balance",
         beatsBogo
           ? `Beats BOB/Live+ BOGO (cap ~₹${bogoSavingsCap}) on this amount`
           : "Compare vs BOGO (~₹250 cap) — GC % wins on larger bookings",
       ],
       cons: [
-        "Buy GC in CRED Store first, then pay BMS / District / theatre with the balance",
+        ...(o.caveats || []),
+        o.note || "",
         "Brand-locked (PVR ≠ Cinepolis ≠ BMS)",
-        source === "catalog" ? "Optional: enter live % if CRED shows a different number" : "",
       ].filter(Boolean),
-      rationale: `CRED Store ${brand.label} at ${pct}% off${source === "catalog" ? " (stable catalog rate)" : ""}. Custom amount matches tickets. Saves ${inr(saveInr)}.`,
+      rationale: `${o.sourceLabel} ${o.brandLabel} at ${pct}% off${o.status === "live" ? " (live)" : ""}. Saves ${inr(saveInr)}. CRED no longer lists PVR/Cinepolis.`,
       steps: [
-        `Open CRED → Store → ${brand.label} gift card`,
-        `Buy a custom-amount GC for ~${inr(amt)} at ${pct}% off`,
-        "Book and pay with the gift-card balance",
+        `Open ${o.sourceLabel}: ${o.url}`,
+        `Buy ~${inr(amt)} ${o.brandLabel} gift card at ${pct}% off`,
+        ...(o.promoCode ? [`Apply code ${o.promoCode} if shown`] : []),
+        "Book on PVR / Cinepolis / District app and pay with the GC",
       ],
     });
+  }
+
+  // Thin CRED BMS/District only when those platforms selected (or "other")
+  if (!selected || selected === "other" || selected === "bms" || selected === "district") {
+    for (const brand of MOVIE_THIN_CRED) {
+      if (selected && selected !== "other" && brand.id !== selected) continue;
+      const live =
+        input.credGiftCardPctOverride && input.credGiftCardPctOverride > 0
+          ? input.credGiftCardPctOverride
+          : brand.pct;
+      if (live <= 4) {
+        // Only surface if nothing better already covers — still add for completeness at bottom
+        const saveInr = amt * (live / 100);
+        add({
+          cardId: "giftcard",
+          label: `CRED ${brand.label} gift card (${live}% off) — thin backup`,
+          effectivePct: live,
+          baseRewardInr: saveInr,
+          worstCasePct: live,
+          bestCasePct: live,
+          pros: [`CRED still lists ${brand.label} GC at ~${live}%`],
+          cons: ["Much worse than Woohoo/GyFTR chain GCs", "Prefer chain GC when theatre known"],
+          rationale: `Thin CRED ${brand.label} GC. Prefer Woohoo/GyFTR for PVR/Cinepolis.`,
+          steps: [`CRED → Store → ${brand.label}`, `Buy ~${inr(amt)} at ${live}%`, "Pay booking with GC"],
+        });
+      }
+    }
   }
 }
 
@@ -1833,7 +1877,7 @@ function buildKiwiOption(input: RecommendInput, amt: number): RouteOption {
       label: "YES Bank Kiwi (not for in-app movie checkout)",
       effectivePct: 0,
       cons: ["BookMyShow / District / theatre apps are in-app payments — Kiwi's 2% is for scanning a UPI QR, not for app checkout"],
-      rationale: "Movie tickets booked in BMS/District aren't a Kiwi UPI scan & pay. Use BOGO, CRED theatre gift card, Amazon Pay, or Cashkaro instead.",
+      rationale: "Movie tickets booked in BMS/District aren't a Kiwi UPI scan & pay. Use BOGO, Woohoo/GyFTR theatre gift cards, Amazon Pay, or Cashkaro instead.",
     });
   }
 
@@ -2916,8 +2960,8 @@ export function recommend(input: RecommendInput): RecommendationResult {
     const platformIsBms = /bookmyshow|\bbms\b/i.test(merchant) && !platformIsDistrict;
     const bogoCap = Math.min(amt / ticketCount, 250);
 
-    // CRED cinema GCs — only when live % / Settings override is present (app-gated rates).
-    addMovieCredGiftCardRoutes(input, amt, add, bogoCap);
+    // Multi-source cinema GCs (Woohoo / GyFTR / magicpin) — CRED PVR/Cinepolis removed Aug 2026.
+    addMovieGiftCardRoutes(input, amt, add, bogoCap);
 
     if (oneTicket) {
       add({
@@ -2928,7 +2972,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
         pros: ["The BOB Eterna BOGO frees the 2nd ticket — with 1 ticket there's nothing to discount"],
         cons: ["Book 2+ tickets (even gifting one) to unlock ~₹250 off via the District BOGO"],
         rationale: "You're booking a single ticket, so the buy-1-get-1 can't trigger. If you'll ever book 2, do it together on District for the free 2nd ticket. Otherwise the routes below are your best for one ticket.",
-        steps: ["For 1 ticket, pick the best route below (CRED gift card after entering live %, UPI/Kiwi, Amazon Pay, etc.)"],
+        steps: ["For 1 ticket, pick the best route below (Woohoo/GyFTR gift card, UPI/Kiwi, Amazon Pay, etc.)"],
       });
     }
     if (bogoAvailable) {
@@ -2938,11 +2982,8 @@ export function recommend(input: RecommendInput): RecommendationResult {
       const welcomeInr = bobW?.inr ?? 0;
       const theatre = theatreFromInput(input, merchant, cat);
       const theatreLabel = theatreLabelOf(theatre);
-      const credSave = (() => {
-        const brand = MOVIE_CRED_GC_DEFAULTS.find((b) => b.id === theatre) ?? MOVIE_CRED_GC_DEFAULTS[0];
-        const resolved = resolveMovieCredPct(brand, input, theatre);
-        return amt * (resolved.pct / 100);
-      })();
+      const { pct: gcPct, offer: bestGc } = bestMovieOfferPct(input, theatre);
+      const gcSave = amt * (gcPct / 100);
       add({
         cardId: "bob_eterna",
         label: "BOB Eterna BOGO — book via District app (2nd ticket free, up to ₹250)",
@@ -2964,8 +3005,8 @@ export function recommend(input: RecommendInput): RecommendationResult {
           "Works on the District app ONLY — not BookMyShow",
           "Once per calendar month",
           "Needs 2+ tickets; free-ticket value capped at ₹250",
-          credSave > savings
-            ? `CRED ${theatreLabel} GC saves more (${inr(credSave)}) on this amount — compare ranks`
+          gcSave > savings && bestGc
+            ? `${bestGc.sourceLabel} ${theatreLabel} GC saves more (${inr(gcSave)}) on this amount — compare ranks`
             : "",
         ].filter(Boolean),
         rationale: `BOB Eterna's monthly BOGO is a District-app benefit (not BookMyShow). Book the same show on District to get one ticket free (up to ₹250) — about ${inr(savings)} off for ${ticketCount} tickets${welcomeInr > 0 ? `, and it also drives your ₹50K welcome (+${inr(welcomeInr)})` : ""}.`,
@@ -3030,7 +3071,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
         worstCasePct: 2.5,
         bestCasePct: 2.5 + (ck ? ck.max : 0),
         pros: ["10× partner earn ≈ 2.5% on BookMyShow", ckBonus > 0 ? `+ Cashkaro ~${ck!.mid}%` : ""].filter(Boolean),
-        cons: ["Usually behind District BOGO / high CRED theatre GC %", "Keep the card mainly for credit age"],
+        cons: ["Usually behind District BOGO / high Woohoo–GyFTR theatre GC %", "Keep the card mainly for credit age"],
         rationale: "SBI SimplyCLICK's 10× partner rate covers BookMyShow (~2.5%). Useful after BOGO is used and when CRED GC isn't better — and it keeps the card active for age.",
         steps: [
           ckBonus > 0 ? "Open Cashkaro → BookMyShow" : "Open BookMyShow",
@@ -3048,7 +3089,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
       cashkaroSuggested: !!ck && ck.zone !== "na",
       pros: ["Cashkaro on BookMyShow (5–10%) + Amex Gold 1%"],
       cons: ["Use only after the monthly BOB BOGO is exhausted (and if CRED GC isn't better)"],
-      rationale: "For tickets beyond the monthly BOGO, stack Cashkaro on BookMyShow and pay with Amex Gold — unless a CRED theatre gift card % is higher.",
+      rationale: "For tickets beyond the monthly BOGO, stack Cashkaro on BookMyShow and pay with Amex Gold — unless a Woohoo/GyFTR theatre gift card % is higher.",
       steps: ["Open Cashkaro → BookMyShow", "Book tickets", "Pay with Amex Gold"],
     });
     return finalize(options, input, amt, isForeign, ck);
@@ -3451,15 +3492,15 @@ function finalize(
   ].filter(Boolean).join(" ");
   const gcDeals = findGiftCardDeals(gcMatchText, "", input.giftCardRateOverrides || {});
   const liveCredPct = input.credGiftCardPctOverride && input.credGiftCardPctOverride > 0 ? input.credGiftCardPctOverride : undefined;
-  const moviesAlreadyHasCredGc =
+  const moviesAlreadyHasGc =
     isMovieExpense(input.merchant || "", input.category || "") &&
-    options.some((o) => o.cardId === "giftcard" && /cred/i.test(o.label));
+    options.some((o) => o.cardId === "giftcard");
   const merchLabel = input.merchant?.trim() || "this store";
   let giftCardAsk: { label: string; hintPct?: string; message: string } | undefined;
-  let rankedAnyGc = moviesAlreadyHasCredGc;
+  let rankedAnyGc = moviesAlreadyHasGc;
 
   for (const d of gcDeals) {
-    if (moviesAlreadyHasCredGc && d.store === "CRED") continue;
+    if (moviesAlreadyHasGc && (d.store === "CRED" || d.store === "Woohoo" || d.store === "GyFTR" || d.store === "magicpin" || d.store === "Amazon")) continue;
     const applies = d.store !== "CRED" || credLivePctAppliesToDeal(d.merchantLabel, input, input.merchant || "", input.category || "") || !liveCredPct;
     // When user entered a live CRED % for a specific theatre, don't apply it to unrelated CRED brands.
     const credApplies = d.store === "CRED"
@@ -3510,7 +3551,7 @@ function finalize(
   }
 
   // Live CRED % for a brand not in catalog.
-  if (liveCredPct != null && !moviesAlreadyHasCredGc && !isForeign) {
+  if (liveCredPct != null && !moviesAlreadyHasGc && !isForeign) {
     const alreadyCred = options.some((o) => o.cardId === "giftcard" && /cred/i.test(o.label) && o.label.includes(`${liveCredPct}%`));
     if (!alreadyCred && gcDeals.every((d) => d.store !== "CRED" || rankingGiftCardPct(d, input.giftCardRateOverrides || {}, liveCredPct) == null)) {
       const ckBonus = ck && ck.zone === "reliable" ? (ck.min === ck.max ? ck.mid : ck.mid * 0.85) : 0;

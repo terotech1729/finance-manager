@@ -21,6 +21,7 @@ export type RecommendRequest = {
   indigoBluChipVoucherInr?: number;
   credGiftCardPctOverride?: number;
   movieTheatre?: RecommendInput["movieTheatre"];
+  movieGiftCardOffers?: RecommendInput["movieGiftCardOffers"];
   bobBogoUsedThisMonth?: boolean;
   livePlusBogoUsedThisMonth?: boolean;
 };
@@ -101,5 +102,6 @@ export function buildRecommendInputFromState(st: AppState, req: RecommendRequest
     indigoBluChipVoucherInr: req.indigoBluChipVoucherInr,
     credGiftCardPctOverride: req.credGiftCardPctOverride,
     movieTheatre: req.movieTheatre,
+    movieGiftCardOffers: req.movieGiftCardOffers,
   };
 }
