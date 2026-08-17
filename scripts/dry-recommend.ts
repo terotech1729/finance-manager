@@ -488,6 +488,24 @@ const CASES: Case[] = [
     },
   },
   {
+    name: "₹1.95L phone before PT 4L deadline → Amex PT beats SBI Cleartrip",
+    query: "phone purchase samsung",
+    amount: 195000,
+    expect: {
+      channel: "online",
+      bestCard: ["amex_plat_travel"],
+      bestLabelIncludes: /deadline push|4,?00,?000|₹4/i,
+    },
+    input: {
+      today: "2026-08-17",
+      ptccEligibleSpend: 192873, // ₹2.07L left to ₹4L — this spend nearly finishes
+      sbiYtdSpend: 32762,
+      sbiFeeWaiverSpend: 100000, // fee done → online vouchers would otherwise win
+      idfcYtdSpend: 800000,
+      hsbcLivePlusYtdSpend: 180000,
+    },
+  },
+  {
     name: "Kiwi Neon true-up — not 5% on the txn (₹2.2L past ₹1.5L)",
     query: "restaurant upi",
     amount: 220000,

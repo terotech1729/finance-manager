@@ -16,6 +16,13 @@ import type { Card, RecommendationResult, RouteOption } from "./types";
 const SCAPIA_LOUNGE_MONTH_INR = 20000;
 /** Soft ₹ value of unlocking Scapia lounge / airport dining-spa for the cycle (2–3 visits). */
 const SCAPIA_LOUNGE_UNLOCK_VALUE_INR = 2500;
+/**
+ * Amex PT milestone structure nerf / post-by deadline (user letter).
+ * Hit ₹4L eligible spend before this date; Cleartrip-style stacks must not outrank that push.
+ */
+const AMEX_PT_4L_DEADLINE = "2026-09-10";
+const AMEX_PT_4L_THRESHOLD = 400000;
+const AMEX_PT_4L_REWARD_INR = 5000;
 
 function visaInfiniteOffer(id: string): { title: string; link?: string; howToClaim?: string } | null {
   const perk = VISA_TIER_GUIDES.find((g) => g.tier === "infinite")?.perks.find((p) => p.id === id);
@@ -492,6 +499,19 @@ function buildClaimTips(input: RecommendInput, best: RouteOption, ranked: RouteO
   }
   if (has("bob_eterna") && !claimed(input, "bob_fitpass")) {
     tips.push("BOB FITPASS Pro: activate within ~60 days of issuance if still open (Benefit claims).");
+  }
+  if (has("amex_plat_travel")) {
+    const pt = input.ptccEligibleSpend ?? 0;
+    if (pt < AMEX_PT_4L_THRESHOLD) {
+      const today = parseToday(input);
+      const deadline = new Date(`${AMEX_PT_4L_DEADLINE}T23:59:59`);
+      if (today.getTime() <= deadline.getTime()) {
+        const left = AMEX_PT_4L_THRESHOLD - pt;
+        tips.push(
+          `Amex PT ₹4L deadline: ${inr(left)} left before ${AMEX_PT_4L_DEADLINE} milestone nerf — route big swipes here first (SBI Cleartrip can wait).`
+        );
+      }
+    }
   }
   if (has("amex_plat_travel") && !claimed(input, "amex_pt_priority_pass")) {
     tips.push("Amex PT: enroll Priority Pass once if not done — intl visits are usually paid (Benefit claims).");
@@ -1628,6 +1648,48 @@ function ytdForCard(cardId: string, input: RecommendInput): number {
  * 10% statement cash. Pro-rata keeps a light steer (Amex PT / fee waivers) without
  * outranking liquid category cashback.
  */
+function parseToday(input: RecommendInput): Date {
+  const raw = input.today;
+  if (raw && /^\d{4}-\d{2}-\d{2}/.test(raw)) return new Date(`${raw.slice(0, 10)}T12:00:00`);
+  if (raw) {
+    const d = new Date(raw);
+    if (Number.isFinite(d.getTime())) return d;
+  }
+  return new Date();
+}
+
+/**
+ * Before the 10 Sept 2026 PT ₹4L deadline: if this spend nearly finishes the gap
+ * (≤₹30k left after, or ≥80% of remaining), credit the full ₹5k unlock as a deadline push
+ * so Cleartrip/SBI voucher math doesn't divert the last big swipe away from PT.
+ */
+function amexPt4LDeadlinePush(
+  input: RecommendInput,
+  amt: number,
+  ytd: number
+): { inr: number; note: string; threshold: number; kind: "close"; thresholds: number[] } | null {
+  if (amt < 1 || ytd >= AMEX_PT_4L_THRESHOLD) return null;
+  const today = parseToday(input);
+  const deadline = new Date(`${AMEX_PT_4L_DEADLINE}T23:59:59`);
+  if (today.getTime() > deadline.getTime()) return null;
+  const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysLeft > 45) return null;
+
+  const remaining = AMEX_PT_4L_THRESHOLD - ytd;
+  if (amt >= remaining) return null; // completing path already awards full unlock
+  const leftAfter = remaining - amt;
+  const fillsMost = amt / remaining >= 0.8;
+  if (!(leftAfter <= 30000 || fillsMost)) return null;
+
+  return {
+    inr: AMEX_PT_4L_REWARD_INR,
+    note: `Deadline push to ₹4L Amex PT before ${AMEX_PT_4L_DEADLINE} nerf — this spend leaves only ${inr(leftAfter)}; finish that before the deadline to unlock ${inr(AMEX_PT_4L_REWARD_INR)} (10k MR). Prefer PT over Cleartrip voucher stacks.`,
+    threshold: AMEX_PT_4L_THRESHOLD,
+    kind: "close",
+    thresholds: [AMEX_PT_4L_THRESHOLD],
+  };
+}
+
 function annualMilestoneBonus(
   cardId: string,
   input: RecommendInput,
@@ -1710,12 +1772,21 @@ function annualMilestoneBonus(
     };
   }
 
+  // Amex PT ₹4L before 10 Sept nerf — near-finish big spends beat Cleartrip voucher stacks.
+  if (cardId === "amex_plat_travel") {
+    const push = amexPt4LDeadlinePush(input, amt, ytd);
+    if (push) return push;
+  }
+
   const next = ms.find((m) => !isUnlocked(m.threshold));
   if (!next) return null;
   return scoreGap(ytd, next.threshold, next.rewardValueInr, next.reward);
 }
 
-function milestoneCompletesLabel(short: string, mb: { kind: string; threshold: number; thresholds?: number[] }): string {
+function milestoneCompletesLabel(short: string, mb: { kind: string; threshold: number; thresholds?: number[]; note?: string }): string {
+  if (mb.kind === "close" && /deadline push/i.test(mb.note || "")) {
+    return `${short} — deadline push to ${inr(mb.threshold)} (before ${AMEX_PT_4L_DEADLINE})`;
+  }
   if (mb.kind === "completing" && mb.thresholds && mb.thresholds.length > 1) {
     return `${short} — completes ${mb.thresholds.map((t) => inr(t)).join(" + ")} milestones`;
   }
@@ -3182,7 +3253,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
       add({
         cardId: "amex_plat_travel",
         label:
-          mb.kind === "completing"
+          mb.kind === "completing" || (mb.kind === "close" && /deadline push/i.test(mb.note))
             ? milestoneCompletesLabel("Amex PT", mb)
             : near
               ? `Amex PT — near ${inr(mb.threshold)} milestone`
@@ -3201,7 +3272,9 @@ export function recommend(input: RecommendInput): RecommendationResult {
             ? `Unlocks ${mb.thresholds.map((t) => inr(t)).join(" + ")} milestones in one swipe`
             : mb.kind === "completing"
               ? `Completes ${inr(mb.threshold)} milestone`
-              : `Builds toward ${inr(mb.threshold)}`,
+              : /deadline push/i.test(mb.note)
+                ? `Leaves a small gap — finish ₹4L before ${AMEX_PT_4L_DEADLINE}`
+                : `Builds toward ${inr(mb.threshold)}`,
         ],
       });
     }
