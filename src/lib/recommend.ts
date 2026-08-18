@@ -1447,7 +1447,7 @@ function bestMovieOfferPct(
   return { pct: 0 };
 }
 
-/** Multi-source cinema GCs (Woohoo / GyFTR / magicpin / Amazon). CRED PVR/Cinepolis skipped. */
+/** Multi-source cinema GCs (CRED / Woohoo / GyFTR / magicpin / Amazon) — live offers preferred. */
 function addMovieGiftCardRoutes(
   input: RecommendInput,
   amt: number,
@@ -1459,9 +1459,6 @@ function addMovieGiftCardRoutes(
     ? input.movieGiftCardOffers
     : catalogOffersForTheatre(selected === "other" ? "other" : selected);
   const offers = rankMovieOffers(raw).filter((o) => {
-    if (o.sourceId === "cred" && (o.brand === "pvr" || o.brand === "cinepolis" || o.brand === "inox")) {
-      return false; // removed from CRED Store
-    }
     if (!selected || selected === "other") return true;
     if (selected === "inox") return o.brand === "pvr" || o.brand === "inox";
     if (selected === "pvr") return o.brand === "pvr" || o.brand === "inox";
@@ -3031,7 +3028,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
     const platformIsBms = /bookmyshow|\bbms\b/i.test(merchant) && !platformIsDistrict;
     const bogoCap = Math.min(amt / ticketCount, 250);
 
-    // Multi-source cinema GCs (Woohoo / GyFTR / magicpin) — CRED PVR/Cinepolis removed Aug 2026.
+    // Multi-source cinema GCs (CRED / Woohoo / GyFTR / magicpin / Amazon) — live-fetched at recommend.
     addMovieGiftCardRoutes(input, amt, add, bogoCap);
 
     if (oneTicket) {

@@ -115,7 +115,11 @@ export function RecommendationWidget({ onLogged }: Props) {
       fetchedAt: new Date().toISOString(),
       offers: catalogOffersForTheatre(theatre || "other"),
     });
-    fetch(`/api/movie-gift-cards?theatre=${encodeURIComponent(theatre || "other")}`)
+    // Bust caches — GC % rotates on every platform; rank on current live state.
+    fetch(
+      `/api/movie-gift-cards?theatre=${encodeURIComponent(theatre || "other")}&_=${Date.now()}`,
+      { cache: "no-store" }
+    )
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<MovieGiftCardLiveResult>;
@@ -603,7 +607,7 @@ export function RecommendationWidget({ onLogged }: Props) {
               {movieGcLoading && <span className="text-xs font-normal text-fg-muted">· fetching…</span>}
             </div>
             <div className="text-xs text-fg-muted">
-              CRED dropped PVR / Cinepolis GCs (Aug 2026). We live-check Woohoo &amp; GyFTR, then rank with magicpin / Amazon catalog backups.
+              Live-check CRED (Desidime), Woohoo, GyFTR &amp; Amazon at recommend time — rates rotate daily.
               <span className="block mt-1">
                 <b>Insignia / Luxe</b> → PVR. <b>IMAX / 4DX</b> = format — pick the operator on BMS.
               </span>

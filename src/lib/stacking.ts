@@ -33,17 +33,20 @@ export type GiftCardDeal = {
 
 /**
  * Catalog of gift-card discounts we trust enough to rank.
- * CRED PVR/Cinepolis removed Aug 2026 — use Woohoo / GyFTR / magicpin instead.
+ * Cinema rates rotate — Recommend live-fetches CRED/Woohoo/GyFTR/Amazon at ranking time.
  */
 export const GIFT_CARD_DEALS: GiftCardDeal[] = [
-  // Cinema — post-CRED alternatives (Aug 2026)
+  // Cinema — CRED back in rotation (Aug 2026); still confirm live %
+  { store: "CRED", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 26, coinFunded: true, confidence: "volatile", notes: "CRED Cinepolis rotates (often ~26–29%); live-fetched at recommend." },
+  { store: "CRED", match: /\bpvr\b|\binox\b/i, merchantLabel: "PVR", discountPct: 25, coinFunded: true, confidence: "volatile", notes: "CRED PVR rotates; live-fetched when Desidime/DOTD posts it." },
   { store: "Woohoo", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 28, confidence: "typical", notes: "Woohoo Cinepolis GC — often ~28% with code WOOHOO; confirm live." },
   { store: "Woohoo", match: /\bpvr\b|\binox\b/i, merchantLabel: "PVR INOX", discountPct: 25, confidence: "typical", notes: "Woohoo PVR INOX — often ~25% when promo live." },
   { store: "magicpin", match: /\bpvr\b/i, merchantLabel: "PVR", discountPct: 19, confidence: "typical", notes: "magicpin PVR ~19–20%; may exclude Opulent / some INOX." },
   { store: "GyFTR", match: /\bpvr\b|\binox\b/i, merchantLabel: "PVR INOX", discountPct: 16, confidence: "stable", notes: "GyFTR public PVR INOX ~16%." },
   { store: "GyFTR", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 14, confidence: "stable", notes: "GyFTR Cinepolis ~14%." },
+  { store: "Amazon", match: /\bcinepolis\b/i, merchantLabel: "Cinepolis", discountPct: 12, confidence: "typical", notes: "Amazon Cinepolis e-GC — usually thinner than CRED/Woohoo." },
   { store: "Amazon", match: /\bpvr\b|\binox\b/i, merchantLabel: "PVR INOX", discountPct: 12, confidence: "typical", notes: "Amazon Pine Labs PVR INOX e-GC ~12%." },
-  // CRED — cinema mostly gone; keep thin BMS/District only
+  // CRED — thin BMS/District
   { store: "CRED", match: /bookmyshow|\bbms\b/i, merchantLabel: "BookMyShow", discountPct: 3.75, coinFunded: true, confidence: "typical", notes: "BMS GC ~3.75%; prefer chain GCs when theatre known." },
   { store: "CRED", match: /\bdistrict\b/i, merchantLabel: "District", discountPct: 3.75, coinFunded: true, confidence: "typical", notes: "District GC ~3.75%." },
   // CRED — shopping / food (typical band)
