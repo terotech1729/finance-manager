@@ -28,12 +28,14 @@ export const CARDS: readonly Card[] = [
     annualFee: 5900,
     feeWaivable: false,
     forexPct: 3.5,
-    // From 1 Oct 2026 the 8 domestic visits need ₹1L eligible spend in the previous quarter.
     loungeRule: "8/yr domestic (needs ₹1L prior qtr) + Priority Pass",
-    status: "active",
+    // Being wound down after the 10 Sept 2026 devaluation: ₹4L milestone collected,
+    // ₹7L Taj voucher not being chased, card closing before the ~3 Dec renewal fee.
+    // Kept in the catalogue only so past PT transactions still resolve a name.
+    status: "closed",
     pointValue: 0.5,
     baseRatePct: 1.0,
-    // Post-10-Sept ceiling at ₹7L: 14,000 base MR + 10,000 milestone MR + ₹20k Taj ≈ 4.6%.
+    // Post-nerf ceiling at ₹7L: 14,000 base MR + 10,000 milestone MR + ₹20k Taj ≈ 4.6%.
     bestRatePct: 4.6,
     cycleEnd: "2026-12-03",
     statementDay: 28,
@@ -188,13 +190,7 @@ export const CARDS: readonly Card[] = [
 ];
 
 export const ANNUAL_MILESTONES: readonly AnnualMilestone[] = [
-  // Amex PT milestones as revised from 10 Sept 2026 (eligibility follows posting date):
-  // ₹1.9L bonus withdrawn, ₹4L unchanged, ₹7L swaps 22,500 MR for a larger Taj voucher.
-  // Kept at ₹0 rather than deleted so the threshold still shows on /milestones; the
-  // ranking engine skips any milestone worth under ₹1.
-  { cardId: "amex_plat_travel", threshold: 190000, reward: "No bonus (7,500 MR withdrawn 10 Sep 2026)", rewardValueInr: 0, hit: false },
-  { cardId: "amex_plat_travel", threshold: 400000, reward: "10,000 MR", rewardValueInr: 5000, hit: false },
-  { cardId: "amex_plat_travel", threshold: 700000, reward: "₹20,000 Taj Experiences e-Gift Card", rewardValueInr: 20000, hit: false, notes: "Taj/SeleQtions/Vivanta only — face value assumes you actually stay there. The 22,500 MR that used to come with this milestone was withdrawn 10 Sep 2026." },
+  // Amex PT milestones removed with the card (₹4L collected; ₹7L Taj not being chased).
   { cardId: "amex_mrcc", threshold: 90000, reward: "50% renewal-fee waiver", rewardValueInr: 2655, hit: false },
   { cardId: "amex_mrcc", threshold: 150000, reward: "100% renewal-fee waiver", rewardValueInr: 5310, hit: false },
   { cardId: "sbi_simplyclick", threshold: 100000, reward: "₹2K Cleartrip/Yatra e-voucher (online)", rewardValueInr: 2000, hit: false, notes: "SMS code ~within 30 days of hitting; ~6 months validity. Separate from fee waiver." },
@@ -222,6 +218,15 @@ export const MONTHLY_MILESTONES: readonly MonthlyMilestone[] = [
 
 export function getCardById(id: string): Card | undefined {
   return CARDS.find((c) => c.id === id);
+}
+
+/**
+ * Can this route still be recommended? Non-card route ids ("upi", "giftcard",
+ * "amazon_pay_balance"…) always pass; closed cards never do.
+ */
+export function isRoutableCard(cardId: string): boolean {
+  const card = getCardById(cardId);
+  return !card || card.status !== "closed";
 }
 
 /** Sum of preset limits on active cards. Charge cards with creditLimit 0 (e.g. Amex Gold) are excluded. */

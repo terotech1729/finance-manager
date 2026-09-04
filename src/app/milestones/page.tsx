@@ -16,7 +16,6 @@ const KIWI_NEON_MILESTONES = [
 ];
 
 const PERIOD_NOTE: Record<string, string> = {
-  amex_plat_travel: "Membership year (ends ~3 Dec) — not calendar year",
   amex_mrcc: "Fee waiver = renewal year; monthly txns = calendar month",
   sbi_simplyclick: "Bar = ONLINE vouchers (year from ~22 May). Fee waiver is separate below.",
   idfc_indigo: "Tracked as calendar year (confirm on IDFC app)",

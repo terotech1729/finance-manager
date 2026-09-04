@@ -1,4 +1,4 @@
-import { CARDS, getCardById, ANNUAL_MILESTONES } from "./cards";
+import { CARDS, getCardById, isRoutableCard, ANNUAL_MILESTONES } from "./cards";
 import { findCashkaro } from "./cashkaro";
 import { findGiftCardDeals, findWelcomeOffer, rankingGiftCardPct, isUnknownGiftCardBrand } from "./stacking";
 import { findRedemption } from "./redemptions";
@@ -3921,7 +3921,10 @@ function finalize(
       bestByRoute.set(key, o);
     }
   }
-  const deduped = [...bestByRoute.values()];
+  // Single gate for closed cards. Callers may still build a route for one (cheap, and
+  // keeps each branch's logic simple); dropping them here is what guarantees a closed
+  // card is never ranked, shown as an alternative, or able to trigger a tip.
+  const deduped = [...bestByRoute.values()].filter((o) => isRoutableCard(o.cardId));
   for (const o of deduped) {
     o.liquidity = liquidityOf(o.cardId, o.label);
     const rng = pointsRange(o.cardId, o.label, o.totalRewardInr, o.effectivePct, amt);

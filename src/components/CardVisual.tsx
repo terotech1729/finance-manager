@@ -5,7 +5,7 @@ import { getCardStyle } from "@/lib/card-styling";
 type CardVisualInput = {
   id: string;
   short: string;
-  status: "active" | "applied" | "future";
+  status: "active" | "applied" | "future" | "closed";
 };
 
 type Props = {
@@ -216,7 +216,7 @@ export function CardVisual({ card, href, size = "md" }: Props) {
       {card.status !== "active" && (
         <div className="absolute top-3 right-3 z-10">
           <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-500/30 text-amber-50 border border-amber-300/50 backdrop-blur-sm uppercase tracking-wider">
-            {card.status === "applied" ? "Pending" : "Future"}
+            {card.status === "applied" ? "Pending" : card.status === "closed" ? "Closed" : "Future"}
           </span>
         </div>
       )}

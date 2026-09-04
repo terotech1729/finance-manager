@@ -11,7 +11,6 @@ import { isSupabaseConfigured, getSupabase } from "@/lib/supabase";
 import { onSyncStatus, pullFromCloud, pushToCloud, signOutAndClear, type SyncStatus } from "@/lib/cloudSync";
 
 const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boolean }[] = [
-  { key: "ptccEligibleSpend", label: "Amex Plat Travel — eligible cycle spend (₹)", group: "Annual milestone progress", numeric: true },
   { key: "mrccCycleSpend", label: "Amex MRCC — fee-waiver cycle spend (₹)", group: "Annual milestone progress", numeric: true },
   { key: "sbiYtdSpend", label: "SBI SimplyCLICK — ONLINE voucher spend (₹, toward ₹1L/₹2L)", group: "Annual milestone progress", numeric: true },
   { key: "sbiFeeWaiverSpend", label: "SBI SimplyCLICK — fee-waiver eligible spend (₹, since day after fee)", group: "Annual milestone progress", numeric: true },
@@ -45,8 +44,6 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "gyftrBalance", label: "HDFC GyFTR balance (₹)", group: "Debit & GyFTR", numeric: true },
   { key: "hdfcDebitCashbackPts", label: "HDFC Platinum debit cashback points", group: "Debit & GyFTR", numeric: true },
   { key: "hdfcDebitIssueDate", label: "HDFC debit / account issue date (YYYY-MM-DD)", group: "Debit & GyFTR", numeric: false },
-  { key: "ptccLoungesUsed", label: "PTCC lounges used (year)", group: "Lounge usage", numeric: true },
-  { key: "ptccLoungesUsedThisQuarter", label: "PTCC lounges used (this quarter)", group: "Lounge usage", numeric: true },
 ];
 
 const TOGGLES: { key: keyof AppState; label: string }[] = [

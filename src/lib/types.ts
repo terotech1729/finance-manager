@@ -11,7 +11,8 @@ export type Card = {
   forexPct: number;
   loungeRule?: string;
   notes?: string;
-  status: "active" | "applied" | "future";
+  /** "closed" keeps the record so historical transactions still resolve, but the card never competes for new spend. */
+  status: "active" | "applied" | "future" | "closed";
   pointValue: number; // ₹ per point at best redemption
   baseRatePct: number;
   bestRatePct: number;

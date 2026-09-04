@@ -16,9 +16,11 @@ import type { Transaction } from "@/lib/types";
 import { Icon } from "@/components/Icons";
 import { toast } from "@/components/Toast";
 
-// Payment modes for the manual logger: every card + non-card routes.
+// Payment modes for the manual logger: every open card + non-card routes.
+// Closed cards are excluded so no new spend can be logged against them; existing
+// rows still resolve their label through getCardById.
 const PAYMENT_MODES: { id: string; label: string; isCard: boolean }[] = [
-  ...CARDS.map((c) => ({ id: c.id, label: c.short, isCard: true })),
+  ...CARDS.filter((c) => c.status !== "closed").map((c) => ({ id: c.id, label: c.short, isCard: true })),
   { id: "upi", label: "UPI (bank / PhonePe / GPay)", isCard: false },
   { id: "amazon_pay_balance", label: "Amazon Pay balance", isCard: false },
   { id: "cash", label: "Cash", isCard: false },

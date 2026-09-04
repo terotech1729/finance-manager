@@ -4,6 +4,8 @@
  * live in Recommend / Network perks / Milestones — not this checklist.
  */
 
+import { isRoutableCard } from "./cards";
+
 export type BenefitUrgency = "urgent" | "open";
 
 export type BenefitClaim = {
@@ -23,7 +25,7 @@ export type BenefitClaim = {
   amazonOfferId?: string;
 };
 
-export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
+const ALL_BENEFIT_CLAIMS: readonly BenefitClaim[] = [
   // ── BOB Eterna ──────────────────────────────────────────────
   {
     id: "bob_fitpass",
@@ -358,6 +360,11 @@ export const BENEFIT_CLAIMS: readonly BenefitClaim[] = [
     urgency: "open",
   },
 ];
+
+/** Claims on a closed card are dropped — there's nothing left to enroll in or redeem. */
+export const BENEFIT_CLAIMS: readonly BenefitClaim[] = ALL_BENEFIT_CLAIMS.filter((b) =>
+  isRoutableCard(b.cardId)
+);
 
 export function benefitCardGroups(): { cardId: string; cardLabel: string; items: BenefitClaim[] }[] {
   const order: string[] = [];

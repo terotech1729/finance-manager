@@ -32,7 +32,7 @@ export default function DashboardPage() {
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 
   const currencies: CurrencyTile[] = [
-    { label: "Amex Membership Rewards", units: state.amexMrPooled, unitName: "MR", inrValue: state.amexMrPooled * 0.58, hint: "@ Taj 24K Gold redemption (₹0.58/MR)", cardId: "amex_plat_travel" },
+    { label: "Amex Membership Rewards", units: state.amexMrPooled, unitName: "MR", inrValue: state.amexMrPooled * 0.58, hint: "@ Taj 24K Gold redemption (₹0.58/MR)", cardId: "amex_gold" },
     { label: "IndiGo BluChips", units: state.indigoBluChips, unitName: "BluChips", inrValue: state.indigoBluChips * 0.45, hint: "≈ ₹0.45/BluChip on IndiGo flights (dynamic ₹0.40–0.60)", cardId: "idfc_indigo" },
     { label: "Scapia Coins", units: state.scapiaCoins, unitName: "coins", inrValue: state.scapiaCoins * 0.2, hint: "5 coins = ₹1 (Scapia-app travel only)", cardId: "scapia" },
     { label: "Kiwi Cashback (cycle)", units: state.kiwiCashback, unitName: "Kiwis", inrValue: state.kiwiCashback * 0.25, hint: `1 Kiwi = ₹0.25 (cashable). Lifetime: ${inr(state.kiwiLifetimeEarned)}`, cardId: "yes_kiwi" },
