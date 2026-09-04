@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { addTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import { CARDS } from "@/lib/cards";
 import { HISTORICAL_SPEND } from "@/lib/history";
 import { applyCardSpend } from "@/lib/spendTracking";
@@ -24,10 +25,11 @@ export default function BillsPage() {
   const [month, setMonth] = useState(() => todayLocal().slice(0, 7));
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
+  const dataVersion = useDataVersion();
   useEffect(() => {
     setState(loadState());
     setTxns(loadTransactions());
-  }, []);
+  }, [dataVersion]);
 
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 

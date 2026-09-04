@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { loadState, loadTransactions, loadHoldings, holdingInvested, holdingValue, type AppState } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import { CARDS, netCreditLimit } from "@/lib/cards";
 import { inr, inrExact, nfmt } from "@/lib/utils";
 import type { Transaction, Holding } from "@/lib/types";
@@ -22,11 +23,12 @@ export default function DashboardPage() {
   const [state, setState] = useState<AppState | null>(null);
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const dataVersion = useDataVersion();
   useEffect(() => {
     setState(loadState());
     setTxns(loadTransactions());
     setHoldings(loadHoldings());
-  }, []);
+  }, [dataVersion]);
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 
   const currencies: CurrencyTile[] = [

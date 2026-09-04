@@ -7,6 +7,7 @@ import {
 } from "recharts";
 import Link from "next/link";
 import { loadHoldings, holdingInvested, holdingValue, holdingHasValue } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import { colorFor } from "@/lib/chartColors";
 import { monthLabel } from "@/lib/history";
 import { inr, inrExact } from "@/lib/utils";
@@ -17,7 +18,8 @@ import { Icon } from "@/components/Icons";
 export default function InvestmentAnalyzerPage() {
   const [mounted, setMounted] = useState(false);
   const [holdings, setHoldings] = useState<Holding[]>([]);
-  useEffect(() => { setMounted(true); setHoldings(loadHoldings()); }, []);
+  const dataVersion = useDataVersion();
+  useEffect(() => { setMounted(true); setHoldings(loadHoldings()); }, [dataVersion]);
 
   const data = useMemo(() => {
     // Real estate is leveraged + illiquid, so we report it in its own section.

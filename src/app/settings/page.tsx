@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { DEFAULT_STATE, exportAll, importAll, loadState, saveState, clearAll, recomputeCounters, type AppState } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import { Callout } from "@/components/Callout";
 import { toast } from "@/components/Toast";
 import { uniqueGiftCardDeals, AMAZON_WELCOME_OFFERS } from "@/lib/stacking";
 import { isSupabaseConfigured, getSupabase } from "@/lib/supabase";
-import { onSyncStatus, pullFromCloud, pushToCloud, type SyncStatus } from "@/lib/cloudSync";
+import { onSyncStatus, pullFromCloud, pushToCloud, signOutAndClear, type SyncStatus } from "@/lib/cloudSync";
 
 const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boolean }[] = [
   { key: "ptccEligibleSpend", label: "Amex Plat Travel — eligible cycle spend (₹)", group: "Annual milestone progress", numeric: true },
@@ -63,7 +64,8 @@ export default function SettingsPage() {
   const [importText, setImportText] = useState("");
   const [importMsg, setImportMsg] = useState("");
 
-  useEffect(() => { setState(loadState()); }, []);
+  const dataVersion = useDataVersion();
+  useEffect(() => { setState(loadState()); }, [dataVersion]);
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 
   const update = <K extends keyof AppState>(k: K, v: AppState[K]) => {
@@ -307,12 +309,12 @@ function CloudSyncSection() {
       </div>
       <div className="card-body space-y-3">
         <div className="text-sm text-fg-muted">
-          Signed in as <b className="text-fg">{email ?? "…"}</b>. Your data syncs automatically to your private Supabase row after every change.
+          Signed in as <b className="text-fg">{email ?? "…"}</b>. Your data syncs automatically to your private Supabase row after every change, and this device re-pulls on open, on tab focus, and every minute — so these buttons are only for forcing it.
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="btn-secondary" onClick={async () => { setMsg(""); const ok = await pushToCloud(); setMsg(ok ? "Pushed to cloud." : "Push failed."); }}>Push now</button>
-          <button className="btn-secondary" onClick={async () => { setMsg(""); const r = await pullFromCloud(); setMsg(r.pulled ? "Pulled latest from cloud. Refresh to see it." : "No remote data found."); }}>Pull latest</button>
-          <button className="btn-secondary border-danger/40 text-danger" onClick={async () => { await getSupabase()?.auth.signOut(); location.reload(); }}>Sign out</button>
+          <button className="btn-secondary" onClick={async () => { setMsg(""); const r = await pullFromCloud(); setMsg(r.pulled ? "Pulled latest from cloud." : "No remote data found."); }}>Pull latest</button>
+          <button className="btn-secondary border-danger/40 text-danger" onClick={async () => { await signOutAndClear(); location.reload(); }}>Sign out</button>
           {msg && <span className="text-sm text-fg-muted self-center">{msg}</span>}
         </div>
       </div>

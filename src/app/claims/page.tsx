@@ -9,6 +9,7 @@ import {
   type BenefitUrgency,
 } from "@/lib/benefitClaims";
 import { loadState, saveState, type AppState } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import { Callout } from "@/components/Callout";
 import { Icon } from "@/components/Icons";
 import Link from "next/link";
@@ -31,9 +32,10 @@ export default function ClaimsPage() {
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  const dataVersion = useDataVersion();
   useEffect(() => {
     setState(loadState());
-  }, []);
+  }, [dataVersion]);
 
   const groups = useMemo(() => benefitCardGroups(), []);
 

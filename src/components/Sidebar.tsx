@@ -3,53 +3,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Icon } from "./Icons";
-
-type NavItem = { href: string; label: string; icon: (p: { size?: number; className?: string }) => React.ReactElement };
-type NavGroup = { title: string; items: NavItem[] };
-
-const groups: NavGroup[] = [
-  {
-    title: "Overview",
-    items: [
-      { href: "/", label: "Home", icon: Icon.Dashboard },
-      { href: "/recommend", label: "Recommend", icon: Icon.Zap },
-      { href: "/travel", label: "Travel", icon: Icon.Plane },
-    ],
-  },
-  {
-    title: "Spending",
-    items: [
-      { href: "/transactions", label: "Transactions", icon: Icon.Transaction },
-      { href: "/bills", label: "Bill Tracker", icon: Icon.Card },
-      { href: "/spend", label: "Spend Analyzer", icon: Icon.Dashboard },
-    ],
-  },
-  {
-    title: "Investing",
-    items: [
-      { href: "/investments", label: "Investments", icon: Icon.Trophy },
-      { href: "/portfolio", label: "Investment Analyzer", icon: Icon.Dashboard },
-    ],
-  },
-  {
-    title: "Reference",
-    items: [
-      { href: "/cards", label: "Cards", icon: Icon.Card },
-      { href: "/claims", label: "Benefit claims", icon: Icon.Sparkles },
-      { href: "/debit", label: "Debit & GyFTR", icon: Icon.Trophy },
-      { href: "/vouchers", label: "Vouchers & GCs", icon: Icon.Trophy },
-      { href: "/cashkaro", label: "Cashkaro rates", icon: Icon.Zap },
-      { href: "/milestones", label: "Milestones", icon: Icon.Sparkles },
-      { href: "/network-perks", label: "Network perks", icon: Icon.Plane },
-      { href: "/redemptions", label: "Redemptions", icon: Icon.Plane },
-      { href: "/settings", label: "Settings", icon: Icon.Settings },
-    ],
-  },
-];
-
-function isActive(path: string, href: string) {
-  return path === href || (href !== "/" && path.startsWith(href));
-}
+import { MobileAccount } from "./TopBar";
+import { NAV_GROUPS as groups, isActive, sectionLabelFor } from "./navConfig";
 
 function Brand() {
   return (
@@ -156,8 +111,7 @@ export function MobileNav() {
   }, [open]);
 
   // Current section label for the top bar (mirrors desktop context).
-  const current =
-    groups.flatMap((g) => g.items).find((it) => isActive(path, it.href))?.label ?? "Menu";
+  const current = sectionLabelFor(path);
 
   return (
     <>
@@ -177,7 +131,8 @@ export function MobileNav() {
           <div className="min-w-0 flex-1">
             <Brand />
           </div>
-          <div className="shrink-0 pr-2 text-xs text-fg-muted truncate max-w-[35%]">{current}</div>
+          <div className="shrink-0 hidden sm:block text-xs text-fg-muted truncate max-w-[30%]">{current}</div>
+          <MobileAccount />
         </div>
       </header>
 

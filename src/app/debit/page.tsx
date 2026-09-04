@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { DEBIT_CARDS } from "@/lib/debitCards";
 import { loadState, saveState, type AppState } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import { CardVisual } from "@/components/CardVisual";
 import { Callout } from "@/components/Callout";
 import { Icon } from "@/components/Icons";
@@ -11,7 +12,8 @@ import { inr, inrExact } from "@/lib/utils";
 
 export default function DebitPage() {
   const [state, setState] = useState<AppState | null>(null);
-  useEffect(() => { setState(loadState()); }, []);
+  const dataVersion = useDataVersion();
+  useEffect(() => { setState(loadState()); }, [dataVersion]);
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 
   const update = <K extends keyof AppState>(k: K, v: AppState[K]) => {

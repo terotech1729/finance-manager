@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ANNUAL_MILESTONES, getCardById } from "@/lib/cards";
 import { loadState, saveState, type AppState } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import { inrExact } from "@/lib/utils";
 import { CheckpointedProgress } from "@/components/CheckpointedProgress";
 import { Icon } from "@/components/Icons";
@@ -71,7 +72,8 @@ function EditableSpend({
 
 export default function MilestonesPage() {
   const [state, setState] = useState<AppState | null>(null);
-  useEffect(() => { setState(loadState()); }, []);
+  const dataVersion = useDataVersion();
+  useEffect(() => { setState(loadState()); }, [dataVersion]);
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 
   const setSpend = (key: SpendKey, value: number, cardId?: string) => {

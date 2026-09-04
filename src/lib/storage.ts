@@ -11,6 +11,8 @@ const KEYS = {
   STATE: "ccm.state.v1",
   INVESTMENTS: "ccm.investments.v1",
   HOLDINGS: "ccm.holdings.v1",
+  /** Account the cached data belongs to — guards against one user seeing another's numbers. */
+  OWNER: "ccm.owner.v1",
 } as const;
 
 export type AppState = {
@@ -179,24 +181,41 @@ function isClient(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-// Change notification — cloud sync + UI (Recommend) subscribe after any local write.
-const changeListeners = new Set<() => void>();
+/**
+ * Where a write came from:
+ *  - "local"  → this tab edited data; cloud sync should push it.
+ *  - "remote" → a cloud pull / another tab replaced data; UI must re-read, but
+ *               pushing it back would just echo the same blob.
+ */
+export type ChangeOrigin = "local" | "remote";
+
+// Change notification — cloud sync + every data page subscribe to this.
+const changeListeners = new Set<(origin: ChangeOrigin) => void>();
 let suppressChange = false;
 /** @deprecated Prefer onStorageChange — kept for cloudSync start/stop. */
 export function setStorageOnChange(fn: (() => void) | null): void {
   changeListeners.clear();
   if (fn) changeListeners.add(fn);
 }
-/** Subscribe to localStorage state/txn writes. Returns unsubscribe. */
-export function onStorageChange(fn: () => void): () => void {
+/** Subscribe to state/txn writes. Returns unsubscribe. */
+export function onStorageChange(fn: (origin: ChangeOrigin) => void): () => void {
   changeListeners.add(fn);
   return () => { changeListeners.delete(fn); };
 }
-function fireChange(): void {
+function fireChange(origin: ChangeOrigin = "local"): void {
   if (suppressChange) return;
   for (const fn of [...changeListeners]) {
-    try { fn(); } catch { /* ignore */ }
+    try { fn(origin); } catch { /* ignore */ }
   }
+}
+
+/**
+ * Announce that localStorage was replaced from outside this tab (cloud pull or
+ * another tab). Mounted pages re-read; cloud sync ignores it so we don't push
+ * the blob we just received straight back.
+ */
+export function notifyRemoteDataApplied(): void {
+  fireChange("remote");
 }
 
 // ----- Membership-period keys (drive automatic counter resets) -----
@@ -752,6 +771,8 @@ export function importAll(json: string, silent = false): boolean {
     } finally {
       if (silent) suppressChange = false;
     }
+    // A silent import still has to wake the UI — it just must not trigger a push.
+    if (silent) notifyRemoteDataApplied();
     return true;
   } catch {
     return false;
@@ -764,4 +785,16 @@ export function clearAll(): void {
   localStorage.removeItem(KEYS.TXNS);
   localStorage.removeItem(KEYS.INVESTMENTS);
   localStorage.removeItem(KEYS.HOLDINGS);
+}
+
+/** User id whose data is currently cached on this device (null = unknown / local-only). */
+export function getCachedOwner(): string | null {
+  if (!isClient()) return null;
+  return localStorage.getItem(KEYS.OWNER);
+}
+
+export function setCachedOwner(userId: string | null): void {
+  if (!isClient()) return;
+  if (userId) localStorage.setItem(KEYS.OWNER, userId);
+  else localStorage.removeItem(KEYS.OWNER);
 }

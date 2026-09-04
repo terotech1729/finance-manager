@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ANNUAL_MILESTONES, MONTHLY_MILESTONES, getCardById } from "@/lib/cards";
 import { loadState, loadTransactions, getScapiaBillingCycleSpend, type AppState } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import type { Transaction } from "@/lib/types";
 import { CardVisual } from "@/components/CardVisual";
 import { CheckpointedProgress } from "@/components/CheckpointedProgress";
@@ -90,10 +91,11 @@ export default function CardDetailPage({ params }: { params: { id: string } }) {
   const card = getCardById(id);
   const [state, setState] = useState<AppState | null>(null);
   const [allTxns, setAllTxns] = useState<Transaction[]>([]);
+  const dataVersion = useDataVersion();
   useEffect(() => {
     setState(loadState());
     setAllTxns(loadTransactions());
-  }, []);
+  }, [dataVersion]);
   if (!card) return notFound();
   const cardTxns = allTxns.filter((t) => t.cardId === id);
   const cardMilestones = ANNUAL_MILESTONES.filter((m) => m.cardId === id);

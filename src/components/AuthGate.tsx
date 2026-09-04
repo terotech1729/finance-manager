@@ -1,10 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { startCloudSync, stopCloudSync } from "@/lib/cloudSync";
 
-type AuthState = "loading" | "signedOut" | "signedIn";
+type AuthState = "loading" | "signedOut" | "syncing" | "signedIn";
+
+export type SessionInfo = {
+  /** null in local-only mode (no Supabase configured). */
+  user: User | null;
+  cloud: boolean;
+};
+
+const SessionContext = createContext<SessionInfo>({ user: null, cloud: false });
+
+/** Longest we hold the app back waiting for the first cloud pull. */
+const FIRST_SYNC_TIMEOUT_MS = 5000;
+
+/** Signed-in user for chrome like the title bar. */
+export function useSession(): SessionInfo {
+  return useContext(SessionContext);
+}
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   // Local-only mode: no Supabase configured → render app as-is.
@@ -14,6 +31,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
 function AuthGated({ children }: { children: React.ReactNode }) {
   const [auth, setAuth] = useState<AuthState>("loading");
+  const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -25,20 +43,40 @@ function AuthGated({ children }: { children: React.ReactNode }) {
     const sb = getSupabase();
     if (!sb) return;
     let mounted = true;
+
+    /**
+     * Hold the app on a sync screen until the first cloud pull finishes, so the
+     * dashboard never opens on the previous device's numbers.
+     *
+     * Capped by FIRST_SYNC_TIMEOUT_MS: on a slow or offline connection we show
+     * cached data rather than a spinner. The pull keeps running and the pages
+     * re-read themselves when it lands.
+     */
+    const enter = async (u: User) => {
+      if (!mounted) return;
+      setUser(u);
+      setAuth("syncing");
+      try {
+        await Promise.race([
+          startCloudSync(),
+          new Promise((r) => setTimeout(r, FIRST_SYNC_TIMEOUT_MS)),
+        ]);
+      } finally {
+        if (mounted) setAuth("signedIn");
+      }
+    };
+
     sb.auth.getSession().then(({ data }) => {
       if (!mounted) return;
-      if (data.session) {
-        setAuth("signedIn");
-        void startCloudSync();
-      } else {
-        setAuth("signedOut");
-      }
+      if (data.session) void enter(data.session.user);
+      else setAuth("signedOut");
     });
     const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
       if (session) {
-        setAuth("signedIn");
-        void startCloudSync();
+        void enter(session.user);
       } else {
+        setUser(null);
         setAuth("signedOut");
         stopCloudSync();
       }
@@ -70,8 +108,13 @@ function AuthGated({ children }: { children: React.ReactNode }) {
     }
   };
 
-  if (auth === "loading") {
-    return <div className="min-h-screen flex items-center justify-center text-fg-muted">Loading…</div>;
+  if (auth === "loading" || auth === "syncing") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-fg-muted">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold">₹</div>
+        <div className="text-sm">{auth === "syncing" ? "Getting your latest numbers…" : "Loading…"}</div>
+      </div>
+    );
   }
 
   if (auth === "signedOut") {
@@ -122,5 +165,9 @@ function AuthGated({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <SessionContext.Provider value={{ user, cloud: true }}>
+      {children}
+    </SessionContext.Provider>
+  );
 }

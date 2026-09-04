@@ -6,6 +6,7 @@ import {
   addTransaction, deleteTransaction, updateTransaction,
   loadState, loadTransactions, saveState,
 } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import { CARDS, getCardById } from "@/lib/cards";
 import { ALL_CATEGORIES } from "@/lib/categorize";
 import { applyCardSpend, reverseCardSpend } from "@/lib/spendTracking";
@@ -49,7 +50,8 @@ export default function TransactionsPage() {
   const [fCat, setFCat] = useState("all");
   const [fMode, setFMode] = useState("all");
 
-  useEffect(() => { setTxns(loadTransactions()); }, []);
+  const dataVersion = useDataVersion();
+  useEffect(() => { setTxns(loadTransactions()); }, [dataVersion]);
 
   const presentCats = useMemo(() => Array.from(new Set(txns.map((t) => t.category))).sort(), [txns]);
   const presentModes = useMemo(() => Array.from(new Set(txns.map((t) => t.cardId))), [txns]);

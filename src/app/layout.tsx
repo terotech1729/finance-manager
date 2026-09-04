@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Sidebar, MobileNav } from "@/components/Sidebar";
+import { TopBar } from "@/components/TopBar";
 import { AuthGate } from "@/components/AuthGate";
 import { Toaster } from "@/components/Toast";
 
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Sidebar />
             <div className="flex-1 min-w-0 flex flex-col w-full">
               <MobileNav />
+              <TopBar />
               <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-8 py-4 sm:py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                 {children}
               </main>

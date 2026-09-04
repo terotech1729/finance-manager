@@ -7,6 +7,7 @@ import {
 } from "recharts";
 import { HISTORICAL_SPEND, monthLabel, type MonthlySpend } from "@/lib/history";
 import { loadTransactions } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import { CARDS, getCardById } from "@/lib/cards";
 import { colorFor } from "@/lib/chartColors";
 import { inr, inrExact } from "@/lib/utils";
@@ -17,7 +18,8 @@ const CARD_IDS = ["amex_gold", "amex_plat_travel", "amex_mrcc", "scapia", "idfc_
 export default function SpendAnalyzerPage() {
   const [mounted, setMounted] = useState(false);
   const [txns, setTxns] = useState<Transaction[]>([]);
-  useEffect(() => { setMounted(true); setTxns(loadTransactions()); }, []);
+  const dataVersion = useDataVersion();
+  useEffect(() => { setMounted(true); setTxns(loadTransactions()); }, [dataVersion]);
 
   // Combine: past months use the authoritative statement seed; months AFTER the seed
   // are auto-derived from your DB-backed logged transactions (card spends only).

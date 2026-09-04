@@ -5,6 +5,7 @@ import {
   loadHoldings, addHolding, deleteHolding, addContribution, deleteContribution,
   updateHolding, holdingInvested, holdingValue, holdingHasValue,
 } from "@/lib/storage";
+import { useDataVersion } from "@/lib/useLiveData";
 import type { Holding, InvestmentType, PaymentMethod } from "@/lib/types";
 import { INVESTMENT_TYPES, PAYMENT_METHODS, typeIcon, typeLabel } from "@/lib/investmentTypes";
 import { inr, inrExact, newId, todayLocal, localDateToISO } from "@/lib/utils";
@@ -50,7 +51,8 @@ export default function InvestmentsPage() {
 
   const [showBulkValues, setShowBulkValues] = useState(false);
 
-  useEffect(() => { setHoldings(loadHoldings()); }, []);
+  const dataVersion = useDataVersion();
+  useEffect(() => { setHoldings(loadHoldings()); }, [dataVersion]);
 
   const anyValues = useMemo(() => holdings.some((h) => holdingHasValue(h)), [holdings]);
   const totals = useMemo(() => {
