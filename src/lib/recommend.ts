@@ -24,6 +24,26 @@ const AMEX_PT_4L_DEADLINE = "2026-09-10";
 const AMEX_PT_4L_THRESHOLD = 400000;
 const AMEX_PT_4L_REWARD_INR = 5000;
 
+/**
+ * IDFC went zero-forex on 9 Sep 2026 and pays for it by cutting the international
+ * earn from 3 BluChips/₹100 to 1 from 26 Oct 2026. Until that date a foreign spend
+ * yields the full 3 chips with no markup, which is the best window the card will
+ * ever have abroad — so the rate has to be date-aware, not a single constant.
+ */
+const IDFC_INTL_EARN_CUT_DATE = "2026-10-26";
+
+/** BOB Eterna's 5× accelerator stops after 5,000 RP/cycle ≈ this much spend; the rest earns 1×. */
+const BOB_5X_CAP_SPEND_INR = 33000;
+
+function idfcIntlChipsPer100(input: RecommendInput): number {
+  return parseToday(input) >= new Date(`${IDFC_INTL_EARN_CUT_DATE}T00:00:00`) ? 1 : 3;
+}
+
+/** IDFC's international return as a % of spend (no markup to net off since 9 Sep 2026). */
+function idfcIntlPct(input: RecommendInput): number {
+  return idfcIntlChipsPer100(input) * (getCardById("idfc_indigo")?.pointValue ?? 0.45);
+}
+
 function visaInfiniteOffer(id: string): { title: string; link?: string; howToClaim?: string } | null {
   const perk = VISA_TIER_GUIDES.find((g) => g.tier === "infinite")?.perks.find((p) => p.id === id);
   return perk ? { title: perk.title, link: perk.link, howToClaim: perk.howToClaim } : null;
@@ -110,7 +130,10 @@ function cardDeclinedFallbackFor(
       label: "If card not allowed → local cash / another 0% forex card",
       cardId: "cash",
       effectivePct: 0,
-      steps: ["Try Scapia if not already used (0% forex)", "Otherwise local currency cash / debit"],
+      steps: [
+        "Try the other 0% forex card first — IDFC Indigo (Mastercard) or Scapia (Visa)",
+        "Otherwise local currency cash / debit",
+      ],
       rationale: "Abroad: prefer another 0% forex card before cash.",
     };
   }
@@ -746,7 +769,7 @@ function infinitePayCard(input: RecommendInput, travelMcc: boolean): {
   earnPct: number;
   earnNote: string;
 } {
-  const bobHeadroom = Math.max(0, 33000 - (input.bobCycleSpend5x ?? 0));
+  const bobHeadroom = Math.max(0, BOB_5X_CAP_SPEND_INR - (input.bobCycleSpend5x ?? 0));
   const bob5xOk = travelMcc && bobHeadroom >= 1000;
   if (bob5xOk) {
     return { cardId: "bob_eterna", earnPct: 3.75, earnNote: "BOB 5× travel MCC (3.75%) — redeem RP later @ ₹0.25" };
@@ -1063,7 +1086,7 @@ function addExhaustiveTravelRoutes(
   const prime = input.primeMember !== false;
   const apPct = amazonTravelCardPct(kind, prime);
   const extra = input.amazonOrderCashbackInr && input.amazonOrderCashbackInr > 0 ? input.amazonOrderCashbackInr : 0;
-  const bobHeadroom = Math.max(0, 33000 - (input.bobCycleSpend5x ?? 0));
+  const bobHeadroom = Math.max(0, BOB_5X_CAP_SPEND_INR - (input.bobCycleSpend5x ?? 0));
   const bob5xOk = bobHeadroom >= Math.min(amt, 1000);
 
   // --- Amazon.in travel + Amazon Pay ICICI ---
@@ -2045,8 +2068,8 @@ function cardForexPct(cardId: string): number {
 
 /**
  * On foreign-currency txns, net each route as rewards − forex markup.
- * Scapia (0% forex) keeps lounge-progress soft value when unlock is open;
- * Amex/IDFC can still win if milestone unlocks exceed their 3.5% / 1.49% fees.
+ * Zero-markup cards (Scapia, and IDFC since 9 Sep 2026) keep their gross return;
+ * Scapia also keeps lounge-progress soft value while the unlock is open.
  */
 function applyForexNetting(options: RouteOption[], amt: number): void {
   if (amt < 1) return;
@@ -2055,7 +2078,10 @@ function applyForexNetting(options: RouteOption[], amt: number): void {
     if (o.cons.some((c) => /forex markup .*netted/i.test(c))) continue;
     const fx = cardForexPct(o.cardId);
     if (fx <= 0) {
-      if (o.cardId === "scapia" && !o.pros.some((p) => /0%\s*forex/i.test(p))) {
+      // Credit every zero-markup card, not just Scapia — IDFC joined them on 9 Sep 2026.
+      // Guarded on the id being a real card so "upi"/"cash"/"giftcard" routes, which also
+      // report 0%, don't claim a forex perk they don't have.
+      if (getCardById(o.cardId) && !o.pros.some((p) => /0%\s*forex/i.test(p))) {
         o.pros = ["0% forex markup — no currency conversion fee", ...o.pros];
       }
       continue;
@@ -2309,7 +2335,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
       ],
       rationale: lounge
         ? `${lounge.note}. Prefer this over BOB's ~1.75% net forex while the ₹20k cycle gate is open — 0% markup + privilege path beats petty RP.`
-        : "Scapia charges 0% forex. Other cards are scored as rewards − markup (Amex 3.5%, IDFC 1.49%, Live+ 1.99%, BOB 2%). A large Amex/IDFC milestone can still net positive and outrank Scapia. ₹20k billing-cycle gate already hit — yield ranking applies.",
+        : "Scapia charges 0% forex but earns no coins on forex spends, so its value is purely the avoided markup. IDFC is also 0% forex since 9 Sep 2026 and still earns BluChips, so it now beats Scapia on pure yield abroad. Remaining cards are scored as rewards − markup (Amex 3.5%, Live+ 1.99%, BOB 2%).",
       steps: [
         ckUsable ? "If on Cashkaro (Booking/Agoda), open via Cashkaro first" : `Pay with Scapia at the foreign merchant / POS`,
         "Scapia charges 0% forex markup",
@@ -2323,85 +2349,81 @@ export function recommend(input: RecommendInput): RecommendationResult {
       ],
     });
 
-    // Amex PT — 1% MR + completing annual milestones only (finalize subtracts 3.5% forex)
-    if (!amexExcluded(input.category || "")) {
-      const mb = annualMilestoneBonus("amex_plat_travel", input, amt);
-      const mbUse = mb && mb.kind === "completing" ? mb : null;
-      const bonus = mbUse?.inr ?? 0;
-      add({
-        cardId: "amex_plat_travel",
-        label: mbUse
-          ? milestoneCompletesLabel("Amex PT", mbUse)
-          : "Amex PT (1% MR abroad)",
-        effectivePct: 1.0 + (bonus / amt) * 100,
-        baseRewardInr: amt * 0.01,
-        bonusRewardInr: bonus,
-        worstCasePct: 1.0,
-        bestCasePct: 1.0 + (bonus / amt) * 100,
-        pros: [
-          mbUse?.note ?? "~1% MR on eligible foreign spends",
-          "Only worth it if rewards beat the 3.5% forex fee (netted below)",
-        ],
-        cons: ["3.5% forex markup", "Acceptance spotty abroad vs Visa/MC"],
-        rationale: mbUse
-          ? `${mbUse.note} Abroad: net = rewards − 3.5% forex.`
-          : "Amex abroad earns ~1% MR but pays 3.5% forex — usually net negative vs Scapia/BOB unless a milestone unlock is large enough.",
-        steps: [
-          `Pay ${inr(amt)} with Amex PT (foreign currency)`,
-          mbUse?.thresholds && mbUse.thresholds.length > 1
-            ? `Unlocks ${mbUse.thresholds.map((t) => inr(t)).join(" + ")} milestones — confirm net after 3.5% forex still wins`
-            : "Compare net return after 3.5% forex vs Scapia 0% / BOB intl",
-        ],
-      });
-    }
-
-    // IDFC — BluChips + completing milestones only (finalize subtracts 1.49%)
+    // IDFC — zero forex since 9 Sep 2026, so BluChips are kept whole (nothing to net off).
     {
       const mb = annualMilestoneBonus("idfc_indigo", input, amt);
       const mbUse = mb && mb.kind === "completing" ? mb : null;
-      const basePct = 3 * 0.45; // typical non-IndiGo earn abroad
+      const chips = idfcIntlChipsPer100(input);
+      const basePct = idfcIntlPct(input);
+      const preCut = chips === 3;
       const bonus = mbUse?.inr ?? 0;
       add({
         cardId: "idfc_indigo",
         label: mbUse
           ? milestoneCompletesLabel("IDFC Indigo", mbUse)
-          : "IDFC Indigo (BluChips abroad)",
+          : `IDFC Indigo (0% forex + ${chips} BluChip${chips === 1 ? "" : "s"}/₹100)`,
         effectivePct: basePct + (bonus / amt) * 100,
         baseRewardInr: amt * (basePct / 100),
         bonusRewardInr: bonus,
         worstCasePct: basePct,
         bestCasePct: basePct + (bonus / amt) * 100,
         pros: [
-          mbUse?.note ?? `~${basePct.toFixed(2)}% as BluChips on eligible foreign spends`,
-          "Lower forex (1.49%) than Amex 3.5% — better backup if Scapia declines",
+          mbUse?.note ?? `~${basePct.toFixed(2)}% as BluChips, kept whole — no markup to net off`,
+          "0% forex markup on all international spends (from 9 Sep 2026)",
+          ...(preCut
+            ? [`Still earning 3 BluChips/₹100 abroad — drops to 1 on ${IDFC_INTL_EARN_CUT_DATE}`]
+            : []),
         ],
-        cons: ["1.49% forex markup", "BluChips travel-locked to IndiGo"],
+        cons: [
+          "BluChips travel-locked to IndiGo (min 500, 24-mo validity)",
+          ...(preCut ? [] : [`International earn cut to 1 BluChip/₹100 on ${IDFC_INTL_EARN_CUT_DATE}`]),
+        ],
         rationale: mbUse
-          ? `${mbUse.note} Abroad: net = BluChips value − 1.49% forex.`
-          : "IDFC 1.49% forex is better than Amex, but Scapia/BOB still usually win unless a milestone unlock exceeds the fee.",
-        steps: [`Pay with IDFC Indigo Mastercard (not RuPay) abroad`, "Confirm net after 1.49% forex"],
+          ? `${mbUse.note} Abroad: zero forex, so the full BluChip value is the net.`
+          : preCut
+            ? `IDFC dropped its 1.49% markup on 9 Sep 2026 while still paying 3 BluChips/₹100 abroad — ~${basePct.toFixed(2)}% net with no fee. That combination ends ${IDFC_INTL_EARN_CUT_DATE}, when the intl earn falls to 1 chip/₹100 (~0.45%).`
+            : `Zero forex, but international earn is now 1 BluChip/₹100 (~${basePct.toFixed(2)}%). Fee-free and travel-locked — compare against BOB's 5× intl net of its 2% markup.`,
+        steps: [
+          "Pay with IDFC Indigo Mastercard (not RuPay) abroad",
+          "No markup is charged — the BluChips are the whole return",
+        ],
       });
     }
 
-    // BOB — 5× international ~3.75% gross (finalize subtracts 2%)
-    add({
-      cardId: "bob_eterna",
-      label: "BOB Eterna 5× international (~3.75%)",
-      effectivePct: 3.75,
-      baseRewardInr: amt * 0.0375,
-      worstCasePct: 0.75,
-      bestCasePct: 3.75,
-      pros: ["5× on international POS when it codes correctly"],
-      cons: [
-        "2% forex markup",
-        "5× cap 5,000 RP/cycle",
-        ...(lounge ? ["Behind Scapia while lounge unlock is open — ~1.75% net is petty vs privilege"] : []),
-      ],
-      rationale: lounge
-        ? "BOB intl 5× − 2% forex ≈ ~1.75% net — use only after Scapia’s ₹20k billing-cycle gate is hit, or if Scapia declines."
-        : "BOB intl 5× minus 2% forex can net ~1.75% — fine once Scapia’s ₹20k cycle gate is already hit; still usually behind a large Amex milestone.",
-      steps: ["Pay with BOB Eterna abroad", "Net after 2% forex is what counts"],
-    });
+    // BOB — 5× international, but only up to the cycle cap; spend beyond it earns 1×.
+    // Blending matters abroad in a way it doesn't domestically: once the accelerator is
+    // exhausted the diluted earn drops under the 2% markup that finalize() nets off, so a
+    // large foreign spend on BOB is actually loss-making. A flat 3.75% hid that.
+    {
+      const headroom = Math.max(0, BOB_5X_CAP_SPEND_INR - (input.bobCycleSpend5x ?? 0));
+      const at5x = Math.min(amt, headroom);
+      const at1x = amt - at5x;
+      const gross = at5x * 0.0375 + at1x * 0.0075;
+      const grossPct = (gross / amt) * 100;
+      const capped = at1x > 0;
+      add({
+        cardId: "bob_eterna",
+        label: capped
+          ? `BOB Eterna international (5× on ${inr(at5x)}, 1× beyond ≈ ${grossPct.toFixed(2)}%)`
+          : "BOB Eterna 5× international (~3.75%)",
+        effectivePct: grossPct,
+        baseRewardInr: gross,
+        worstCasePct: 0.75,
+        bestCasePct: grossPct,
+        pros: ["5× on international POS when it codes correctly"],
+        cons: [
+          "2% forex markup",
+          capped
+            ? `Only ${inr(headroom)} of 5× headroom left this cycle — ${inr(at1x)} of this spend earns just 1× (0.75%)`
+            : `5× cap 5,000 RP/cycle (~${inr(BOB_5X_CAP_SPEND_INR)} spend)`,
+          ...(lounge ? ["Behind Scapia while lounge unlock is open — a thin net is petty vs the privilege"] : []),
+        ],
+        rationale: capped
+          ? `Only ${inr(at5x)} of this spend gets 5×; the remaining ${inr(at1x)} earns 1×, so the blend is ~${grossPct.toFixed(2)}% before the 2% markup. On a spend this size BOB is worse abroad than a 0% forex card.`
+          : "BOB intl 5× minus 2% forex nets ~1.75% — worth it only inside the 5× cap, and now competing with IDFC at 0% forex.",
+        steps: ["Pay with BOB Eterna abroad", "Net after 2% forex is what counts"],
+      });
+    }
 
     return finalize(options, input, amt, isForeign, ck);
   }
@@ -3204,7 +3226,7 @@ export function recommend(input: RecommendInput): RecommendationResult {
         cashkaroNote: `+ ~${ck.mid}% Cashkaro`,
       }));
     }
-    const bob5xLeft = 33000 - (input.bobCycleSpend5x ?? 0);
+    const bob5xLeft = BOB_5X_CAP_SPEND_INR - (input.bobCycleSpend5x ?? 0);
     add({ cardId: "bob_eterna", label: "Cashkaro + BOB Eterna 5× online (3.75%)",
       effectivePct: 3.75 + ck.mid * 0.85, worstCasePct: 3.75, bestCasePct: 3.75 + ck.max, cashkaroSuggested: true,
       feasible: bob5xLeft >= 100, feasibilityNote: bob5xLeft < amt ? `Only ${inr(Math.max(0,bob5xLeft))} of 5× headroom left this cycle` : undefined,
@@ -3352,8 +3374,17 @@ function genericCardEval(
         };
       case "bob_eterna":
         return { pct: 3.75, label: "BOB Eterna (abroad)", reason: "5× international (~3.75%) before 2% forex netting ≈ ~1.75% net typical." };
-      case "idfc_indigo":
-        return { pct: 3 * 0.45, label: "IDFC Indigo (abroad)", reason: "~1.35% BluChips before 1.49% forex netting — often near break-even; milestones can flip it positive." };
+      case "idfc_indigo": {
+        const pct = idfcIntlPct(input);
+        return {
+          pct,
+          label: "IDFC Indigo (abroad)",
+          reason:
+            idfcIntlChipsPer100(input) === 3
+              ? `Zero forex since 9 Sep 2026 and still 3 BluChips/₹100 abroad ≈ ${pct.toFixed(2)}% net with no markup — drops to 1 chip/₹100 on ${IDFC_INTL_EARN_CUT_DATE}.`
+              : `Zero forex, 1 BluChip/₹100 abroad ≈ ${pct.toFixed(2)}% net — fee-free but travel-locked to IndiGo.`,
+        };
+      }
       case "yes_kiwi":
         return { pct: 0, label: "Kiwi (abroad)", reason: "3.5% forex markup and RuPay is poorly accepted abroad." };
       case "sbi_simplyclick":

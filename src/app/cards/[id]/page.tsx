@@ -35,8 +35,8 @@ const CARD_TIPS: Record<string, { useFor: string[]; dontUseFor: string[]; primar
     dontUseFor: ["Utility/insurance/rent/fuel/wallet/gift-card/govt (excluded from coins)", "If you won't redeem coins on Scapia-app travel (they only redeem there)", "Don't miss ₹20K/billing cycle (25→24) — lounge unlocks next statement"],
   },
   idfc_indigo: {
-    primaryRole: "IndiGo flights (up to 22 BluChips/₹100 ≈ 9.9%) + low-forex backup (1.49%)",
-    useFor: ["IndiGo flights via IndiGo app (up to 22 BluChips/₹100 ≈ 9.9% at ₹0.45/chip)", "International if Scapia rejected (1.49% forex)", "Mastercard golf benefit"],
+    primaryRole: "IndiGo flights (up to 22 BluChips/₹100 ≈ 9.9%) + zero-forex travel card",
+    useFor: ["IndiGo flights via IndiGo app (up to 22 BluChips/₹100 ≈ 9.9% at ₹0.45/chip)", "International spends — 0% forex from 9 Sep 2026, and unlike Scapia it still earns (3 BluChips/₹100 until 26 Oct 2026, then 1)", "Mastercard golf benefit"],
     dontUseFor: ["UPI / insurance / utility / fuel / rent / wallet (only 0.5 BluChip/₹100 ≈ 0.23%)", "Cash / EMI (zero BluChips)", "Other spends earn 3 BluChips/₹100 ≈ 1.35% — better cards exist"],
   },
   bob_eterna: {

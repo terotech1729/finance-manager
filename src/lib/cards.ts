@@ -86,14 +86,15 @@ export const CARDS: readonly Card[] = [
     creditLimit: 220000,
     annualFee: 5900,
     feeWaivable: false,
-    forexPct: 1.49,
+    // Zero forex markup on all IDFC FIRST credit cards from 9 Sep 2026 (was 1.49%).
+    forexPct: 0,
     loungeRule: "Golf 12 rounds/yr",
     status: "active",
     pointValue: 0.45,
     baseRatePct: 1.35,
     bestRatePct: 9.9,
     statementDay: 22,
-    notes: "Dual: Mastercard (1.49% forex) + RuPay (UPI). BluChips/₹100: up to 22 on IndiGo flights via IndiGo site/app (6 card + up to 16 IndiGo tier); 3 on other spends; 0.5 on UPI; 0.5 on insurance/utilities/fuel/rent/wallet. None on cash/EMI. BluChip value dynamic ₹0.40–0.60 (≈₹0.45), redeemable only on IndiGo one-way flights (base fare+fuel), min 500, 24-mo validity. Milestone bonus BluChip vouchers on spends.",
+    notes: "Dual: Mastercard + RuPay (UPI). ZERO forex markup on all international spends from 9 Sep 2026 (was 1.49%) — now a genuine travel card, not just a low-fee backup. BluChips/₹100: up to 22 on IndiGo flights via IndiGo site/app (6 card + up to 16 IndiGo tier); 3 on other spends; 0.5 on UPI; 0.5 on insurance/utilities/fuel/rent/wallet. None on cash/EMI. International earn is being cut to 1 BluChip/₹100 from 26 Oct 2026 (3/₹100 until then) — the trade-off for the removed markup. BluChip value dynamic ₹0.40–0.60 (≈₹0.45), redeemable only on IndiGo one-way flights (base fare+fuel), min 500, 24-mo validity. Milestone bonus BluChip vouchers on spends.",
   },
   {
     id: "bob_eterna",
