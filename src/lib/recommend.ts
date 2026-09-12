@@ -57,14 +57,6 @@ const TAX_GATEWAY_NETBANKING_FEE_INR = 12;
 /** The tax portal's gateways settle Visa / Mastercard / RuPay only — Amex isn't accepted. */
 const TAX_PORTAL_ACCEPTS_AMEX = false;
 
-/**
- * Typical reward spread between the best card for an everyday purchase and BOB Eterna's
- * base rate on the same purchase (roughly Live+ 10% vs BOB 0.75–3.75%). Used to price the
- * alternative to a fee-bearing tax payment: instead of paying the portal's % to push a
- * large payment through a card, close the same spend gate with ordinary retail and simply
- * forgo the better card's rewards on that smaller amount.
- */
-const ORDINARY_SPEND_DIVERSION_SPREAD_PCT = 6;
 
 function idfcIntlChipsPer100(input: RecommendInput): number {
   return parseToday(input) >= new Date(`${IDFC_INTL_EARN_CUT_DATE}T00:00:00`) ? 1 : 3;
@@ -2046,92 +2038,71 @@ function addTaxGovtRoutes(
       continue;
     }
 
-    const ms = annualMilestoneBonus(card.id, input, amt);
-    const msUse = ms && ms.kind === "completing" ? ms : null;
-    const welcomeRaw = card.id === "bob_eterna" ? bobWelcomeBonus(input, amt) : null;
-    const welcome = welcomeRaw?.completes ? welcomeRaw : null;
-    const loungeUse = card.id === "bob_eterna" && lounge?.completes ? lounge : null;
-    const loungeProgress = card.id === "bob_eterna" && lounge && !lounge.completes ? lounge : null;
+    // Tax paid by UPI touches no card and counts toward nothing. So the comparison isn't
+    // "rewards vs fee" — tax earns no points anywhere — it's "annual-total progress vs
+    // fee". Pro-rata progress therefore counts here exactly as it does everywhere else in
+    // the engine: a fee waiver or milestone you're already walking toward is genuinely
+    // advanced by this spend whether or not this payment is the one that finishes it.
+    // SBI is the exception: both of its counters — the ₹1L fee waiver and the ₹1L/₹2L
+    // online-spend vouchers — define eligible spend in a way that excludes govt/tax, so a
+    // challan paid here advances neither.
+    const ms = card.id === "sbi_simplyclick" ? null : annualMilestoneBonus(card.id, input, amt);
+    const welcome = card.id === "bob_eterna" ? bobWelcomeBonus(input, amt) : null;
+    const loungeUse = card.id === "bob_eterna" ? lounge : null;
 
-    const reasons = [msUse?.note, welcome?.note, loungeUse?.note].filter(Boolean) as string[];
-
-    // Any gate this payment would close can almost always be closed by ordinary retail
-    // instead. The fee is charged on the WHOLE payment while the gate only needs its
-    // remaining gap, so a card is the right answer only when the fee on the full amount
-    // undercuts what you'd give up steering that smaller gap onto the same card.
-    // Tax is paid in instalments (Jun/Sep/Dec/Mar), each landing in a different calendar
-    // quarter, so declining the card now doesn't forfeit the idea — December's instalment
-    // falls in the next quarter and can feed that quarter's gate.
-    // An annual milestone's gap is its threshold less the spend already tracked, so the
-    // same "could ordinary spend close this?" test applies to it too.
-    const msGap = msUse ? Math.max(0, msUse.threshold - ytdForCard(card.id, input)) : undefined;
-    const gaps = [loungeUse?.left, welcome?.left, msGap].filter((g): g is number => typeof g === "number");
-    const gap = gaps.length ? Math.max(...gaps) : null;
-    const diversionInr = gap != null ? gap * (ORDINARY_SPEND_DIVERSION_SPREAD_PCT / 100) : null;
-    const cheaperViaSpend = diversionInr != null && diversionInr < feeInr;
-
-    // When ordinary spend closes the gate more cheaply, the unlock isn't really bought by
-    // this payment — you'd get it anyway for less. Crediting it here would rank the card
-    // first while the copy told you not to use it, so the gate is scored at zero and the
-    // route carries only its fee.
-    const gateInr = cheaperViaSpend ? 0 : (msUse?.inr ?? 0) + (welcome?.inr ?? 0) + (loungeUse?.inr ?? 0);
+    const gateInr = (ms?.inr ?? 0) + (welcome?.inr ?? 0) + (loungeUse?.inr ?? 0);
     const netInr = gateInr - feeInr;
     const worthIt = netInr > 0;
+    const reasons = [ms?.note, welcome?.note, loungeUse?.note].filter(Boolean) as string[];
+    const completes = ms?.kind === "completing" || !!welcome?.completes || !!loungeUse?.completes;
+
+    // Where a gate needs far less than this payment, ordinary retail could close it too.
+    // Worth flagging, but NOT a reason to discount the card: putting the tax here also
+    // banks the whole amount toward annual totals and leaves everyday spend free to sit
+    // on whichever card actually pays rewards.
+    const msGap = ms ? Math.max(0, ms.threshold - ytdForCard(card.id, input)) : undefined;
+    const gaps = [loungeUse?.left, welcome?.left, msGap].filter((g): g is number => typeof g === "number");
+    const gap = gaps.length ? Math.min(...gaps) : null;
+    const gapMuchSmaller = gap != null && gap < amt * 0.5 && completes;
 
     add({
       cardId: card.id,
       label: worthIt
-        ? `${card.short} via Payment Gateway — ${reasons.length ? "unlocks a gate" : "net positive"} after the ${TAX_GATEWAY_CC_FEE_PCT.toFixed(2)}% fee`
-        : cheaperViaSpend
-          ? `${card.short} via Payment Gateway — ${inr(feeInr)} fee to close a ${inr(gap ?? 0)} gap (use ordinary spend instead)`
-          : `${card.short} via Payment Gateway — costs ${inr(feeInr)} in fees, earns nothing`,
+        ? `${card.short} via Payment Gateway — ${completes ? "unlocks a gate" : "builds annual spend"} after the ${TAX_GATEWAY_CC_FEE_PCT.toFixed(2)}% fee`
+        : `${card.short} via Payment Gateway — ${inr(feeInr)} fee vs only ${inr(gateInr)} advanced`,
       effectivePct: (netInr / amt) * 100,
       baseRewardInr: -feeInr,
       bonusRewardInr: gateInr,
       worstCasePct: (-feeInr / amt) * 100,
       bestCasePct: (netInr / amt) * 100,
       feasible: true,
-      feasibilityNote: worthIt
-        ? undefined
-        : cheaperViaSpend
-          ? `Closing that ${inr(gap ?? 0)} gap with normal spend costs about ${inr(diversionInr ?? 0)} instead`
-          : "Only worth it if it closes a spend gate",
-      pros: worthIt
-        ? [...reasons, `Gate value ${inr(gateInr)} − ${inr(feeInr)} portal fee = ${inr(netInr)} net`]
-        : ["Counts toward this card's spend-based gates (tax earns no reward points)"],
+      feasibilityNote: worthIt ? undefined : "Fee exceeds what this spend advances on this card",
+      pros: [
+        ...reasons,
+        ...(worthIt ? [`Advances ${inr(gateInr)} − ${inr(feeInr)} fee = ${inr(netInr)} net`] : []),
+        `Tax by UPI counts toward nothing; on a card the full ${inr(amt)} builds annual spend`,
+      ],
       cons: [
         `Portal charges ${TAX_GATEWAY_CC_FEE_PCT.toFixed(2)}% (0.85% + 18% GST) = ${inr(feeInr)} on top of the tax`,
-        "Tax/govt MCC earns zero reward points on this card",
-        ...(cheaperViaSpend
-          ? [`Fee applies to the full ${inr(amt)} but the gate only needs ${inr(gap ?? 0)} — paying it here overshoots`]
+        "Tax/govt MCC earns no reward points — the value here is milestone progress only",
+        ...(gapMuchSmaller
+          ? [`That gate needed only ${inr(gap ?? 0)}, which ordinary retail could also have closed fee-free`]
           : []),
-        ...(loungeProgress
-          ? [`${loungeProgress.note} — partial progress doesn't repay the ${inr(feeInr)} fee`]
-          : []),
-        ...(loungeUse
+        ...(loungeUse?.completes
           ? ["Confirm with BOBCARD that govt/tax spend counts toward the lounge gate — it earns no points, but spend gates usually still count it"]
           : []),
       ],
       rationale: worthIt
-        ? `${reasons.join(" ")} That unlock (${inr(gateInr)}) is worth more than the ${inr(feeInr)} convenience fee, so routing the tax here nets ${inr(netInr)}.`
-        : cheaperViaSpend
-          ? `This does close the gate, but the ${TAX_GATEWAY_CC_FEE_PCT.toFixed(2)}% is charged on all ${inr(amt)} while the gate needs only ${inr(gap ?? 0)}. Putting ${inr(gap ?? 0)} of ordinary retail on ${card.short} closes the same gate for roughly ${inr(diversionInr ?? 0)} of forgone rewards — cheaper than the ${inr(feeInr)} fee, with no cash out and no question over whether govt spend qualifies.`
-          : loungeProgress
-            ? `This would move BOB's quarter gate along but wouldn't close it, so you'd pay ${inr(feeInr)} for progress that may never pay out.`
-            : `No rewards on tax MCC and no gate within reach, so this is just a ${inr(feeInr)} fee. Pay by UPI instead.`,
+        ? `${reasons.join(" ")} Against the ${inr(feeInr)} fee that nets ${inr(netInr)}. UPI would cost nothing but advance nothing — this ${inr(amt)} is spend that otherwise never touches a card.`
+        : `Advances only ${inr(gateInr)} here against a ${inr(feeInr)} fee, so free UPI wins on this card.`,
       steps: worthIt
         ? [
-            `${portal} → create challan (CRN)`,
+            `${portal} → create challan (CRN) for the full ${inr(amt)}`,
             `Payment Gateway → Credit Card → ${card.short}`,
-            `Accept the ${inr(feeInr)} convenience fee — the unlock is worth more`,
+            `Accept the ${inr(feeInr)} convenience fee`,
             ...(loungeUse?.completes ? ["Check the lounge benefit reflects next quarter before relying on it"] : []),
           ]
-        : cheaperViaSpend
-          ? [
-              "Pay the tax by UPI (no fee)",
-              `Put ${inr(gap ?? 0)} of normal spend on ${card.short} before this quarter ends`,
-            ]
-          : ["Don't — pay by UPI at zero fee"],
+        : ["Pay by UPI instead — no fee, and this card gains too little to justify one"],
     });
   }
 
