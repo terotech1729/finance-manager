@@ -664,7 +664,7 @@ function daysLeftInMonth(iso?: string): number {
  * Marginal value (in ₹) of pushing this spend toward an unfinished milestone.
  * Returns an extra reward amount attributable to THIS transaction.
  */
-function bobWelcomeBonus(input: RecommendInput, amt: number): { inr: number; completes: boolean; note: string } | null {
+function bobWelcomeBonus(input: RecommendInput, amt: number): { inr: number; completes: boolean; left: number; note: string } | null {
   if (input.bobWelcomeUnlocked || claimed(input, "bob_welcome_50k")) return null;
   const within60 = daysSince(input.bobEternaIssueDate, input.today) <= 60;
   if (!within60) return null;
@@ -681,6 +681,7 @@ function bobWelcomeBonus(input: RecommendInput, amt: number): { inr: number; com
   return {
     inr: bonusValue,
     completes,
+    left: remaining,
     note: completes
       ? `Completes ₹50K BOB welcome → unlocks full ₹2,500 (10k RP); ~${daysLeft}d left in window`
       : `Fills ${inr(fillsGap)} of the ₹50K BOB welcome (${inr(remaining)} left, ~${daysLeft}d remaining) → +${inr(bonusValue)} pro-rata`,
@@ -2068,6 +2069,42 @@ function addTaxGovtRoutes(
           ]
         : ["Don't — pay by UPI at zero fee"],
     });
+
+    // The fee scales with the whole payment, but a gate only needs its remaining gap.
+    // Tax can be paid across several challans, so splitting pays the % on just the gap
+    // and the rest on free UPI. On a ₹18k tax closing a ₹2.9k gap that's ₹29 not ₹181.
+    const gaps = [loungeUse?.left, welcome?.left].filter((g): g is number => typeof g === "number");
+    const minToClose = gaps.length ? Math.max(...gaps) : null;
+    if (worthIt && minToClose != null && !msUse && minToClose < amt * 0.9) {
+      const splitFee = minToClose * (TAX_GATEWAY_CC_FEE_PCT / 100);
+      const splitNet = gateInr - splitFee;
+      add({
+        cardId: card.id,
+        label: `Split the challan — ${inr(minToClose)} on ${card.short}, rest by UPI (fee only ${inr(splitFee)})`,
+        effectivePct: (splitNet / amt) * 100,
+        baseRewardInr: -splitFee,
+        bonusRewardInr: gateInr,
+        worstCasePct: (-splitFee / amt) * 100,
+        bestCasePct: (splitNet / amt) * 100,
+        pros: [
+          ...reasons,
+          `Only ${inr(minToClose)} needs to touch the card, so you pay ${inr(splitFee)} instead of ${inr(feeInr)} — saves ${inr(feeInr - splitFee)}`,
+          "e-Pay Tax lets you raise multiple challans for the same year, so the split is allowed",
+        ],
+        cons: [
+          `Two payments instead of one (${inr(minToClose)} by card + ${inr(amt - minToClose)} by UPI)`,
+          ...(loungeUse
+            ? ["Confirm govt/tax spend counts toward BOBCARD's lounge gate — it earns no points, though spend gates usually still count it"]
+            : []),
+        ],
+        rationale: `Same unlock as putting the whole payment on ${card.short}, at a fraction of the fee: the gate only needs ${inr(minToClose)}, and the ${TAX_GATEWAY_CC_FEE_PCT.toFixed(2)}% charge applies only to what you route through the card. The balance goes on UPI for free.`,
+        steps: [
+          `${portal} → challan 1 for ${inr(minToClose)} → Payment Gateway → Credit Card → ${card.short}`,
+          `${portal} → challan 2 for ${inr(amt - minToClose)} → Payment Gateway → UPI (no fee)`,
+          "Both challans count for the same assessment year — keep both receipts",
+        ],
+      });
+    }
   }
 
   return options;
