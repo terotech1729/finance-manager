@@ -1,5 +1,6 @@
 import type { Transaction, Investment, Holding, Contribution } from "./types";
 import { thisMonthKey, newId, statementCycleRange, todayLocal } from "./utils";
+import { calQuarterKey } from "./cards";
 import { sbiFeeWaiverEligible } from "./spendTracking";
 
 /** Scapia Federal lounge / airport privileges — ₹20k per billing cycle (statement day 24 → 25…24). */
@@ -21,6 +22,10 @@ export type AppState = {
   mrccCycleSpend: number;
   bobYtdSpend: number;
   bobCycleSpend5x: number;
+  /** BOB spend in the CURRENT calendar quarter — decides NEXT quarter's unlimited lounge. */
+  bobQuarterSpend: number;
+  /** BOB spend in the PRECEDING calendar quarter — decides THIS quarter's lounge access. */
+  bobPriorQuarterSpend: number;
   sbiYtdSpend: number; // SimplyCLICK ONLINE voucher tracker (₹1L / ₹2L)
   sbiFeeWaiverSpend: number; // Eligible retail toward annual-fee reversal (fee-anniversary year)
   idfcYtdSpend: number;
@@ -63,6 +68,8 @@ export type AppState = {
   yearKey?: string;
   // Amex Plat Travel membership year (boundary 3 Dec) for eligible-spend reset.
   ptccYearKey?: string;
+  /** Calendar-quarter key (e.g. "2026-Q3") for the BOB lounge counter rollover. */
+  bobQuarterKey?: string;
   // Kiwi Neon membership year (boundary 1 Apr) for cycle-spend reset.
   kiwiYearKey?: string;
   // SBI online-voucher year key (from sbiOnlineYearStart MD).
@@ -112,6 +119,10 @@ export const DEFAULT_STATE: AppState = {
   mrccCycleSpend: 70895,
   bobYtdSpend: 0,
   bobCycleSpend5x: 0,
+  // Jul–Sep 2026 to date: ₹2,892 short of the ₹75k gate for Oct–Dec lounge access.
+  bobQuarterSpend: 72108,
+  // Apr–Jun 2026 cleared the ₹40k gate that applied then, so lounge is live this quarter.
+  bobPriorQuarterSpend: 40000,
   // From SBI Jul-2026 ONLINE SPENDS SUMMARY (voucher year starting ~22 May 2026).
   sbiYtdSpend: 32762,
   // Eligible retail since day after Oct-2025 fee (excl. tax/rent/fees); ~₹616 short of ₹1L waiver.
@@ -389,6 +400,21 @@ export function loadState(): AppState {
       }
     }
   }
+  // BOB Eterna lounge gate — calendar quarter. On rollover this quarter's total becomes
+  // the "prior quarter" figure that decides the new quarter's access, and the live counter
+  // restarts. Don't zero both: the prior figure is what keeps lounge showing as active.
+  {
+    const qk = calQuarterKey();
+    if (!st.bobQuarterKey) {
+      st.bobQuarterKey = qk;
+      changed = true;
+    } else if (st.bobQuarterKey !== qk) {
+      st.bobPriorQuarterSpend = st.bobQuarterSpend ?? 0;
+      st.bobQuarterSpend = 0;
+      st.bobQuarterKey = qk;
+      changed = true;
+    }
+  }
   // ANNUAL — calendar year (IDFC / HSBC Live+ only; SBI has its own anniversary keys)
   if (!st.yearKey) { st.yearKey = yk; changed = true; }
   else if (st.yearKey !== yk) {
@@ -480,6 +506,7 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
   const sok = anniversaryYearKey(sbiOnlineStart);
   const sfk = anniversaryYearKey(feeBoundaryMd);
   const scapiaCycle = statementCycleRange(SCAPIA_STATEMENT_DAY);
+  const bqk = calQuarterKey();
   const next: AppState = {
     ...st,
     ptccEligibleSpend: 0,
@@ -488,6 +515,9 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
     mrccThisCycleTxnsAt1500: 0,
     bobYtdSpend: 0,
     bobCycleSpend5x: 0,
+    // Only the live quarter is re-derivable from the log; bobPriorQuarterSpend is carried
+    // over from state because the log may not reach back into the previous quarter.
+    bobQuarterSpend: 0,
     sbiYtdSpend: 0,
     sbiFeeWaiverSpend: 0,
     idfcYtdSpend: 0,
@@ -511,6 +541,7 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
     const inSbiFee = anniversaryYearKey(feeBoundaryMd, d) === sfk;
     const day = (t.date || "").slice(0, 10);
     const inScapiaCycle = day >= scapiaCycle.start && day <= scapiaCycle.end;
+    const inBobQuarter = calQuarterKey(d) === bqk;
     const amt = t.amount;
     switch (t.cardId) {
       case "amex_plat_travel": if (inPt) next.ptccEligibleSpend += amt; break;
@@ -526,6 +557,7 @@ export function deriveCountersFromLog(st: AppState = loadState(), txns: Transact
         next.bobYtdSpend += amt;
         // 5× headroom is monthly; approximate with all BOB spends this month.
         if (inMonth) next.bobCycleSpend5x += amt;
+        if (inBobQuarter) next.bobQuarterSpend += amt;
         break;
       case "sbi_simplyclick":
         if (inSbiOnline) next.sbiYtdSpend += amt;

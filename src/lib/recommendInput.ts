@@ -54,6 +54,8 @@ export function buildRecommendInputFromState(st: AppState, req: RecommendRequest
     mrccCycleSpend: st.mrccCycleSpend,
     bobYtdSpend: st.bobYtdSpend,
     bobCycleSpend5x: st.bobCycleSpend5x,
+    bobQuarterSpend: st.bobQuarterSpend,
+    bobPriorQuarterSpend: st.bobPriorQuarterSpend,
     sbiYtdSpend: st.sbiYtdSpend,
     sbiFeeWaiverSpend: st.sbiFeeWaiverSpend,
     idfcYtdSpend: st.idfcYtdSpend,

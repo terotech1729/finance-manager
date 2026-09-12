@@ -38,6 +38,7 @@ export function applyCardSpend(
   if (cardId === "bob_eterna") {
     next.bobYtdSpend += amt;
     next.bobCycleSpend5x += amt;
+    next.bobQuarterSpend = (next.bobQuarterSpend ?? 0) + amt;
     if (next.bobYtdSpend >= 50000) next.bobWelcomeUnlocked = true;
   }
   if (cardId === "sbi_simplyclick") {
@@ -83,6 +84,7 @@ export function reverseCardSpend(
   if (cardId === "bob_eterna") {
     next.bobYtdSpend = clamp0(next.bobYtdSpend - amt);
     next.bobCycleSpend5x = clamp0(next.bobCycleSpend5x - amt);
+    next.bobQuarterSpend = clamp0((next.bobQuarterSpend ?? 0) - amt);
     next.bobWelcomeUnlocked = next.bobYtdSpend >= 50000;
   }
   if (cardId === "sbi_simplyclick") {

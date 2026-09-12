@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ANNUAL_MILESTONES, getCardById } from "@/lib/cards";
+import {
+  ANNUAL_MILESTONES,
+  getCardById,
+  bobLoungeGateFor,
+  nextQuarterStart,
+  nextQuarterLabel,
+  quarterLabel,
+} from "@/lib/cards";
 import { loadState, saveState, type AppState } from "@/lib/storage";
 import { useDataVersion } from "@/lib/useLiveData";
 import { inrExact } from "@/lib/utils";
@@ -211,6 +218,60 @@ export default function MilestonesPage() {
                     </p>
                   </div>
                 )}
+
+                {cardId === "bob_eterna" && (() => {
+                  // Lounge access runs a quarter behind: what you spend this quarter buys
+                  // access next quarter, so both figures matter and mean different things.
+                  const spent = Math.round(state.bobQuarterSpend || 0);
+                  const prior = Math.round(state.bobPriorQuarterSpend || 0);
+                  const gateNext = bobLoungeGateFor(nextQuarterStart(new Date()));
+                  const gateNow = bobLoungeGateFor(new Date());
+                  const left = Math.max(0, gateNext - spent);
+                  const activeNow = prior >= gateNow;
+                  return (
+                    <div className="rounded-lg border border-border/60 bg-bg-elevated/40 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-sm font-medium flex items-center gap-2">
+                          <Icon.Lounge /> Unlimited domestic lounge · {quarterLabel()} spend
+                        </div>
+                        <label className="flex items-center gap-1 text-xs text-fg-muted">
+                          <span>This quarter</span>
+                          <span className="text-fg-subtle">₹</span>
+                          <input
+                            className="input text-right tabular-nums py-1 px-2 text-sm font-semibold text-fg w-[7.5rem]"
+                            inputMode="numeric"
+                            value={String(spent)}
+                            onChange={(e) => {
+                              const n = Number(e.target.value.replace(/[^0-9]/g, "")) || 0;
+                              const next = { ...state, bobQuarterSpend: Math.max(0, n) };
+                              setState(next);
+                              saveState(next);
+                            }}
+                            aria-label="BOB spend this calendar quarter"
+                          />
+                        </label>
+                      </div>
+                      <CheckpointedProgress
+                        key={`bob-lounge-${spent}`}
+                        current={spent}
+                        total={gateNext}
+                        checkpoints={[]}
+                        tone={spent >= gateNext ? "success" : "info"}
+                        fillFromCurrentOnly
+                      />
+                      <p className="text-xs text-fg-muted">
+                        {left === 0
+                          ? `Gate cleared — unlimited domestic lounge is secured for ${nextQuarterLabel()}.`
+                          : `${inrExact(left)} more on BOB before this quarter ends to keep unlimited lounge in ${nextQuarterLabel()}. Tax / rent / insurance earn no points but still count toward the gate.`}
+                      </p>
+                      <p className="text-xs text-fg-subtle">
+                        {activeNow
+                          ? `Lounge is active now (${quarterLabel()}) — last quarter's ${inrExact(prior)} cleared the ${inrExact(gateNow)} gate that applied then.`
+                          : `Lounge is NOT active this quarter — last quarter's ${inrExact(prior)} fell short of ${inrExact(gateNow)}.`}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           );

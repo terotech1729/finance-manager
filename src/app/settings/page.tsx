@@ -26,6 +26,8 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "goldShopwiseUsedThisMonth", label: "Amex — ShopWise voucher spend this month (cap ₹10K)", group: "Monthly milestone counters", numeric: true },
   { key: "swiggyMoneyBalance", label: "Swiggy Money balance (from ShopWise vouchers)", group: "Monthly milestone counters", numeric: true },
   { key: "bobCycleSpend5x", label: "BOB Eterna — 5× spend this cycle (cap ~₹33K)", group: "Monthly milestone counters", numeric: true },
+  { key: "bobQuarterSpend", label: "BOB Eterna — spend this calendar quarter (₹75K gate → next quarter's lounge)", group: "Monthly milestone counters", numeric: true },
+  { key: "bobPriorQuarterSpend", label: "BOB Eterna — spend last calendar quarter (decides THIS quarter's lounge)", group: "Monthly milestone counters", numeric: true },
   { key: "amazonPayBalance", label: "Amazon Pay balance (₹, idle gift-card money)", group: "Amazon Pay & welcome windows", numeric: true },
   { key: "bobEternaIssueDate", label: "BOB Eterna issue date (YYYY-MM-DD, drives 60-day welcome)", group: "Amazon Pay & welcome windows", numeric: false },
   { key: "amazonPayIciciIssueDate", label: "Amazon Pay ICICI issue date (YYYY-MM-DD)", group: "Amazon Pay & welcome windows", numeric: false },

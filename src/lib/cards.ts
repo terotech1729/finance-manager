@@ -1,5 +1,54 @@
 import type { Card, AnnualMilestone, MonthlyMilestone } from "./types";
 
+/**
+ * BOBCARD Eterna's unlimited domestic lounge access is gated on the PRECEDING calendar
+ * quarter's spend, so the quarter you're in decides the next one (Jul–Sep 2026 spend
+ * buys Oct–Dec 2026 access). BOBCARD raised the bar from ₹40,000 to ₹75,000 with effect
+ * from 1 Oct 2026, which is why the gate is resolved per access-quarter rather than held
+ * as a single number.
+ */
+export const BOB_LOUNGE_GATE_INR = 75000;
+export const BOB_LOUNGE_GATE_PREV_INR = 40000;
+export const BOB_LOUNGE_GATE_RAISED_FROM = "2026-10-01";
+/** Worth of a quarter of unlimited domestic lounge access, used to score progress. */
+export const BOB_LOUNGE_QUARTER_VALUE_INR = 2500;
+
+/** The spend gate that governs lounge access during the quarter containing `d`. */
+export function bobLoungeGateFor(d: Date): number {
+  return d >= new Date(`${BOB_LOUNGE_GATE_RAISED_FROM}T00:00:00`)
+    ? BOB_LOUNGE_GATE_INR
+    : BOB_LOUNGE_GATE_PREV_INR;
+}
+
+/** Start of the calendar quarter containing `d`. */
+export function quarterStart(d: Date): Date {
+  return new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1);
+}
+
+/** Start of the quarter after the one containing `d`. */
+export function nextQuarterStart(d: Date): Date {
+  const q = quarterStart(d);
+  return new Date(q.getFullYear(), q.getMonth() + 3, 1);
+}
+
+/** e.g. "2026-Q3" — used to detect quarter rollover for the BOB lounge counter. */
+export function calQuarterKey(d: Date = new Date()): string {
+  return `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
+}
+
+/** Label for the quarter containing `d`, e.g. "Jul–Sep 2026". */
+export function quarterLabel(d: Date = new Date()): string {
+  const qi = Math.floor(d.getMonth() / 3);
+  const starts = ["Jan", "Apr", "Jul", "Oct"];
+  const ends = ["Mar", "Jun", "Sep", "Dec"];
+  return `${starts[qi]}–${ends[qi]} ${d.getFullYear()}`;
+}
+
+/** Label for the quarter AFTER `d` — the one this quarter's spend buys lounge access in. */
+export function nextQuarterLabel(d: Date = new Date()): string {
+  return quarterLabel(nextQuarterStart(d));
+}
+
 export const CARDS: readonly Card[] = [
   {
     id: "amex_gold",
@@ -213,7 +262,7 @@ export const MONTHLY_MILESTONES: readonly MonthlyMilestone[] = [
   { cardId: "amex_mrcc", rule: "4 transactions ≥₹1,500 in calendar month", rewardMr: 1000, rewardInr: 580, minSpend: 6000 },
   { cardId: "amex_mrcc", rule: "₹20,000 total in calendar month (enrolled)", rewardMr: 1000, rewardInr: 580, minSpend: 20000 },
   { cardId: "scapia", rule: "≥₹20,000 combined V+R per billing cycle (25→24) for lounge / airport privileges (next statement)", rewardMr: 0, rewardInr: 2500, minSpend: 20000 },
-  { cardId: "bob_eterna", rule: "≥₹75,000 prior quarter for lounge", rewardMr: 0, rewardInr: 2500, minSpend: 25000 },
+  { cardId: "bob_eterna", rule: "≥₹75,000 in the preceding calendar quarter → unlimited domestic lounge next quarter (was ₹40,000 until 1 Oct 2026)", rewardMr: 0, rewardInr: BOB_LOUNGE_QUARTER_VALUE_INR, minSpend: BOB_LOUNGE_GATE_INR },
   { cardId: "hsbc_live_plus", rule: "Shared 10% accel cap ₹1,200/mo (~₹12k dining/food/grocery/utility/shopping)", rewardMr: 0, rewardInr: 1200, minSpend: 12000 },
 ];
 

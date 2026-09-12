@@ -1,4 +1,14 @@
-import { CARDS, getCardById, isRoutableCard, ANNUAL_MILESTONES } from "./cards";
+import {
+  CARDS,
+  getCardById,
+  isRoutableCard,
+  ANNUAL_MILESTONES,
+  BOB_LOUNGE_QUARTER_VALUE_INR,
+  bobLoungeGateFor,
+  nextQuarterStart,
+  nextQuarterLabel,
+  quarterLabel,
+} from "./cards";
 import { findCashkaro } from "./cashkaro";
 import { findGiftCardDeals, findWelcomeOffer, rankingGiftCardPct, isUnknownGiftCardBrand } from "./stacking";
 import { findRedemption } from "./redemptions";
@@ -34,6 +44,15 @@ const IDFC_INTL_EARN_CUT_DATE = "2026-10-26";
 
 /** BOB Eterna's 5× accelerator stops after 5,000 RP/cycle ≈ this much spend; the rest earns 1×. */
 const BOB_5X_CAP_SPEND_INR = 33000;
+
+/**
+ * e-Pay Tax (income-tax e-Filing portal) Payment Gateway charges. Credit card is 0.85%
+ * of the tax plus 18% GST on the fee, levied over and above the tax itself. UPI (BHIM-UPI),
+ * UPI QR and RuPay debit are explicitly NIL, and direct net banking through an authorised
+ * bank carries no fee (via the gateway it's a flat ₹5–12).
+ */
+const TAX_GATEWAY_CC_FEE_PCT = 0.85 * 1.18; // ≈1.003%
+const TAX_GATEWAY_NETBANKING_FEE_INR = 12;
 
 function idfcIntlChipsPer100(input: RecommendInput): number {
   return parseToday(input) >= new Date(`${IDFC_INTL_EARN_CUT_DATE}T00:00:00`) ? 1 : 3;
@@ -200,6 +219,10 @@ export type RecommendInput = {
   mrccCycleSpend?: number;
   bobYtdSpend?: number;
   bobCycleSpend5x?: number;
+  /** BOB spend this calendar quarter — decides next quarter's unlimited domestic lounge. */
+  bobQuarterSpend?: number;
+  /** BOB spend last calendar quarter — decides whether lounge is active right now. */
+  bobPriorQuarterSpend?: number;
   sbiYtdSpend?: number;
   /** SBI SimplyCLICK fee-waiver eligible spend (anniversary year) — separate from online voucher YTD. */
   sbiFeeWaiverSpend?: number;
@@ -466,9 +489,43 @@ function livePlusZeroBase(merchant: string, category: string): boolean {
   return /hospital|healthcare|clinic|doctor|dermat|derma|medical|metro|local\s*transport|\bbus\b/.test(t);
 }
 
+/**
+ * Headline identity for a winning route. Non-card rails (UPI, cash, a gift card, Amazon
+ * Pay balance) are legitimate winners on dead categories like tax and rent, so they need
+ * their own identity — falling back to CARDS[0] silently captioned those wins as
+ * "Amex Gold", contradicting the route directly underneath.
+ */
 function pickCard(id: string): Card {
-  return getCardById(id) ?? CARDS[0];
+  const real = getCardById(id);
+  if (real) return real;
+  return NON_CARD_RAILS[id] ?? NON_CARD_RAILS.other;
 }
+
+function railCard(id: string, name: string, short: string): Card {
+  return {
+    id,
+    name,
+    short,
+    network: "—",
+    issuer: "—",
+    creditLimit: 0,
+    annualFee: 0,
+    feeWaivable: false,
+    forexPct: 0,
+    status: "active",
+    pointValue: 0,
+    baseRatePct: 0,
+    bestRatePct: 0,
+  };
+}
+
+const NON_CARD_RAILS: Record<string, Card> = {
+  upi: railCard("upi", "UPI / bank transfer", "UPI"),
+  cash: railCard("cash", "Cash or debit card", "Cash / debit"),
+  giftcard: railCard("giftcard", "Gift card / voucher route", "Gift card"),
+  amazon_pay_balance: railCard("amazon_pay_balance", "Amazon Pay balance", "Amazon Pay bal."),
+  other: railCard("other", "Other payment method", "Other"),
+};
 
 function inr(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -522,6 +579,18 @@ function buildClaimTips(input: RecommendInput, best: RouteOption, ranked: RouteO
   }
   if (has("bob_eterna") && !claimed(input, "bob_fitpass")) {
     tips.push("BOB FITPASS Pro: activate within ~60 days of issuance if still open (Benefit claims).");
+  }
+  // Surfaced regardless of which card wins this spend: the quarter gate is a deadline, so
+  // knowing the gap matters even when BOB isn't the right card for the purchase in hand.
+  {
+    const spent = input.bobQuarterSpend ?? 0;
+    const gate = bobLoungeGateFor(nextQuarterStart(parseToday(input)));
+    const left = gate - spent;
+    if (left > 0 && spent > 0) {
+      tips.push(
+        `BOB lounge gate: ${inr(left)} more on BOB Eterna before ${quarterLabel(parseToday(input))} ends keeps unlimited domestic lounge for ${nextQuarterLabel(parseToday(input))} (${inr(spent)} / ${inr(gate)} done). Tax, rent and insurance earn no points but still count toward the gate.`
+      );
+    }
   }
   if (has("amex_plat_travel")) {
     const pt = input.ptccEligibleSpend ?? 0;
@@ -595,7 +664,7 @@ function daysLeftInMonth(iso?: string): number {
  * Marginal value (in ₹) of pushing this spend toward an unfinished milestone.
  * Returns an extra reward amount attributable to THIS transaction.
  */
-function bobWelcomeBonus(input: RecommendInput, amt: number): { inr: number; note: string } | null {
+function bobWelcomeBonus(input: RecommendInput, amt: number): { inr: number; completes: boolean; note: string } | null {
   if (input.bobWelcomeUnlocked || claimed(input, "bob_welcome_50k")) return null;
   const within60 = daysSince(input.bobEternaIssueDate, input.today) <= 60;
   if (!within60) return null;
@@ -611,6 +680,7 @@ function bobWelcomeBonus(input: RecommendInput, amt: number): { inr: number; not
   const daysLeft = 60 - daysSince(input.bobEternaIssueDate, input.today);
   return {
     inr: bonusValue,
+    completes,
     note: completes
       ? `Completes ₹50K BOB welcome → unlocks full ₹2,500 (10k RP); ~${daysLeft}d left in window`
       : `Fills ${inr(fillsGap)} of the ₹50K BOB welcome (${inr(remaining)} left, ~${daysLeft}d remaining) → +${inr(bonusValue)} pro-rata`,
@@ -1882,6 +1952,158 @@ function scapiaLoungeProgressBonus(
   return { inr: bonusInr, completes, after, note };
 }
 
+/**
+ * Routes for direct tax on the income-tax e-Filing portal (advance tax, self-assessment,
+ * GST). Three things drive this and none of them are the usual reward maths:
+ *
+ *  1. UPI through the Payment Gateway is NIL-fee, so the zero-cost baseline is genuinely
+ *     free — unlike most categories, "no card" is a legitimate winner here.
+ *  2. Every card in this portfolio earns nothing on MCC 9311, so card rewards are 0.
+ *  3. A credit card costs {@link TAX_GATEWAY_CC_FEE_PCT}% — so a card is only rational
+ *     when the spend closes a spend-based gate (BOB's quarterly lounge, BOB's welcome,
+ *     an MRCC/SBI fee waiver, an IDFC voucher) worth more than that fee.
+ *
+ * Every card is offered with the fee netted against whatever gate it unlocks, so the
+ * ranking can legitimately pick one — rather than the old behaviour of returning a
+ * single hardcoded IDFC route and hiding the rest of the portfolio.
+ */
+function addTaxGovtRoutes(
+  input: RecommendInput,
+  amt: number,
+  add: (o: Partial<RouteOption> & { cardId: string; label: string; effectivePct: number }) => void,
+  options: RouteOption[]
+): RouteOption[] {
+  const feeInr = amt * (TAX_GATEWAY_CC_FEE_PCT / 100);
+  const isGst = /\bgst\b/.test(`${input.category ?? ""} ${input.merchant ?? ""}`.toLowerCase());
+  const portal = isGst ? "GST portal" : "incometax.gov.in → e-Pay Tax";
+
+  add({
+    cardId: "upi",
+    label: "UPI via Payment Gateway — zero fee (best default)",
+    effectivePct: 0,
+    baseRewardInr: 0,
+    pros: [
+      "NIL transaction charge — UPI/BHIM-UPI and RuPay debit are fee-exempt on e-Pay Tax",
+      "No card earns rewards on tax/govt MCC anyway, so there's nothing to give up",
+    ],
+    cons: ["No rewards (but no fee either — this is the zero-cost baseline)"],
+    rationale: `Tax is a dead category for rewards on every card you hold, and a credit card costs ${TAX_GATEWAY_CC_FEE_PCT.toFixed(2)}% (0.85% + 18% GST) on the portal. UPI is NIL-fee, so paying ${inr(amt)} by UPI costs you nothing. Only beat this with a card if it closes a spend gate worth more than ${inr(feeInr)}.`,
+    steps: [
+      `${portal} → create challan (CRN)`,
+      "Choose Payment Gateway → UPI (not Credit Card)",
+      "Pay from your bank account — no convenience fee",
+    ],
+  });
+
+  add({
+    cardId: "upi",
+    label: "Net banking (authorised bank) — no fee",
+    effectivePct: 0,
+    baseRewardInr: 0,
+    feasible: true,
+    pros: ["Direct net banking through an authorised bank carries no convenience fee"],
+    cons: [`Via the Payment Gateway instead, net banking is a flat ~₹${TAX_GATEWAY_NETBANKING_FEE_INR} + GST`],
+    rationale: "Equivalent to UPI on cost. Use whichever is less friction; both avoid the credit-card fee entirely.",
+    steps: [`${portal} → create challan`, "Net Banking → pick your authorised bank"],
+  });
+
+  // Cards: zero base rewards on MCC 9311, fee netted, and credited ONLY for gates this
+  // spend actually completes. Pro-rata progress is deliberately worth nothing here — the
+  // fee is real cash, so part-way movement toward a gate that may never close can't
+  // justify paying it. (This is what made the engine over-rank cards on dead categories.)
+  const lounge = bobLoungeProgressBonus(input, amt);
+  for (const card of CARDS) {
+    if (card.status !== "active") continue;
+    const ms = annualMilestoneBonus(card.id, input, amt);
+    const msUse = ms && ms.kind === "completing" ? ms : null;
+    const welcomeRaw = card.id === "bob_eterna" ? bobWelcomeBonus(input, amt) : null;
+    const welcome = welcomeRaw?.completes ? welcomeRaw : null;
+    const loungeUse = card.id === "bob_eterna" && lounge?.completes ? lounge : null;
+    const loungeProgress = card.id === "bob_eterna" && lounge && !lounge.completes ? lounge : null;
+
+    const gateInr = (msUse?.inr ?? 0) + (welcome?.inr ?? 0) + (loungeUse?.inr ?? 0);
+    const netInr = gateInr - feeInr;
+    const worthIt = netInr > 0;
+    const reasons = [msUse?.note, welcome?.note, loungeUse?.note].filter(Boolean) as string[];
+
+    add({
+      cardId: card.id,
+      label: worthIt
+        ? `${card.short} via Payment Gateway — ${reasons.length ? "unlocks a gate" : "net positive"} after the ${TAX_GATEWAY_CC_FEE_PCT.toFixed(2)}% fee`
+        : `${card.short} via Payment Gateway — costs ${inr(feeInr)} in fees, earns nothing`,
+      effectivePct: (netInr / amt) * 100,
+      baseRewardInr: -feeInr,
+      bonusRewardInr: gateInr,
+      worstCasePct: (-feeInr / amt) * 100,
+      bestCasePct: (netInr / amt) * 100,
+      feasible: true,
+      feasibilityNote: worthIt ? undefined : "Only worth it if it closes a spend gate",
+      pros: worthIt
+        ? [
+            ...reasons,
+            `Gate value ${inr(gateInr)} − ${inr(feeInr)} portal fee = ${inr(netInr)} net`,
+          ]
+        : ["Counts toward this card's spend-based gates (tax earns no reward points)"],
+      cons: [
+        `Portal charges ${TAX_GATEWAY_CC_FEE_PCT.toFixed(2)}% (0.85% + 18% GST) = ${inr(feeInr)} on top of the tax`,
+        "Tax/govt MCC earns zero reward points on this card",
+        ...(loungeProgress
+          ? [`${loungeProgress.note} — but partial progress doesn't repay the ${inr(feeInr)} fee, so put cheaper spend on BOB instead`]
+          : []),
+        ...(loungeUse
+          ? ["Confirm with BOBCARD that govt/tax spend counts toward the lounge gate — it earns no points, but spend gates usually still count it"]
+          : []),
+      ],
+      rationale: worthIt
+        ? `${reasons.join(" ")} That unlock (${inr(gateInr)}) is worth more than the ${inr(feeInr)} convenience fee, so routing the tax here nets ${inr(netInr)} — the one case where paying tax by card beats free UPI.`
+        : loungeProgress
+          ? `This would move BOB's quarter gate along (${loungeProgress.note.toLowerCase()}) but wouldn't close it, so you'd pay ${inr(feeInr)} for progress that may never pay out. Pay the tax by UPI for free and close the gate with ordinary spend that also earns points.`
+          : `No rewards on tax MCC and no gate within reach, so this is just a ${inr(feeInr)} fee. Pay by UPI instead.`,
+      steps: worthIt
+        ? [
+            `${portal} → create challan (CRN)`,
+            `Payment Gateway → Credit Card → ${card.short}`,
+            `Accept the ${inr(feeInr)} convenience fee — the unlock is worth more`,
+            ...(loungeUse?.completes ? ["Check the lounge benefit reflects next quarter before relying on it"] : []),
+          ]
+        : ["Don't — pay by UPI at zero fee"],
+    });
+  }
+
+  return options;
+}
+
+/**
+ * Soft value of putting spend on BOB Eterna toward the ₹75k calendar-quarter gate that
+ * buys unlimited domestic lounge access for the NEXT quarter. Mirrors the Scapia lounge
+ * scorer: pro-rata progress, with a floor once the spend actually completes the gate so
+ * a small closing amount isn't undervalued.
+ *
+ * Deliberately generous about category: BOB pays no reward points on govt/tax/rent/
+ * insurance MCCs, but those spends still count toward its spend-based gates — which is
+ * what makes an otherwise dead payment (like advance tax) worth routing here.
+ */
+function bobLoungeProgressBonus(
+  input: RecommendInput,
+  amt: number
+): { inr: number; completes: boolean; left: number; after: number; note: string } | null {
+  const spent = input.bobQuarterSpend ?? 0;
+  const gate = bobLoungeGateFor(nextQuarterStart(parseToday(input)));
+  if (amt < 1 || spent >= gate) return null;
+  const left = gate - spent;
+  const applied = Math.min(amt, left);
+  const after = spent + amt;
+  const completes = after >= gate;
+  const proRata = (applied / gate) * BOB_LOUNGE_QUARTER_VALUE_INR;
+  const bonusInr = completes ? Math.max(proRata, 600) : proRata;
+  if (bonusInr < 1) return null;
+  const nextQ = nextQuarterLabel(parseToday(input));
+  const note = completes
+    ? `Completes BOB's ${inr(gate)} quarter gate (${inr(spent)} → ${inr(after)}) — unlocks unlimited domestic lounge for ${nextQ}`
+    : `BOB lounge progress ${inr(spent)} → ${inr(after)} / ${inr(gate)} this quarter (${inr(gate - after)} still needed for ${nextQ})`;
+  return { inr: bonusInr, completes, left, after, note };
+}
+
 /** Scapia excludes the same MCC families from coins (rent/forex/insurance/utility/wallet/education/gift/EMI/cash/govt/fuel). */
 function scapiaExcluded(cat: string, merchant: string): { excluded: boolean; reason?: string } {
   const c = `${cat} ${merchant}`.toLowerCase();
@@ -2714,8 +2936,17 @@ export function recommend(input: RecommendInput): RecommendationResult {
     return finalize(options, input, amt, isForeign, ck);
   }
 
-  // ============ INSURANCE / RENT / TAX ============
-  if (cat.includes("insurance") || cat.includes("rent") || cat.includes("tax") || cat.includes("govt")) {
+  // ============ TAX / GOVT (income-tax portal, GST, other direct tax) ============
+  // Kept separate from insurance: the payment rails are completely different. On the
+  // e-Filing portal's e-Pay Tax service, UPI and RuPay debit are NIL-fee while a credit
+  // card via Payment Gateway costs 0.85% + 18% GST. Every card here earns 0 on MCC 9311,
+  // so a card only makes sense when it closes a spend-based gate worth more than the fee.
+  if (cat.includes("tax") || cat.includes("govt")) {
+    return finalize(addTaxGovtRoutes(input, amt, add, options), input, amt, isForeign, ck);
+  }
+
+  // ============ INSURANCE / RENT ============
+  if (cat.includes("insurance") || cat.includes("rent")) {
     if (cat.includes("rent")) {
       add({
         cardId: "upi",
@@ -2743,8 +2974,8 @@ export function recommend(input: RecommendInput): RecommendationResult {
       add({
         cardId: "idfc_indigo", label: "Pay direct on insurer / PolicyBazaar (or NEFT) — IDFC ~0.33%", effectivePct: 0.33,
         pros: ["Paying the insurer/PolicyBazaar directly avoids the platform convenience fee"],
-        cons: ["Insurance/tax earn little on any card"],
-        rationale: "These MCCs earn almost nothing — pay the insurer directly or NEFT/UPI.",
+        cons: ["Insurance earns little on any card"],
+        rationale: "Insurance MCCs earn almost nothing — pay the insurer directly or NEFT/UPI.",
         steps: ["Pay on the insurer's site / PolicyBazaar directly", "Use IDFC (~0.33%) or NEFT/UPI"],
       });
     }
