@@ -42,7 +42,7 @@ export function PlaceTypeahead({ mode, label, placeholder, value, onChange, excl
 
   return (
     <div className="relative" ref={wrapRef}>
-      <label className="label mb-1 block">{label}</label>
+      {label && <label className="label mb-1 block">{label}</label>}
       <input
         className="input"
         role="combobox"

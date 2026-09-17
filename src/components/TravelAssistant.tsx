@@ -18,7 +18,7 @@ import { Icon } from "./Icons";
 import { Callout } from "./Callout";
 import { PlaceTypeahead } from "./PlaceTypeahead";
 import { JourneyReach } from "./JourneyReach";
-import { TripPlanner } from "./TripPlanner";
+import { TripBuilder } from "./TripBuilder";
 
 type TravelTabId = "book" | "reach" | "plan";
 
@@ -36,8 +36,9 @@ const TRAVEL_TABS: { id: TravelTabId; label: string; blurb: string }[] = [
   },
   {
     id: "plan",
-    label: "Plan my days",
-    blurb: "A day-by-day itinerary for the destination itself — what to see, in what order, on which day.",
+    label: "Build itinerary",
+    blurb:
+      "Your own day-by-day plan: enter the flights, stays and cabs you found, with costs, booking refs, links and photos.",
   },
 ];
 
@@ -250,7 +251,7 @@ export function TravelAssistant({ onLogged }: Props) {
       </div>
 
       {planner === "reach" ? <JourneyReach /> : null}
-      {planner === "plan" ? <TripPlanner /> : null}
+      {planner === "plan" ? <TripBuilder /> : null}
 
       {planner === "book" ? (
       <>

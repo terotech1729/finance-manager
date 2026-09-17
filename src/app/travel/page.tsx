@@ -12,7 +12,7 @@ export default function TravelPage() {
         <p className="page-sub">
           <span className="text-fg">Book tickets</span> for a single hop with instant discounts and card stacks,{" "}
           <span className="text-fg">Get me there</span> for multi-leg routes to a deadline, and{" "}
-          <span className="text-fg">Plan my days</span> for a day-by-day itinerary once you arrive.
+          <span className="text-fg">Build itinerary</span> to lay out the trip day by day with real costs.
         </p>
       </div>
       <TravelAssistant onLogged={() => setRefreshKey((k) => k + 1)} />

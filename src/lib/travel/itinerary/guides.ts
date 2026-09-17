@@ -24,8 +24,6 @@ export type AttractionKind =
 
 export type TimeSlot = "sunrise" | "morning" | "midday" | "afternoon" | "sunset" | "evening";
 
-export const SLOT_ORDER: TimeSlot[] = ["sunrise", "morning", "midday", "afternoon", "sunset", "evening"];
-
 export type Attraction = {
   name: string;
   kind: AttractionKind;

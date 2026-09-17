@@ -1,5 +1,6 @@
 import type { Transaction, Investment, Holding, Contribution } from "./types";
 import type { Note } from "./notes";
+import type { Trip } from "./travel/itinerary/trips";
 import { thisMonthKey, newId, statementCycleRange, todayLocal } from "./utils";
 import { calQuarterKey } from "./cards";
 import { sbiFeeWaiverEligible } from "./spendTracking";
@@ -14,6 +15,7 @@ const KEYS = {
   INVESTMENTS: "ccm.investments.v1",
   HOLDINGS: "ccm.holdings.v1",
   NOTES: "ccm.notes.v1",
+  TRIPS: "ccm.trips.v1",
   /** Account the cached data belongs to — guards against one user seeing another's numbers. */
   OWNER: "ccm.owner.v1",
 } as const;
@@ -722,6 +724,42 @@ export function deleteNote(id: string): Note[] {
   return all;
 }
 
+// ---------------- Trip itineraries ----------------
+
+export function loadTrips(): Trip[] {
+  if (!isClient()) return [];
+  const raw = localStorage.getItem(KEYS.TRIPS);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveTrips(arr: Trip[]): void {
+  if (!isClient()) return;
+  localStorage.setItem(KEYS.TRIPS, JSON.stringify(arr));
+  fireChange();
+}
+
+export function upsertTrip(trip: Trip): Trip[] {
+  const all = loadTrips();
+  const idx = all.findIndex((t) => t.id === trip.id);
+  const stamped = { ...trip, updatedAt: new Date().toISOString() };
+  if (idx === -1) all.unshift(stamped);
+  else all[idx] = stamped;
+  saveTrips(all);
+  return all;
+}
+
+export function deleteTrip(id: string): Trip[] {
+  const all = loadTrips().filter((t) => t.id !== id);
+  saveTrips(all);
+  return all;
+}
+
 // ---------------- Holdings (positions) ----------------
 // Each holding is one asset; SIPs / top-ups accumulate as contributions so the
 // same smallcase/fund/stock remains a single line that grows over time.
@@ -825,6 +863,7 @@ export function exportAll(): string {
     investments: loadInvestments(),
     holdings: loadHoldings(),
     notes: loadNotes(),
+    trips: loadTrips(),
   }, null, 2);
 }
 
@@ -837,6 +876,7 @@ export function importAll(json: string, silent = false): boolean {
       if (Array.isArray(parsed.transactions)) saveTransactions(parsed.transactions);
       if (Array.isArray(parsed.investments)) saveInvestments(parsed.investments);
       if (Array.isArray(parsed.notes)) saveNotes(parsed.notes);
+      if (Array.isArray(parsed.trips)) saveTrips(parsed.trips);
       if (Array.isArray(parsed.holdings)) {
         saveHoldings(parsed.holdings);
       } else if (Array.isArray(parsed.investments) && parsed.investments.length > 0) {
@@ -861,6 +901,7 @@ export function clearAll(): void {
   localStorage.removeItem(KEYS.INVESTMENTS);
   localStorage.removeItem(KEYS.HOLDINGS);
   localStorage.removeItem(KEYS.NOTES);
+  localStorage.removeItem(KEYS.TRIPS);
 }
 
 /** User id whose data is currently cached on this device (null = unknown / local-only). */

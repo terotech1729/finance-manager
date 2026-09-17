@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PlaceTypeahead } from "./PlaceTypeahead";
 import { Callout } from "./Callout";
 import { Icon } from "./Icons";
@@ -21,15 +21,40 @@ function hrs(min: number): string {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
+/**
+ * Time stuck in a car or bus. Two routes can take the same total hours while one of them
+ * is a seven-hour cab from Delhi and the other a short hop plus a transfer, so this is
+ * worth filtering on separately.
+ */
+function roadMinutes(it: JourneyItinerary): number {
+  return it.legs
+    .filter((l) => l.mode === "cab" || l.mode === "bus")
+    .reduce((s, l) => s + l.durationMin, 0);
+}
+
+type SortKey = "price" | "duration" | "sleep" | "road" | "verified" | "recommended";
+
+const SORTS: { id: SortKey; label: string }[] = [
+  { id: "price", label: "Cheapest" },
+  { id: "duration", label: "Fastest" },
+  { id: "road", label: "Least road time" },
+  { id: "sleep", label: "Best sleep" },
+  { id: "verified", label: "Most verified" },
+  { id: "recommended", label: "Recommended" },
+];
+
 function ItineraryCard({
   it,
   rank,
   highlight,
+  topLabel,
 }: {
   it: JourneyItinerary;
   rank: number;
   highlight?: boolean;
+  topLabel?: string;
 }) {
+  const road = roadMinutes(it);
   return (
     <div
       className={`rounded-xl border p-4 space-y-3 ${
@@ -40,7 +65,7 @@ function ItineraryCard({
         <div>
           <div className="text-xs text-fg-muted">
             #{rank}
-            {highlight ? " · recommended" : ""} · score {it.score} · reality {it.realityPct}%
+            {highlight && topLabel ? ` · ${topLabel}` : ""} · score {it.score} · reality {it.realityPct}%
           </div>
           <div className="font-semibold text-fg mt-0.5">{it.pathLabel}</div>
           <div className="text-sm text-fg-muted">{it.label}</div>
@@ -49,6 +74,7 @@ function ItineraryCard({
           <div className="text-lg font-semibold tabular-nums">{inr(it.totalCostInr)}</div>
           <div className="text-xs text-fg-muted">
             {hrs(it.totalDurationMin)} · sleep {it.sleepScore}/100
+            {road > 0 ? ` · ${hrs(road)} on road` : ""}
           </div>
           <div className="text-[11px] text-fg-muted mt-0.5">
             transport {inr(it.transportCostInr)}
@@ -131,6 +157,11 @@ export function JourneyReach() {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<JourneyPlanResult | null>(null);
+  const [sortBy, setSortBy] = useState<SortKey>("price");
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [maxHours, setMaxHours] = useState<number | null>(null);
+  const [maxRoadHours, setMaxRoadHours] = useState<number | null>(null);
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
 
   const runPlan = async () => {
     if (!destination) {
@@ -171,7 +202,35 @@ export function JourneyReach() {
     }
   };
 
-  const list = result?.best ? [result.best, ...result.alternatives] : [];
+  const all = result?.best ? [result.best, ...result.alternatives] : [];
+
+  const list = useMemo(() => {
+    let out = all.filter((it) => {
+      if (maxPrice && it.totalCostInr > maxPrice) return false;
+      if (maxHours && it.totalDurationMin > maxHours * 60) return false;
+      if (maxRoadHours !== null && roadMinutes(it) > maxRoadHours * 60) return false;
+      if (verifiedOnly && it.realityPct < 50) return false;
+      return true;
+    });
+    out = [...out].sort((a, b) => {
+      switch (sortBy) {
+        case "price":
+          return a.totalCostInr - b.totalCostInr;
+        case "duration":
+          return a.totalDurationMin - b.totalDurationMin;
+        case "sleep":
+          return b.sleepScore - a.sleepScore || a.totalCostInr - b.totalCostInr;
+        case "road":
+          return roadMinutes(a) - roadMinutes(b) || a.totalCostInr - b.totalCostInr;
+        case "verified":
+          return b.realityPct - a.realityPct || a.totalCostInr - b.totalCostInr;
+        default:
+          return b.score - a.score;
+      }
+    });
+    return out;
+    // `all` is derived from result each render; result is the real dependency.
+  }, [result, sortBy, maxPrice, maxHours, maxRoadHours, verifiedOnly]);
 
   return (
     <div className="space-y-5">
@@ -321,14 +380,104 @@ export function JourneyReach() {
               </ul>
             </Callout>
           )}
+          {all.length > 0 && (
+            <div className="card-shell p-3 sm:p-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="label mr-1">Sort</span>
+                {SORTS.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSortBy(s.id)}
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                      sortBy === s.id
+                        ? "border-fg bg-fg text-bg font-semibold"
+                        : "border-border text-fg-muted hover:bg-bg-chrome hover:text-fg"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <div>
+                  <label className="label mb-1 block">Max all-in ₹</label>
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    placeholder="any"
+                    value={maxPrice ?? ""}
+                    onChange={(e) => setMaxPrice(Number(e.target.value.replace(/[^0-9]/g, "")) || null)}
+                  />
+                </div>
+                <div>
+                  <label className="label mb-1 block">Max total hrs</label>
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    placeholder="any"
+                    value={maxHours ?? ""}
+                    onChange={(e) => setMaxHours(Number(e.target.value.replace(/[^0-9]/g, "")) || null)}
+                  />
+                </div>
+                <div>
+                  <label className="label mb-1 block">Max road hrs</label>
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    placeholder="any"
+                    value={maxRoadHours ?? ""}
+                    onChange={(e) => setMaxRoadHours(Number(e.target.value.replace(/[^0-9]/g, "")) || null)}
+                  />
+                </div>
+                <label className="flex items-end gap-2 pb-2 text-sm text-fg-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={verifiedOnly}
+                    onChange={(e) => setVerifiedOnly(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  Verified legs only
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-fg-muted">
+                <span>
+                  Showing {list.length} of {all.length} routes
+                </span>
+                {(maxPrice || maxHours || maxRoadHours || verifiedOnly) && (
+                  <button
+                    type="button"
+                    className="underline hover:text-fg"
+                    onClick={() => {
+                      setMaxPrice(null);
+                      setMaxHours(null);
+                      setMaxRoadHours(null);
+                      setVerifiedOnly(false);
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {list.length === 0 ? (
-            <Callout tone="danger" title="No viable itinerary">
-              Try a later arrive-by time, or a destination with airport gateways in our graph.
+            <Callout tone="danger" title={all.length ? "Nothing matches those filters" : "No viable itinerary"}>
+              {all.length
+                ? `All ${all.length} routes were filtered out. Loosen a limit above.`
+                : "Try a later arrive-by time, or a destination with airport gateways in our graph."}
             </Callout>
           ) : (
             <div className="space-y-3">
               {list.map((it, i) => (
-                <ItineraryCard key={it.id} it={it} rank={i + 1} highlight={i === 0} />
+                <ItineraryCard
+                  key={it.id}
+                  it={it}
+                  rank={i + 1}
+                  highlight={i === 0}
+                  topLabel={SORTS.find((s) => s.id === sortBy)?.label.toLowerCase()}
+                />
               ))}
             </div>
           )}

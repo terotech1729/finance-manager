@@ -40,6 +40,21 @@ import type {
 
 const TRAVELPAYOUTS_FALLBACK_TOKEN = "e451ad62a0e8468732b6e1ada1e58223";
 
+/** Hubs worth trying as a connecting point on the way to a regional gateway. */
+const FLIGHT_CONNECT_HUB_IDS = [
+  "apt-del",
+  "apt-bom",
+  "apt-blr",
+  "apt-maa",
+  "apt-ccu",
+  "apt-hyd",
+  "apt-amd",
+] as const;
+
+/** Domestic minimum connection time, and the longest layover worth calling a connection. */
+const MIN_CONNECT_MIN = 90;
+const MAX_LAYOVER_MIN = 600;
+
 /** Airports busy enough that the fare cache reliably has something for them. */
 const MAJOR_HUB_CODES = new Set([
   "DEL",
@@ -841,6 +856,103 @@ export async function planJourney(
             `Via Mumbai · ${feeder.carrier || feeder.mode} + ${offer.airline} ${offer.flightNumber} BOM→${destApt.code}`,
             ["via-hub", "BOM", feeder.mode, destApt.code!, isEst ? "estimated-flight" : "live-flight"],
             [feeder, flt, lm],
+            arriveBy,
+            input.arriveBy,
+            prefs,
+            adults
+          );
+          if (it) itineraries.push(it);
+        }
+      }
+    }
+  }
+
+  // —— Two flights via a connecting hub: origin → hub → regional gateway ——
+  // Regional airports (Pantnagar, Bagdogra, Gaggal) are rarely sold as a through fare
+  // from a non-metro origin, and the fare cache almost never holds that pair. Without
+  // this branch the planner lands at the nearest metro and drives — which is how
+  // Pune→Nainital came back as "fly to Delhi, then seven hours by cab" when
+  // Delhi→Pantnagar is a 50-minute hop.
+  if (originApt?.code) {
+    const hubs = FLIGHT_CONNECT_HUB_IDS.map((id) => placeById(id))
+      .filter((h): h is TravelPlace => Boolean(h && h.code && h.code !== originApt.code))
+      // Least total detour: origin → hub → destination.
+      .map((h) => ({ h, km: haversineKm(originApt, h) + haversineKm(h, destination) }))
+      .sort((a, b) => a.km - b.km)
+      .slice(0, 2)
+      .map((x) => x.h);
+
+    for (const destApt of destAirports.slice(0, 2)) {
+      for (const hubApt of hubs) {
+        if (hubApt.code === destApt.code) continue;
+        const second = withEstimatedFallback(
+          await offers(hubApt.code!, destApt.code!),
+          hubApt,
+          destApt,
+          estimateTemplates(hubApt, destApt)
+        );
+        if (!second.length) continue;
+        const first = withEstimatedFallback(
+          await offers(originApt.code!, hubApt.code!),
+          originApt,
+          hubApt,
+          estimateTemplates(originApt, hubApt)
+        );
+        if (!first.length) continue;
+
+        for (const onward of second.slice(0, 6)) {
+          if (onward.transfers > 1) continue;
+          const onwardDep = flightDepartLocal(onward);
+          const connects = first.filter((f) => {
+            if (f.transfers > 1) return false;
+            const layoverMin = (onwardDep.getTime() - flightArriveLocal(f).getTime()) / 60_000;
+            return layoverMin >= MIN_CONNECT_MIN && layoverMin <= MAX_LAYOVER_MIN;
+          });
+          if (!connects.length) continue;
+          // Cheapest inbound that still makes the connection.
+          const inbound = connects.reduce((m, x) => (x.fareInr < m.fareInr ? x : m), connects[0]);
+
+          const legA = flightLegFromOffer(inbound, originApt, hubApt, adults, prefs);
+          const legB = flightLegFromOffer(onward, hubApt, destApt, adults, prefs);
+          for (const [leg, offer, from, to] of [
+            [legA, inbound, originApt, hubApt],
+            [legB, onward, hubApt, destApt],
+          ] as const) {
+            if (String(offer.flightNumber).startsWith("est-")) {
+              leg.scheduleSource = "estimated";
+              leg.costSource = "estimated";
+              leg.note = `Estimated typical ${from.code}→${to.code} — confirm live inventory`;
+            }
+          }
+          const layoverMin = Math.round(
+            (onwardDep.getTime() - flightArriveLocal(inbound).getTime()) / 60_000
+          );
+          legB.note = `${legB.note ? `${legB.note} · ` : ""}${Math.floor(layoverMin / 60)}h${String(
+            layoverMin % 60
+          ).padStart(2, "0")} connection at ${hubApt.code}`;
+
+          const lm = fillLastMile({
+            fromPlaceId: destApt.id,
+            dest: destination,
+            after: flightArriveLocal(onward),
+            adults,
+            prefs,
+          });
+          if (!lm) continue;
+
+          const anyEst =
+            String(inbound.flightNumber).startsWith("est-") || String(onward.flightNumber).startsWith("est-");
+          const it = buildItineraryFromLegs(
+            `j-${idx++}`,
+            `Via ${hubApt.city} · ${originApt.code}→${hubApt.code}→${destApt.code}`,
+            [
+              "via-hub",
+              "two-flight",
+              hubApt.code!,
+              destApt.code!,
+              anyEst ? "estimated-flight" : "live-flight",
+            ],
+            [legA, legB, lm],
             arriveBy,
             input.arriveBy,
             prefs,
