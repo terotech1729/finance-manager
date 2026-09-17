@@ -14,6 +14,20 @@ export const Icon = {
       <rect x="3" y="16" width="7" height="5" rx="1" />
     </svg>
   ),
+  Pin: ({ size = 18, className }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <path d="M9 2h6l-1 5 3.5 3.5V13H6.5v-2.5L10 7Z" />
+    </svg>
+  ),
+  Note: ({ size = 18, className }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H15l5 5v12.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5Z" />
+      <path d="M14.5 3v5.5H20" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+      <line x1="8" y1="16" x2="13" y2="16" />
+    </svg>
+  ),
   Card: ({ size = 18, className }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <rect x="2" y="5" width="20" height="14" rx="2" />

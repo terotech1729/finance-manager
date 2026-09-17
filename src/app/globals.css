@@ -75,6 +75,56 @@ img, svg, video, canvas {
   .scroll-x { @apply -mx-3 sm:mx-0 px-3 sm:px-0 overflow-x-auto overscroll-x-contain; }
 }
 
+/* ——— Notes rich text ———
+   Preflight strips heading and list styling, so the editor surface and the read-only
+   render both need it back explicitly. Both share .note-rich so what you type is what
+   you see on the card. */
+.note-editor:empty::before {
+  content: attr(data-placeholder);
+  @apply text-fg-muted;
+  pointer-events: none;
+}
+.note-editor,
+.note-rich {
+  @apply leading-relaxed;
+}
+.note-editor h1,
+.note-rich h1 { @apply text-xl font-bold text-fg mt-4 mb-2 first:mt-0; }
+.note-editor h2,
+.note-rich h2 { @apply text-base font-semibold text-fg mt-3 mb-1.5 first:mt-0; }
+.note-editor h3,
+.note-rich h3 { @apply text-sm font-semibold text-fg mt-3 mb-1 first:mt-0; }
+.note-editor p,
+.note-rich p { @apply my-1.5; }
+.note-editor ul,
+.note-rich ul { @apply list-disc pl-5 my-1.5 space-y-0.5; }
+.note-editor ol,
+.note-rich ol { @apply list-decimal pl-5 my-1.5 space-y-0.5; }
+.note-editor li,
+.note-rich li { @apply pl-0.5; }
+.note-editor blockquote,
+.note-rich blockquote { @apply border-l-2 border-border-strong pl-3 my-2 text-fg-muted italic; }
+.note-editor pre,
+.note-rich pre { @apply bg-bg-chrome border border-border rounded-md px-3 py-2 my-2 text-xs font-mono whitespace-pre-wrap; }
+.note-editor code,
+.note-rich code { @apply bg-bg-chrome rounded px-1 py-0.5 text-xs font-mono; }
+.note-editor a,
+.note-rich a { @apply text-accent underline underline-offset-2; }
+.note-editor hr,
+.note-rich hr { @apply border-border my-3; }
+/* Card previews clamp to a few lines, so collapse the vertical rhythm there. */
+.note-rich-compact h1,
+.note-rich-compact h2,
+.note-rich-compact h3,
+.note-rich-compact p,
+.note-rich-compact ul,
+.note-rich-compact ol,
+.note-rich-compact blockquote,
+.note-rich-compact pre { @apply my-0 text-sm font-normal; }
+.note-rich-compact h1,
+.note-rich-compact h2,
+.note-rich-compact h3 { @apply font-semibold; }
+
 /* Toast slide/fade-in */
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }

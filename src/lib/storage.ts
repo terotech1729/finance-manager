@@ -1,4 +1,5 @@
 import type { Transaction, Investment, Holding, Contribution } from "./types";
+import type { Note } from "./notes";
 import { thisMonthKey, newId, statementCycleRange, todayLocal } from "./utils";
 import { calQuarterKey } from "./cards";
 import { sbiFeeWaiverEligible } from "./spendTracking";
@@ -12,6 +13,7 @@ const KEYS = {
   STATE: "ccm.state.v1",
   INVESTMENTS: "ccm.investments.v1",
   HOLDINGS: "ccm.holdings.v1",
+  NOTES: "ccm.notes.v1",
   /** Account the cached data belongs to — guards against one user seeing another's numbers. */
   OWNER: "ccm.owner.v1",
 } as const;
@@ -681,6 +683,45 @@ export function deleteInvestment(id: string): Investment[] {
   return all;
 }
 
+// ---------------- Notes ----------------
+// Deliberately outside AppState: notes have no cycle or rollover behaviour, so they
+// shouldn't pass through recomputeCounters or the monthly reset.
+
+export function loadNotes(): Note[] {
+  if (!isClient()) return [];
+  const raw = localStorage.getItem(KEYS.NOTES);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveNotes(arr: Note[]): void {
+  if (!isClient()) return;
+  localStorage.setItem(KEYS.NOTES, JSON.stringify(arr));
+  fireChange();
+}
+
+/** Insert or update by id, always refreshing updatedAt. */
+export function upsertNote(note: Note): Note[] {
+  const all = loadNotes();
+  const idx = all.findIndex((n) => n.id === note.id);
+  const stamped = { ...note, updatedAt: new Date().toISOString() };
+  if (idx === -1) all.unshift(stamped);
+  else all[idx] = stamped;
+  saveNotes(all);
+  return all;
+}
+
+export function deleteNote(id: string): Note[] {
+  const all = loadNotes().filter((n) => n.id !== id);
+  saveNotes(all);
+  return all;
+}
+
 // ---------------- Holdings (positions) ----------------
 // Each holding is one asset; SIPs / top-ups accumulate as contributions so the
 // same smallcase/fund/stock remains a single line that grows over time.
@@ -783,6 +824,7 @@ export function exportAll(): string {
     transactions: loadTransactions(),
     investments: loadInvestments(),
     holdings: loadHoldings(),
+    notes: loadNotes(),
   }, null, 2);
 }
 
@@ -794,6 +836,7 @@ export function importAll(json: string, silent = false): boolean {
       if (parsed.state) saveState({ ...DEFAULT_STATE, ...parsed.state });
       if (Array.isArray(parsed.transactions)) saveTransactions(parsed.transactions);
       if (Array.isArray(parsed.investments)) saveInvestments(parsed.investments);
+      if (Array.isArray(parsed.notes)) saveNotes(parsed.notes);
       if (Array.isArray(parsed.holdings)) {
         saveHoldings(parsed.holdings);
       } else if (Array.isArray(parsed.investments) && parsed.investments.length > 0) {
@@ -817,6 +860,7 @@ export function clearAll(): void {
   localStorage.removeItem(KEYS.TXNS);
   localStorage.removeItem(KEYS.INVESTMENTS);
   localStorage.removeItem(KEYS.HOLDINGS);
+  localStorage.removeItem(KEYS.NOTES);
 }
 
 /** User id whose data is currently cached on this device (null = unknown / local-only). */

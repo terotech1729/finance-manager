@@ -14,6 +14,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/", label: "Home", icon: Icon.Dashboard },
       { href: "/recommend", label: "Recommend", icon: Icon.Zap },
       { href: "/travel", label: "Travel", icon: Icon.Plane },
+      { href: "/notes", label: "Notes", icon: Icon.Note },
     ],
   },
   {
