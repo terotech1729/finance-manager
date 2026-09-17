@@ -18,6 +18,28 @@ import { Icon } from "./Icons";
 import { Callout } from "./Callout";
 import { PlaceTypeahead } from "./PlaceTypeahead";
 import { JourneyReach } from "./JourneyReach";
+import { TripPlanner } from "./TripPlanner";
+
+type TravelTabId = "book" | "reach" | "plan";
+
+const TRAVEL_TABS: { id: TravelTabId; label: string; blurb: string }[] = [
+  {
+    id: "book",
+    label: "Book tickets",
+    blurb: "One flight, train or bus — ranked by fare after instant discounts and the best card to pay with.",
+  },
+  {
+    id: "reach",
+    label: "Get me there",
+    blurb:
+      "Multi-leg routes to somewhere with no direct connection, worked backwards from when you need to arrive.",
+  },
+  {
+    id: "plan",
+    label: "Plan my days",
+    blurb: "A day-by-day itinerary for the destination itself — what to see, in what order, on which day.",
+  },
+];
 
 function routeName(cardId: string): string {
   const c = getCardById(cardId);
@@ -37,7 +59,7 @@ const MODES: { id: TravelMode; label: string; hint: string }[] = [
 type Props = { onLogged?: () => void };
 
 export function TravelAssistant({ onLogged }: Props) {
-  const [planner, setPlanner] = useState<"book" | "reach">("book");
+  const [planner, setPlanner] = useState<TravelTabId>("book");
   const [mode, setMode] = useState<TravelMode>("flight");
   const [origin, setOrigin] = useState<TravelPlace | null>(null);
   const [destination, setDestination] = useState<TravelPlace | null>(null);
@@ -207,28 +229,28 @@ export function TravelAssistant({ onLogged }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="inline-flex rounded-full border border-border bg-bg-elevated p-1">
-        <button
-          type="button"
-          className={`px-4 py-2 rounded-full text-sm transition-colors ${
-            planner === "book" ? "bg-fg text-bg font-semibold" : "text-fg-muted hover:text-fg"
-          }`}
-          onClick={() => setPlanner("book")}
-        >
-          Book trip
-        </button>
-        <button
-          type="button"
-          className={`px-4 py-2 rounded-full text-sm transition-colors ${
-            planner === "reach" ? "bg-fg text-bg font-semibold" : "text-fg-muted hover:text-fg"
-          }`}
-          onClick={() => setPlanner("reach")}
-        >
-          Reach by
-        </button>
+      <div>
+        <div className="inline-flex flex-wrap rounded-full border border-border bg-bg-elevated p-1">
+          {TRAVEL_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`px-4 py-2 rounded-full text-sm transition-colors ${
+                planner === tab.id ? "bg-fg text-bg font-semibold" : "text-fg-muted hover:text-fg"
+              }`}
+              onClick={() => setPlanner(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-fg-muted mt-2">
+          {TRAVEL_TABS.find((t) => t.id === planner)?.blurb}
+        </p>
       </div>
 
       {planner === "reach" ? <JourneyReach /> : null}
+      {planner === "plan" ? <TripPlanner /> : null}
 
       {planner === "book" ? (
       <>

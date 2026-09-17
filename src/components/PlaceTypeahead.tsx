@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { placeLabel, placeSubLabel, searchPlaces, type TravelPlace } from "@/lib/travel/places";
-import type { TravelMode } from "@/lib/travel/types";
+import { placeLabel, placeSubLabel, searchPlaces, type SearchMode, type TravelPlace } from "@/lib/travel/places";
 
 type Props = {
-  mode: TravelMode;
+  /** "any" searches towns, airports and railheads together — right for journey planning. */
+  mode: SearchMode;
   label: string;
   placeholder: string;
   value: TravelPlace | null;

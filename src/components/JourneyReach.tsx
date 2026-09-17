@@ -199,7 +199,7 @@ export function JourneyReach() {
           <div className="rounded-xl bg-white/[0.04] border border-white/10 p-3 sm:p-4 space-y-3">
             <div className="grid lg:grid-cols-2 gap-3">
               <PlaceTypeahead
-                mode="bus"
+                mode="any"
                 label="From (home base)"
                 placeholder="Pune"
                 value={origin}
@@ -207,9 +207,9 @@ export function JourneyReach() {
                 excludeId={destination?.id}
               />
               <PlaceTypeahead
-                mode="bus"
+                mode="any"
                 label="Destination"
-                placeholder="Rishikesh, Manali…"
+                placeholder="Nainital, Rishikesh, Manali…"
                 value={destination}
                 onChange={setDestination}
                 excludeId={origin?.id}

@@ -10,9 +10,9 @@ export default function TravelPage() {
       <div>
         <h1 className="page-title">Travel</h1>
         <p className="page-sub">
-          Book a single mode with Instant Discount + card stacks, or use{" "}
-          <span className="text-fg">Reach by</span> for multi-leg route trees (via Mumbai hubs, sleep-friendly
-          timing, cost vs time).
+          <span className="text-fg">Book tickets</span> for a single hop with instant discounts and card stacks,{" "}
+          <span className="text-fg">Get me there</span> for multi-leg routes to a deadline, and{" "}
+          <span className="text-fg">Plan my days</span> for a day-by-day itinerary once you arrive.
         </p>
       </div>
       <TravelAssistant onLogged={() => setRefreshKey((k) => k + 1)} />

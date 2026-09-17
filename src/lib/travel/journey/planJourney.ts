@@ -40,6 +40,38 @@ import type {
 
 const TRAVELPAYOUTS_FALLBACK_TOKEN = "e451ad62a0e8468732b6e1ada1e58223";
 
+/** Airports busy enough that the fare cache reliably has something for them. */
+const MAJOR_HUB_CODES = new Set([
+  "DEL",
+  "BOM",
+  "BLR",
+  "MAA",
+  "HYD",
+  "CCU",
+  "AMD",
+  "PNQ",
+  "GOI",
+  "GOX",
+  "COK",
+  "JAI",
+  "TRV",
+  "LKO",
+  "MAA",
+]);
+
+/**
+ * Plausible morning/afternoon departures for a gateway the live cache doesn't cover.
+ * Duration comes from the great-circle distance rather than a per-route constant, so this
+ * works for any of the ~140 airports rather than the two that happened to be hardcoded.
+ */
+function estimateTemplates(from: TravelPlace, to: TravelPlace) {
+  const cruiseMin = Math.round(35 + (haversineKm(from, to) / 750) * 60);
+  return [
+    { depHour: 8, depMin: 45, durationMin: cruiseMin, airline: "6E", label: "est-am" },
+    { depHour: 14, depMin: 30, durationMin: cruiseMin, airline: "AI", label: "est-pm" },
+  ];
+}
+
 const DEFAULT_PREFS: JourneyPrefs = {
   sleepStartHour: 23,
   sleepEndHour: 6,
@@ -345,10 +377,13 @@ function fillLastMile(opts: {
   prefs: JourneyPrefs;
 }): JourneyLeg | null {
   const services = lastMileServices(opts.fromPlaceId, opts.dest.id);
-  const fallbackDur =
-    opts.fromPlaceId === "apt-ded" ? 70 : opts.fromPlaceId === "apt-del" ? 360 : 90;
-  const fallbackCost =
-    opts.fromPlaceId === "apt-ded" ? 400 : opts.fromPlaceId === "apt-del" ? 5500 : 1200;
+
+  // Measured road times for this exact gateway→destination pair, where we have them.
+  // Without this the fallbacks below get applied to every hill town, which is how
+  // "Dehradun → Nainital in 70 minutes" (a 300 km drive) ends up on screen.
+  const curated = gatewaysForDestination(opts.dest).lastMile.filter(
+    (l) => l.fromPlaceId === opts.fromPlaceId
+  );
 
   if (services.length) {
     // Prefer cheapest transferable option (bus/shared before private cab when short hop).
@@ -379,17 +414,41 @@ function fillLastMile(opts: {
   const from = placeById(opts.fromPlaceId);
   if (!from) return null;
   const depart = addMinutes(opts.after, 30);
+
+  if (curated.length) {
+    const pick = [...curated].sort((a, b) => a.costInr - b.costInr || a.durationMin - b.durationMin)[0];
+    return makeLeg({
+      id: `lm-gw-${opts.fromPlaceId}-${opts.dest.id}`,
+      mode: pick.mode,
+      from,
+      to: opts.dest,
+      depart,
+      arrive: addMinutes(depart, pick.durationMin),
+      costInr: pick.costInr * opts.adults,
+      costSource: "estimated",
+      scheduleSource: "estimated",
+      note: pick.note,
+      prefs: opts.prefs,
+    });
+  }
+
+  // Nothing curated for this pair: derive it. Straight-line distance understates Indian
+  // road distance badly, so apply a detour factor and a realistic average speed rather
+  // than a flat guess.
+  const roadKm = haversineKm(from, opts.dest) * 1.4;
+  const durationMin = Math.max(30, Math.round((roadKm / 38) * 60));
+  const costInr = Math.max(400, Math.round(roadKm * 24));
   return makeLeg({
-    id: `lm-${opts.fromPlaceId}`,
-    mode: opts.fromPlaceId === "apt-ded" ? "bus" : "cab",
+    id: `lm-${opts.fromPlaceId}-${opts.dest.id}`,
+    mode: "cab",
     from,
     to: opts.dest,
     depart,
-    arrive: addMinutes(depart, fallbackDur),
-    costInr: fallbackCost * opts.adults,
+    arrive: addMinutes(depart, durationMin),
+    costInr: costInr * opts.adults,
     costSource: "estimated",
     scheduleSource: "estimated",
-    note: `Transfer ${from.city} → ${opts.dest.city}`,
+    note: `Road transfer ${from.city} → ${opts.dest.city} (~${Math.round(roadKm)} km, estimated)`,
     prefs: opts.prefs,
   });
 }
@@ -538,8 +597,10 @@ function rankItineraries(items: JourneyItinerary[], prefs: JourneyPrefs): Journe
     let score =
       100 *
       (prefs.costWeight * costN + prefs.timeWeight * timeN + prefs.sleepWeight * sleepN);
-    // Prefer verified schedules
-    score *= 0.85 + 0.15 * (it.realityPct / 100);
+    // Prefer verified schedules. Estimated legs are templates, not inventory — they may
+    // not exist at all — so a fully-unverified itinerary takes a heavy haircut rather
+    // than the token one it used to, which let cheap invented fares beat real flights.
+    score *= 0.6 + 0.4 * (it.realityPct / 100);
     if (it.tags.includes("overnight") && prefs.avoidOvernightSurface && !it.tags.includes("sleep-on-transit")) {
       score *= 0.75;
     }
@@ -556,9 +617,12 @@ function rankItineraries(items: JourneyItinerary[], prefs: JourneyPrefs): Journe
 }
 
 /** Keep overall rank, but force the best option per destination gateway into the top slate. */
-function ensureGatewayDiversity(ranked: JourneyItinerary[], limit: number): JourneyItinerary[] {
+function ensureGatewayDiversity(
+  ranked: JourneyItinerary[],
+  limit: number,
+  gateways: string[]
+): JourneyItinerary[] {
   if (ranked.length <= 1) return ranked;
-  const gateways = ["DED", "DEL", "IXC", "GOI"];
   const out: JourneyItinerary[] = [];
   const used = new Set<string>();
 
@@ -625,9 +689,11 @@ export async function planJourney(
     .map((id) => placeById(id))
     .filter((p): p is TravelPlace => Boolean(p && p.code));
 
-  // Search live flights: arriveBy day + prior days (wider for thin gateways like DED)
+  // Search live flights: arriveBy day + prior days (wider for thin gateways like DED).
+  // "Thin" is anything that isn't a metro hub — most hill and island destinations are
+  // served only by low-frequency airports the fare cache rarely holds.
   const windowEnd = dateISO(arriveBy);
-  const thinDest = destAirports.some((a) => a.code === "DED" || a.code === "IXC");
+  const thinDest = destAirports.every((a) => !MAJOR_HUB_CODES.has(a.code!));
   const windowStart = dateISO(addDays(arriveBy, thinDest ? -4 : -3));
 
   const itineraries: JourneyItinerary[] = [];
@@ -664,7 +730,7 @@ export async function planJourney(
     return diversifyFlightPicks([...live, ...extras], 14);
   }
 
-  /** Provisional timed legs when live cache is empty for thin ODs (still ranked lower via realityPct). */
+  /** Provisional timed legs when the live cache is empty (ranked well below verified ones). */
   function estimatedOffers(
     from: TravelPlace,
     to: TravelPlace,
@@ -701,12 +767,9 @@ export async function planJourney(
   if (originApt?.code) {
     for (const destApt of destAirports) {
       let list = await offers(originApt.code!, destApt.code!);
-      if (destApt.code === "DED" || destApt.code === "IXC") {
-        list = withEstimatedFallback(list, originApt, destApt, [
-          { depHour: 8, depMin: 45, durationMin: 155, airline: "6E", label: "est-am" },
-          { depHour: 14, depMin: 30, durationMin: 160, airline: "AI", label: "est-pm" },
-        ]);
-      }
+      // Only fires when the cache came back empty, so busy routes are unaffected — but a
+      // clearly-labelled estimate beats "no route" for a gateway nobody has searched.
+      list = withEstimatedFallback(list, originApt, destApt, estimateTemplates(originApt, destApt));
       for (const offer of list) {
         if (offer.transfers > 1) continue;
         const isEst = String(offer.flightNumber).startsWith("est-");
@@ -744,12 +807,7 @@ export async function planJourney(
   if (hub?.code && (cityId === "city-pnq" || origin.city === "Pune")) {
     for (const destApt of destAirports) {
       let list = await offers(hub.code!, destApt.code!);
-      if (destApt.code === "DED") {
-        list = withEstimatedFallback(list, hub, destApt, [
-          { depHour: 8, depMin: 40, durationMin: 140, airline: "6E", label: "est-am" },
-          { depHour: 15, depMin: 10, durationMin: 145, airline: "6E", label: "est-pm" },
-        ]);
-      }
+      list = withEstimatedFallback(list, hub, destApt, estimateTemplates(hub, destApt));
       for (const offer of list) {
         if (offer.transfers > 1) continue;
         const isEst = String(offer.flightNumber).startsWith("est-");
@@ -984,7 +1042,13 @@ export async function planJourney(
   const nonRail = unique.filter((i) => !i.tags.includes("rail"));
   const railKept = rankItineraries(rail, prefs).slice(0, 3);
   const merged = [...nonRail, ...railKept];
-  const ranked = ensureGatewayDiversity(rankItineraries(merged, prefs), 13);
+  // Surface the best option via each gateway that actually serves this destination,
+  // rather than a fixed list that only ever knew about Dehradun, Delhi and Goa.
+  const ranked = ensureGatewayDiversity(
+    rankItineraries(merged, prefs),
+    13,
+    destAirports.map((a) => a.code!).filter(Boolean)
+  );
   const best = ranked[0] ?? null;
   const alternatives = ranked.slice(1, 12);
 
