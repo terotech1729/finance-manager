@@ -112,6 +112,158 @@ img, svg, video, canvas {
 .note-rich a { @apply text-accent underline underline-offset-2; }
 .note-editor hr,
 .note-rich hr { @apply border-border my-3; }
+/* ——— Trip itinerary PDF export ———
+   A print-only document. Hidden on screen entirely; when `body.printing` is set we hide
+   every other direct child of body so only this sheet reaches the page. It's portalled to
+   body precisely so that rule can be this simple — a nested element would be clipped to a
+   single page by its scroll ancestors. */
+.trip-print { display: none; }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+
+  body.printing > *:not(.trip-print) { display: none !important; }
+
+  body.printing {
+    background: #fff !important;
+    /* Print ignores viewport height caps that make sense on screen. */
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.printing .trip-print {
+    display: block !important;
+    color: #000;
+    background: #fff;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.45;
+  }
+
+  .trip-print * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  .tp-head { border-bottom: 1.5pt solid #111; padding-bottom: 6pt; margin-bottom: 10pt; }
+  .tp-head h1 { font-size: 20pt; font-weight: 700; margin: 0 0 2pt; letter-spacing: -0.3pt; }
+  .tp-sub { margin: 0; font-size: 9pt; color: #444; }
+
+  .tp-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4pt 14pt;
+    padding: 6pt 8pt;
+    margin-bottom: 10pt;
+    border: 0.5pt solid #bbb;
+    background: #f6f6f6;
+  }
+  .tp-stat { display: flex; flex-direction: column; }
+  .tp-stat-label { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.5pt; color: #666; }
+  .tp-stat-value { font-size: 10.5pt; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .tp-notes { margin: 0 0 10pt; font-size: 9pt; color: #333; font-style: italic; }
+
+  /* Keep a day on one page when it fits; allow a split only if it genuinely can't. */
+  .tp-day { margin-bottom: 11pt; break-inside: avoid; page-break-inside: avoid; }
+  .tp-day h2 {
+    font-size: 11pt;
+    font-weight: 700;
+    margin: 0 0 4pt;
+    padding-bottom: 2pt;
+    border-bottom: 0.5pt solid #ccc;
+  }
+  .tp-daynum {
+    display: inline-block;
+    background: #111;
+    color: #fff;
+    padding: 1pt 4pt;
+    margin-right: 5pt;
+    font-size: 8pt;
+    border-radius: 2pt;
+  }
+  .tp-daylabel { font-weight: 400; color: #555; }
+  .tp-empty { margin: 0; font-size: 9pt; color: #777; }
+
+  .tp-table { width: 100%; border-collapse: collapse; }
+  .tp-table th {
+    text-align: left;
+    font-size: 6.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.4pt;
+    color: #666;
+    border-bottom: 0.5pt solid #ccc;
+    padding: 2pt 3pt;
+    font-weight: 600;
+  }
+  .tp-table td { padding: 3pt; border-bottom: 0.25pt solid #e2e2e2; vertical-align: top; }
+  .tp-table tfoot td {
+    border-bottom: none;
+    border-top: 0.75pt solid #999;
+    font-weight: 700;
+    text-align: right;
+  }
+  .tp-w-time { width: 46pt; white-space: nowrap; }
+  .tp-w-ref { width: 62pt; }
+  /* Right-aligned money needs a little breathing room or it touches the page edge. */
+  .tp-w-cost { width: 72pt; text-align: right; padding-right: 1pt !important; }
+  .tp-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tp-dim { color: #777; font-size: 8pt; }
+
+  .tp-kind {
+    display: inline-block;
+    border: 0.5pt solid #bbb;
+    border-radius: 2pt;
+    padding: 0 2.5pt;
+    margin-right: 4pt;
+    font-size: 6.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3pt;
+    color: #555;
+  }
+  .tp-title { font-weight: 600; }
+  .tp-booked {
+    margin-left: 4pt;
+    font-size: 6.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3pt;
+    color: #0a7a3d;
+    border: 0.5pt solid #0a7a3d;
+    border-radius: 2pt;
+    padding: 0 2.5pt;
+  }
+  .tp-route { font-size: 8.5pt; color: #333; margin-top: 1pt; }
+  .tp-itemnote { font-size: 8pt; color: #555; margin-top: 1pt; }
+  .tp-link { font-size: 7.5pt; color: #1a4fd6; margin-top: 1pt; word-break: break-all; }
+
+  .tp-photos { display: flex; flex-wrap: wrap; gap: 4pt; margin-top: 5pt; }
+  .tp-photos img {
+    height: 74pt;
+    width: auto;
+    max-width: 30%;
+    object-fit: cover;
+    border: 0.5pt solid #ccc;
+    border-radius: 2pt;
+  }
+
+  .tp-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10pt;
+    border-top: 1.5pt solid #111;
+    padding-top: 5pt;
+    margin-top: 4pt;
+    font-size: 11pt;
+    font-weight: 700;
+    break-inside: avoid;
+  }
+  /* Long "total · per person" strings would otherwise push past the right margin. */
+  .tp-total .tp-num { white-space: normal; text-align: right; }
+
+  .tp-foot { margin-top: 8pt; font-size: 7pt; color: #888; text-align: right; }
+}
+
 /* Card previews clamp to a few lines, so collapse the vertical rhythm there. */
 .note-rich-compact h1,
 .note-rich-compact h2,

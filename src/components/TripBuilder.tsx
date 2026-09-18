@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icons";
 import { Callout } from "./Callout";
 import { PlaceTypeahead } from "./PlaceTypeahead";
+import { TripPrintSheet } from "./TripPrintSheet";
 import { toast } from "./Toast";
 import { loadTrips, upsertTrip, deleteTrip as removeTrip } from "@/lib/storage";
 import { useDataVersion } from "@/lib/useLiveData";
@@ -539,6 +540,28 @@ export function TripBuilder() {
     toast(`Added "${title}" to Day ${draft.days.indexOf(day) + 1}`, "success");
   };
 
+  /**
+   * Hand off to the browser's print-to-PDF. The body class is what isolates the print
+   * sheet, and afterprint is unreliable in some browsers, so a timer clears it too.
+   */
+  const exportPdf = () => {
+    if (!draft) return;
+    // Flush any pending autosave first so the sheet prints what's on screen.
+    if (dirty) {
+      setTrips(upsertTrip(draft));
+      setDirty(false);
+    }
+    const done = () => {
+      document.body.classList.remove("printing");
+      window.removeEventListener("afterprint", done);
+    };
+    document.body.classList.add("printing");
+    window.addEventListener("afterprint", done);
+    window.setTimeout(done, 60_000);
+    // Let the class land before the print dialog snapshots the page.
+    window.requestAnimationFrame(() => window.print());
+  };
+
   const copyText = async () => {
     if (!draft) return;
     try {
@@ -677,6 +700,10 @@ export function TripBuilder() {
                 <span className="text-xs text-fg-muted">{dirty ? "Saving…" : "Saved"}</span>
               </div>
               <div className="flex items-center gap-2">
+                <button type="button" className="btn-secondary !min-h-0 !py-1.5 text-xs" onClick={exportPdf}>
+                  <Icon.Download size={14} />
+                  Export PDF
+                </button>
                 <button type="button" className="btn-secondary !min-h-0 !py-1.5 text-xs" onClick={copyText}>
                   Copy as text
                 </button>
@@ -896,6 +923,8 @@ export function TripBuilder() {
             <Icon.Plus size={18} />
             Add day {draft.days.length + 1}
           </button>
+
+          <TripPrintSheet trip={draft} />
         </>
       )}
     </div>
