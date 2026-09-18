@@ -36,10 +36,34 @@ export function todayLocal(): string {
   return local.toISOString().slice(0, 10);
 }
 
-/** Convert a YYYY-MM-DD (local) date to an ISO timestamp anchored at local noon. */
+/**
+ * Convert a YYYY-MM-DD (local) date to an ISO timestamp anchored at local noon.
+ *
+ * Returns a full timestamp, so it is the wrong thing to feed to `<input type="date">`,
+ * to string-concatenate a time onto, or to hand to anything that expects a date — use
+ * `toDateOnly` for those. Passing a timestamp back in is tolerated rather than producing
+ * an Invalid Date.
+ */
 export function localDateToISO(dateStr: string): string {
-  if (!dateStr) return new Date().toISOString();
-  return new Date(`${dateStr}T12:00:00`).toISOString();
+  const day = toDateOnly(dateStr);
+  if (!day) return new Date().toISOString();
+  return new Date(`${day}T12:00:00`).toISOString();
+}
+
+/**
+ * Normalise anything date-ish to YYYY-MM-DD, or "" if it isn't a date at all.
+ * Accepts a bare date, an ISO timestamp, or a Date. Several bugs came from an ISO
+ * timestamp reaching code that assumed a plain date and silently yielding NaN.
+ */
+export function toDateOnly(value: string | Date | null | undefined): string {
+  if (!value) return "";
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? toLocalISODate(value) : "";
+  }
+  const m = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const d = new Date(value);
+  return Number.isFinite(d.getTime()) ? toLocalISODate(d) : "";
 }
 
 export function thisMonthKey(): string {

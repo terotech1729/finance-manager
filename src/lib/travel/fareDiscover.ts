@@ -41,10 +41,25 @@ export type FareDiscoveryResult = {
  */
 const TRAVELPAYOUTS_FALLBACK_TOKEN = "e451ad62a0e8468732b6e1ada1e58223";
 
+/**
+ * Every multiplier below indexes on a plain YYYY-MM-DD. Callers sometimes hand over a
+ * full ISO timestamp, which used to slip through and produce NaN — and because NaN fails
+ * every `<=` comparison, the fare quietly fell to the cheapest lead-time bucket and lost
+ * its peak-season surge entirely. Normalising here makes that impossible.
+ */
+function dateOnly(value: string | undefined): string {
+  if (!value) return "";
+  const m = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : "";
+}
+
 function daysUntil(dateISO: string, todayISO?: string): number {
-  const t0 = todayISO ? new Date(todayISO + "T12:00:00") : new Date();
-  const t1 = new Date(dateISO + "T12:00:00");
-  return Math.max(0, Math.round((t1.getTime() - t0.getTime()) / 86400000));
+  const from = dateOnly(todayISO);
+  const to = dateOnly(dateISO);
+  const t0 = from ? new Date(`${from}T12:00:00`) : new Date();
+  const t1 = to ? new Date(`${to}T12:00:00`) : new Date();
+  const days = Math.round((t1.getTime() - t0.getTime()) / 86400000);
+  return Number.isFinite(days) ? Math.max(0, days) : 0;
 }
 
 function leadTimeMultiplier(days: number): number {
@@ -59,7 +74,9 @@ function leadTimeMultiplier(days: number): number {
 }
 
 function dowMultiplier(dateISO: string): number {
-  const d = new Date(dateISO + "T12:00:00").getDay();
+  const day = dateOnly(dateISO);
+  if (!day) return 1;
+  const d = new Date(`${day}T12:00:00`).getDay();
   if (d === 5 || d === 0) return 1.1;
   if (d === 6) return 1.06;
   return 1;
@@ -67,7 +84,9 @@ function dowMultiplier(dateISO: string): number {
 
 /** India peak windows (approx) — Diwali / year-end / summer / Holi. */
 function peakSeasonMultiplier(dateISO: string): number {
-  const [, mm, dd] = dateISO.split("-").map(Number);
+  const day = dateOnly(dateISO);
+  if (!day) return 1;
+  const [, mm, dd] = day.split("-").map(Number);
   const md = mm * 100 + dd;
   // Diwali cluster ~ mid-Oct to mid-Nov
   if (md >= 1010 && md <= 1115) return 1.55;
@@ -138,9 +157,13 @@ type MatrixRow = {
 export async function fetchTravelpayoutsDatedFare(
   originCode: string,
   destCode: string,
-  dateISO: string,
+  rawDateISO: string,
   token: string
 ): Promise<number | null> {
+  // The matrix keys depart_date as YYYY-MM-DD, so a timestamp here would match nothing
+  // and silently return null for every date.
+  const dateISO = dateOnly(rawDateISO);
+  if (!dateISO) return null;
   const month = `${dateISO.slice(0, 7)}-01`;
   const url = new URL("https://api.travelpayouts.com/v2/prices/month-matrix");
   url.searchParams.set("currency", "inr");

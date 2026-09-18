@@ -7,7 +7,7 @@ import { PlaceTypeahead } from "./PlaceTypeahead";
 import { toast } from "./Toast";
 import { loadTrips, upsertTrip, deleteTrip as removeTrip } from "@/lib/storage";
 import { useDataVersion } from "@/lib/useLiveData";
-import { inr, newId, todayLocal, localDateToISO } from "@/lib/utils";
+import { inr, newId, todayLocal, toDateOnly } from "@/lib/utils";
 import type { TravelPlace } from "@/lib/travel/places";
 import { guideFor, monthRangeLabel } from "@/lib/travel/itinerary/guides";
 import {
@@ -24,6 +24,7 @@ import {
   fileToDownscaledDataUrl,
   itemKindMeta,
   itemPartyCost,
+  normaliseTrip,
   normaliseUrl,
   resequenceDays,
   sortDayItems,
@@ -393,7 +394,7 @@ export function TripBuilder() {
   const [ideaDay, setIdeaDay] = useState(0);
 
   useEffect(() => {
-    const all = loadTrips();
+    const all = loadTrips().map(normaliseTrip);
     setTrips(all);
     setActiveId((cur) => cur ?? all[0]?.id ?? null);
   }, [version]);
@@ -405,7 +406,7 @@ export function TripBuilder() {
       return;
     }
     const found = loadTrips().find((t) => t.id === activeId) ?? null;
-    setDraft(found);
+    setDraft(found ? normaliseTrip(found) : null);
     setDirty(false);
   }, [activeId, version]);
 
@@ -424,7 +425,7 @@ export function TripBuilder() {
   };
 
   const createTrip = () => {
-    const trip = emptyTrip(newId(), localDateToISO(todayLocal()));
+    const trip = emptyTrip(newId(), todayLocal());
     setTrips(upsertTrip(trip));
     setActiveId(trip.id);
     setDraft(trip);
@@ -641,10 +642,12 @@ export function TripBuilder() {
                 <input
                   className="input"
                   type="date"
-                  value={draft.startDate}
-                  onChange={(e) =>
-                    update((t) => resequenceDays({ ...t, startDate: localDateToISO(e.target.value) }))
-                  }
+                  value={toDateOnly(draft.startDate)}
+                  onChange={(e) => {
+                    const day = toDateOnly(e.target.value);
+                    if (!day) return;
+                    update((t) => resequenceDays({ ...t, startDate: day }));
+                  }}
                 />
               </Field>
               <Field label="Travellers">

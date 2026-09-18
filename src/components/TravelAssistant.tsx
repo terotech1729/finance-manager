@@ -101,7 +101,7 @@ export function TravelAssistant({ onLogged }: Props) {
       category: mode === "flight" ? "flight booking" : mode === "train" ? "train booking" : "bus booking",
       amount: 1000,
       channel: "online",
-      today: localDateToISO(todayLocal()),
+      today: todayLocal(),
     });
     const { merchant: _m, category: _c, amount: _a, channel: _ch, ...rest } = bridge;
     return rest;
@@ -143,7 +143,7 @@ export function TravelAssistant({ onLogged }: Props) {
         baseFareInr: override,
         indigoBluChipVoucherInr: Number((indigoVoucher || "").replace(/[^0-9.]/g, "")) || undefined,
         offerDiscountOverrides: Object.keys(offerDiscountOverrides).length ? offerDiscountOverrides : undefined,
-        today: localDateToISO(todayLocal()),
+        today: todayLocal(),
       };
       const res = await fetch("/api/travel/search", {
         method: "POST",
@@ -180,7 +180,7 @@ export function TravelAssistant({ onLogged }: Props) {
       fares: discovery.fares,
       indigoBluChipVoucherInr: Number((indigoVoucher || "").replace(/[^0-9.]/g, "")) || undefined,
       offerDiscountOverrides: Object.keys(offerDiscountOverrides).length ? offerDiscountOverrides : undefined,
-      today: localDateToISO(todayLocal()),
+      today: todayLocal(),
     };
   }, [discovery, date, returnDate, adults, children, cabin, mode, offerOverrides, indigoVoucher]);
 

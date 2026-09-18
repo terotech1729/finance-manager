@@ -6,7 +6,7 @@ import { Callout } from "./Callout";
 import { Icon } from "./Icons";
 import { placeLabel, type TravelPlace } from "@/lib/travel/places";
 import type { JourneyItinerary, JourneyPlanResult } from "@/lib/travel/journey/types";
-import { inr, todayLocal, localDateToISO } from "@/lib/utils";
+import { inr, todayLocal, toDateOnly } from "@/lib/utils";
 import { toast } from "./Toast";
 
 function fmtWhen(iso: string): string {
@@ -171,7 +171,10 @@ export function JourneyReach() {
     setSearching(true);
     setError(null);
     try {
-      const arriveBy = `${localDateToISO(arriveDate)}T${arriveTime}`;
+      // arriveDate is already YYYY-MM-DD from the date input. Running it through
+      // localDateToISO produced "...T06:30:00.000ZT08:00", and the server's regex matched
+      // the timestamp's own time — so the deadline silently became 06:30 instead of 08:00.
+      const arriveBy = `${toDateOnly(arriveDate)}T${arriveTime}`;
       const res = await fetch("/api/travel/journey", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -180,7 +183,7 @@ export function JourneyReach() {
           destination: placeLabel(destination),
           arriveBy,
           adults: Math.max(1, adults),
-          today: localDateToISO(todayLocal()),
+          today: todayLocal(),
           prefs: {
             includeStayCost: includeStay,
             allowOvernightAsStay: allowOvernightBus,

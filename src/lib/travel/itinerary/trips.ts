@@ -6,6 +6,7 @@
  * typing fast — sensible defaults per item kind, running totals, and reordering — and to
  * keep the result somewhere durable rather than in a notes app.
  */
+import { toDateOnly } from "@/lib/utils";
 
 export type TripItemKind =
   | "flight"
@@ -88,17 +89,46 @@ export function itemKindMeta(kind: TripItemKind) {
   return ITEM_KINDS.find((k) => k.id === kind) ?? ITEM_KINDS[ITEM_KINDS.length - 1];
 }
 
+/**
+ * Dates on a trip are plain YYYY-MM-DD. Both helpers normalise first so a stray
+ * timestamp — or a trip saved before that was enforced — renders a real date instead of
+ * "NaN-NaN-NaN".
+ */
 export function addDaysIso(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00`);
+  const base = toDateOnly(iso) || toDateOnly(new Date());
+  const d = new Date(`${base}T00:00:00`);
   d.setDate(d.getDate() + days);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function dayHeading(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
+  const base = toDateOnly(iso);
+  if (!base) return "Date not set";
+  const d = new Date(`${base}T00:00:00`);
+  if (!Number.isFinite(d.getTime())) return "Date not set";
   return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+}
+
+/**
+ * Repair a trip loaded from storage. Earlier builds wrote `startDate` as a full ISO
+ * timestamp, which broke the date picker and every derived day date.
+ */
+export function normaliseTrip(trip: Trip): Trip {
+  const startDate = toDateOnly(trip.startDate) || toDateOnly(new Date());
+  const fixed: Trip = {
+    ...trip,
+    startDate,
+    travellers: Math.max(1, Math.round(trip.travellers || 1)),
+    days: (trip.days ?? []).map((d) => ({
+      ...d,
+      items: (d.items ?? []).map((i) => ({ ...i, attachments: i.attachments ?? [] })),
+    })),
+  };
+  if (fixed.days.length === 0) {
+    fixed.days = [{ id: `${trip.id}-d0`, date: startDate, items: [] }];
+  }
+  return resequenceDays(fixed);
 }
 
 /** What this item costs the whole party. */
