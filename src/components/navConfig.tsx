@@ -7,29 +7,38 @@ export type NavItem = {
 };
 export type NavGroup = { title: string; items: NavItem[] };
 
+/** Grouped by area of life rather than by feature, so the finance tools are one part
+ *  of the portal rather than the whole of it. */
 export const NAV_GROUPS: NavGroup[] = [
   {
-    title: "Overview",
+    title: "Today",
     items: [
       { href: "/", label: "Home", icon: Icon.Dashboard },
-      { href: "/recommend", label: "Recommend", icon: Icon.Zap },
-      { href: "/travel", label: "Travel", icon: Icon.Plane },
-      { href: "/notes", label: "Notes", icon: Icon.Note },
+      { href: "/recommend", label: "What should I pay with?", icon: Icon.Zap },
     ],
   },
   {
-    title: "Spending",
+    title: "Money",
     items: [
       { href: "/transactions", label: "Transactions", icon: Icon.Transaction },
-      { href: "/bills", label: "Bill Tracker", icon: Icon.Card },
-      { href: "/spend", label: "Spend Analyzer", icon: Icon.Dashboard },
+      { href: "/bills", label: "Bills", icon: Icon.Card },
+      { href: "/spend", label: "Spend analyzer", icon: Icon.Dashboard },
+      { href: "/milestones", label: "Milestones", icon: Icon.Sparkles },
     ],
+  },
+  {
+    title: "Travel",
+    items: [{ href: "/travel", label: "Trips & routes", icon: Icon.Plane }],
+  },
+  {
+    title: "Notes",
+    items: [{ href: "/notes", label: "Notes", icon: Icon.Note }],
   },
   {
     title: "Investing",
     items: [
-      { href: "/investments", label: "Investments", icon: Icon.Trophy },
-      { href: "/portfolio", label: "Investment Analyzer", icon: Icon.Dashboard },
+      { href: "/investments", label: "Holdings", icon: Icon.Trophy },
+      { href: "/portfolio", label: "Net worth", icon: Icon.Dashboard },
     ],
   },
   {
@@ -40,7 +49,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/debit", label: "Debit & GyFTR", icon: Icon.Trophy },
       { href: "/vouchers", label: "Vouchers & GCs", icon: Icon.Trophy },
       { href: "/cashkaro", label: "Cashkaro rates", icon: Icon.Zap },
-      { href: "/milestones", label: "Milestones", icon: Icon.Sparkles },
       { href: "/network-perks", label: "Network perks", icon: Icon.Plane },
       { href: "/redemptions", label: "Redemptions", icon: Icon.Plane },
       { href: "/settings", label: "Settings", icon: Icon.Settings },

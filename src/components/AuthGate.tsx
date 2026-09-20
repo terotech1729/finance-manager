@@ -111,7 +111,7 @@ function AuthGated({ children }: { children: React.ReactNode }) {
   if (auth === "loading" || auth === "syncing") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-fg-muted">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold">₹</div>
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold text-lg">T</div>
         <div className="text-sm">{auth === "syncing" ? "Getting your latest numbers…" : "Loading…"}</div>
       </div>
     );
@@ -122,8 +122,8 @@ function AuthGated({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="card-shell p-6 max-w-sm w-full">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold text-sm">₹</div>
-            <div className="font-semibold">Personal Finance Manager</div>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold text-sm">T</div>
+            <div className="font-semibold">Tero</div>
           </div>
           <p className="text-sm text-fg-muted mb-4">
             {mode === "signin" ? "Sign in to sync your data across devices." : "Create your account to start syncing across devices."}

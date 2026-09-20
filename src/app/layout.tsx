@@ -6,12 +6,12 @@ import { AuthGate } from "@/components/AuthGate";
 import { Toaster } from "@/components/Toast";
 
 export const metadata: Metadata = {
-  title: "Personal Finance Manager",
-  description: "Personal finance manager: multi-card recommendation engine, milestone tracking, Cashkaro/gift-card routing, and investment log",
+  title: "Tero",
+  description: "Tero — a personal manager for money, travel, notes and investments: card routing, milestone tracking, trip planning and net worth in one place.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Finance",
+    title: "Tero",
   },
 };
 

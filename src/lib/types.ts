@@ -93,15 +93,19 @@ export type Contribution = {
   note?: string;
 };
 
-// Real-estate specific loan/equity details (only used when type === "real_estate").
-export type RealEstateDetails = {
-  propertyValue?: number; // market value as of currentValueDate
-  downPayment?: number; // equity you put in upfront
-  loanAmount?: number; // outstanding loan principal (liability)
-  lender?: string; // bank / NBFC
-  interestRate?: number; // % p.a.
-  emi?: number; // monthly EMI
-  tenureMonths?: number; // remaining/total tenure in months
+/**
+ * Legacy real-estate shape. Property is now tracked as a single worth figure in
+ * `currentValue`, like every other holding — this type only survives so old saved data
+ * can be recognised and migrated on load.
+ */
+export type LegacyRealEstateDetails = {
+  propertyValue?: number;
+  downPayment?: number;
+  loanAmount?: number;
+  lender?: string;
+  interestRate?: number;
+  emi?: number;
+  tenureMonths?: number;
 };
 
 // A position you hold in one asset. Periodic SIPs / top-ups accumulate as contributions,
@@ -111,10 +115,12 @@ export type Holding = {
   name: string; // e.g. "Large and Midcap Tracker", "Reliance Industries"
   type: InvestmentType;
   platform?: string; // e.g. "Smallcase", "Zerodha", "Groww"
-  contributions: Contribution[]; // cost basis = sum of these (for RE: down payment + principal you've paid)
-  currentValue?: number; // latest market value (manually updated) for P/L (non-real-estate)
+  contributions: Contribution[]; // cost basis = sum of these
+  /** Latest value you've entered. For property this is what the place is worth. */
+  currentValue?: number;
   currentValueDate?: string; // ISO of last value update
-  realEstate?: RealEstateDetails; // populated for type === "real_estate"
+  /** Only present on data saved before property was simplified; migrated away on load. */
+  realEstate?: LegacyRealEstateDetails;
   notes?: string;
 };
 

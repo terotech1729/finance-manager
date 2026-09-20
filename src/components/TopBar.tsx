@@ -198,7 +198,7 @@ export function TopBar() {
     <header className="hidden md:flex sticky top-0 z-30 h-14 items-center gap-3 border-b border-border bg-bg-chrome/90 backdrop-blur px-6">
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold truncate">{section}</div>
-        <div className="text-[11px] text-fg-subtle leading-tight">Personal Finance Manager</div>
+        <div className="text-[11px] text-fg-subtle leading-tight">Tero</div>
       </div>
       <SyncPill />
       <UserMenu />

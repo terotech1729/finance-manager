@@ -9,12 +9,12 @@ import { NAV_GROUPS as groups, isActive, sectionLabelFor } from "./navConfig";
 function Brand() {
   return (
     <Link href="/" className="flex items-center gap-2.5 min-w-0">
-      <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold shadow-md shadow-accent/30">
-        ₹
+      <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold text-lg shadow-md shadow-accent/30">
+        T
       </div>
       <div className="min-w-0">
-        <div className="text-sm font-semibold leading-none truncate">Personal Finance</div>
-        <div className="text-xs text-fg-muted leading-none mt-1">Manager</div>
+        <div className="text-sm font-semibold leading-none truncate">Tero</div>
+        <div className="text-xs text-fg-muted leading-none mt-1">Personal manager</div>
       </div>
     </Link>
   );
@@ -79,7 +79,7 @@ function SidebarChrome({
       </nav>
       {footer !== false && (
         <div className="p-4 border-t border-border" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
-          <div className="text-xs text-fg-subtle">v1.6 · Personal finance manager</div>
+          <div className="text-xs text-fg-subtle">Tero · v2.0</div>
         </div>
       )}
     </div>

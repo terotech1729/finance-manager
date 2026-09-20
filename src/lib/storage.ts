@@ -768,20 +768,38 @@ export function holdingInvested(h: Holding): number {
   return (h.contributions ?? []).reduce((a, c) => a + (c.amount || 0), 0);
 }
 
-// Current "value" of a holding. For real estate this is NET EQUITY (property value − outstanding loan),
-// which keeps gains sensible (right after purchase, equity ≈ down payment ≈ ~0% gain).
+// Current value of a holding — for property, simply what it's worth today.
 export function holdingValue(h: Holding): number {
-  if (h.type === "real_estate" && h.realEstate) {
-    const pv = h.realEstate.propertyValue ?? holdingInvested(h);
-    return pv - (h.realEstate.loanAmount ?? 0);
-  }
   return h.currentValue ?? holdingInvested(h);
 }
 
-// Whether the user has supplied a market value (so we can show P/L instead of just cost).
+// Whether the user has supplied a value (so we can show P/L instead of just cost).
 export function holdingHasValue(h: Holding): boolean {
-  if (h.type === "real_estate") return h.realEstate?.propertyValue != null;
   return h.currentValue != null;
+}
+
+/**
+ * Property is a worth figure you maintain, not a traded position. With the loan side gone
+ * its contributions are no longer a meaningful cost basis — a ₹16L down payment against a
+ * ₹80L flat would read as a 400% gain — so it's counted in net worth but kept out of the
+ * profit-and-loss maths.
+ */
+export function holdingTracksPnl(h: Holding): boolean {
+  return h.type !== "real_estate";
+}
+
+/**
+ * Fold the old property shape into the ordinary one: the value you maintained as
+ * `realEstate.propertyValue` becomes `currentValue`, and the loan, lender, EMI, rate and
+ * tenure are dropped. Runs on load so existing entries fix themselves.
+ */
+function migrateRealEstate(h: Holding): Holding {
+  if (!h.realEstate) return h;
+  const { realEstate, ...rest } = h;
+  return {
+    ...rest,
+    currentValue: h.currentValue ?? realEstate.propertyValue,
+  };
 }
 
 function migrateInvestmentsToHoldings(legacy: Investment[]): Holding[] {
@@ -805,7 +823,12 @@ export function loadHoldings(): Holding[] {
   if (!isClient()) return [];
   const raw = localStorage.getItem(KEYS.HOLDINGS);
   if (raw) {
-    try { return JSON.parse(raw); } catch { return []; }
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as Holding[]).map(migrateRealEstate) : [];
+    } catch {
+      return [];
+    }
   }
   // One-time migration of legacy flat investments into grouped holdings.
   const legacy = loadInvestments();

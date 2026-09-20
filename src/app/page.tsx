@@ -1,164 +1,208 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { loadState, loadTransactions, loadHoldings, holdingInvested, holdingValue, type AppState } from "@/lib/storage";
+import {
+  loadState,
+  loadTransactions,
+  loadHoldings,
+  loadTrips,
+  loadNotes,
+  holdingValue,
+  holdingTracksPnl,
+  type AppState,
+} from "@/lib/storage";
 import { useDataVersion } from "@/lib/useLiveData";
-import { CARDS, netCreditLimit } from "@/lib/cards";
-import { inr, inrExact, nfmt } from "@/lib/utils";
+import { CARDS } from "@/lib/cards";
+import { inr, inrExact, nfmt, todayLocal } from "@/lib/utils";
+import { buildBriefing, greeting, type BriefingItem } from "@/lib/briefing";
 import type { Transaction, Holding } from "@/lib/types";
-import { CardVisual } from "@/components/CardVisual";
+import type { Trip } from "@/lib/travel/itinerary/trips";
+import type { Note } from "@/lib/notes";
 import { Icon } from "@/components/Icons";
 
-type CurrencyTile = {
-  label: string;
-  units: number;
-  unitName: string;
-  inrValue: number;
-  hint?: string;
-  cardId?: string;
+const AREA_META: Record<BriefingItem["area"], { label: string; icon: string }> = {
+  money: { label: "Money", icon: "₹" },
+  travel: { label: "Travel", icon: "✈" },
+  notes: { label: "Notes", icon: "📝" },
 };
 
-export default function DashboardPage() {
+const TONE_RING: Record<BriefingItem["tone"], string> = {
+  urgent: "border-danger/40 bg-danger/[0.05]",
+  opportunity: "border-success/40 bg-success/[0.05]",
+  info: "border-border bg-bg-elevated",
+};
+
+function BriefingCard({ item }: { item: BriefingItem }) {
+  const area = AREA_META[item.area];
+  const pct = item.progress
+    ? Math.min(100, Math.round((item.progress.current / Math.max(1, item.progress.target)) * 100))
+    : null;
+
+  return (
+    <Link href={item.href} className={`block rounded-xl border p-4 transition-colors hover:border-accent ${TONE_RING[item.tone]}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-muted">
+            <span>{area.icon}</span>
+            {area.label}
+          </div>
+          <div className="mt-1 font-semibold text-fg">{item.title}</div>
+          <p className="mt-0.5 text-sm text-fg-muted">{item.detail}</p>
+        </div>
+        <Icon.ArrowRight size={16} className="mt-1 shrink-0 text-fg-muted" />
+      </div>
+      {pct !== null && (
+        <div className="mt-3">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-chrome">
+            <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="mt-1 text-[11px] text-fg-muted">{pct}% there</div>
+        </div>
+      )}
+    </Link>
+  );
+}
+
+export default function HomePage() {
   const [state, setState] = useState<AppState | null>(null);
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
   const dataVersion = useDataVersion();
+
   useEffect(() => {
     setState(loadState());
     setTxns(loadTransactions());
     setHoldings(loadHoldings());
+    setTrips(loadTrips());
+    setNotes(loadNotes());
   }, [dataVersion]);
+
+  const briefing = useMemo(
+    () => (state ? buildBriefing({ state, trips, notes, today: todayLocal() }) : []),
+    [state, trips, notes]
+  );
+
+  const worth = useMemo(() => {
+    const market = holdings.filter(holdingTracksPnl).reduce((a, h) => a + holdingValue(h), 0);
+    const property = holdings.filter((h) => !holdingTracksPnl(h)).reduce((a, h) => a + holdingValue(h), 0);
+    return { market, property, total: market + property };
+  }, [holdings]);
+
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 
-  const currencies: CurrencyTile[] = [
-    { label: "Amex Membership Rewards", units: state.amexMrPooled, unitName: "MR", inrValue: state.amexMrPooled * 0.58, hint: "@ Taj 24K Gold redemption (₹0.58/MR)", cardId: "amex_gold" },
-    { label: "IndiGo BluChips", units: state.indigoBluChips, unitName: "BluChips", inrValue: state.indigoBluChips * 0.45, hint: "≈ ₹0.45/BluChip on IndiGo flights (dynamic ₹0.40–0.60)", cardId: "idfc_indigo" },
-    { label: "Scapia Coins", units: state.scapiaCoins, unitName: "coins", inrValue: state.scapiaCoins * 0.2, hint: "5 coins = ₹1 (Scapia-app travel only)", cardId: "scapia" },
-    { label: "Kiwi Cashback (cycle)", units: state.kiwiCashback, unitName: "Kiwis", inrValue: state.kiwiCashback * 0.25, hint: `1 Kiwi = ₹0.25 (cashable). Lifetime: ${inr(state.kiwiLifetimeEarned)}`, cardId: "yes_kiwi" },
-    { label: "SBI Reward Points", units: state.sbiRp, unitName: "RP", inrValue: state.sbiRp * 0.2, hint: "1 RP = ₹0.20", cardId: "sbi_simplyclick" },
-    { label: "BOB Reward Points", units: state.bobRp, unitName: "RP", inrValue: state.bobRp * 0.25, hint: "1 RP = ₹0.25 (cashback)", cardId: "bob_eterna" },
-    { label: "CRED Coins", units: state.credCoins, unitName: "coins", inrValue: state.credCoins * 0.03, hint: "Realistic ₹0.02-0.05/coin. Kill-the-Bill rare ₹1/coin." },
-    { label: "CheQ Chips", units: state.cheqChips, unitName: "chips", inrValue: state.cheqChips * 0.10, hint: "1 chip ≈ ₹0.10 vs CC bill (cap 1000/mo). NOT cashable to bank." },
-  ];
+  const loyaltyInr =
+    state.amexMrPooled * 0.58 +
+    state.indigoBluChips * 0.45 +
+    state.scapiaCoins * 0.2 +
+    state.kiwiCashback * 0.25 +
+    state.sbiRp * 0.2 +
+    state.bobRp * 0.25 +
+    state.credCoins * 0.03 +
+    state.cheqChips * 0.1;
 
-  const totalLifetimeSavings = currencies.reduce((acc, c) => acc + c.inrValue, 0);
-  const totalRewardsThisYear = txns.reduce((acc, t) => acc + t.rewardInr, 0);
-  const totalInvested = holdings.reduce((acc, h) => acc + holdingInvested(h), 0);
-  const totalPortfolioValue = holdings.reduce((acc, h) => acc + holdingValue(h), 0);
-  const totalSpentThisYear = txns.reduce((acc, t) => acc + t.amount, 0);
+  const monthKey = todayLocal().slice(0, 7);
+  const spentThisMonth = txns
+    .filter((t) => t.date.slice(0, 7) === monthKey)
+    .reduce((a, t) => a + t.amount, 0);
+  const activeCards = CARDS.filter((c) => c.status === "active").length;
 
   return (
     <div className="space-y-8">
-      {/* Hero header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="page-title">Welcome back</h1>
-          <p className="page-sub">Your personal finance command center</p>
+          <h1 className="page-title">{greeting()}</h1>
+          <p className="page-sub">
+            {briefing.length === 0
+              ? "Nothing needs your attention right now."
+              : `${briefing.length} thing${briefing.length === 1 ? "" : "s"} worth a look today.`}
+          </p>
         </div>
         <Link href="/recommend" className="btn-primary w-full sm:w-auto">
-          <Icon.Zap size={16} /> Recommend a route
+          <Icon.Zap size={16} /> What should I pay with?
         </Link>
       </div>
 
-      {/* Primary CTA banner */}
-      <Link href="/recommend" className="block">
-        <div className="card-shell p-4 sm:p-5 bg-gradient-to-br from-accent/10 via-bg-elevated to-bg-elevated border-accent/40 hover:border-accent transition-colors flex items-center justify-between gap-3">
-          <div className="flex items-start sm:items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center text-accent shrink-0">
-              <Icon.Zap size={20} />
-            </div>
-            <div className="min-w-0">
-              <div className="font-semibold">About to spend on something?</div>
-              <div className="text-sm text-fg-muted mt-0.5">Optimal card + route — Cashkaro, gift-cards & stacks compared.</div>
-            </div>
+      {briefing.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-bold">Needs attention</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {briefing.map((item) => (
+              <BriefingCard key={item.id} item={item} />
+            ))}
           </div>
-          <Icon.ArrowRight size={18} className="text-fg-muted shrink-0 hidden sm:block" />
-        </div>
-      </Link>
+        </section>
+      )}
 
-      {/* Lifetime stats hero */}
-      <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="card-shell p-5 bg-gradient-to-br from-success/10 via-bg-elevated to-bg-elevated border-success/30">
-          <div className="label">Total wallet value (loyalty)</div>
-          <div className="text-2xl sm:text-3xl font-bold mt-1 text-success">{inr(totalLifetimeSavings)}</div>
-          <div className="text-xs text-fg-muted mt-1">Sum of all loyalty currencies at best-case redemption</div>
-        </div>
-        <div className="card-shell p-5 bg-gradient-to-br from-accent/10 via-bg-elevated to-bg-elevated border-accent/30">
-          <div className="label">Logged YTD CC spend</div>
-          <div className="text-2xl sm:text-3xl font-bold mt-1">{inr(totalSpentThisYear)}</div>
-          <div className="text-xs text-fg-muted mt-1">{txns.length} txns · {inr(totalRewardsThisYear)} earned in rewards</div>
-        </div>
-        <div className="card-shell p-5 bg-gradient-to-br from-info/10 via-bg-elevated to-bg-elevated border-info/30">
-          <div className="label">Portfolio value</div>
-          <div className="text-2xl sm:text-3xl font-bold mt-1 text-info">{inr(totalPortfolioValue)}</div>
-          <div className="text-xs text-fg-muted mt-1">{inr(totalInvested)} invested across {holdings.length} holding{holdings.length === 1 ? "" : "s"} · <Link href="/investments" className="underline">manage</Link></div>
-        </div>
-        <Link href="/cards" className="card-shell p-5 bg-gradient-to-br from-warning/10 via-bg-elevated to-bg-elevated border-warning/30 hover:border-warning transition-colors block">
-          <div className="label">Net credit limit</div>
-          <div className="text-2xl sm:text-3xl font-bold mt-1">{inr(netCreditLimit())}</div>
-          <div className="text-xs text-fg-muted mt-1">Preset limits summed · Amex Gold charge has no fixed limit</div>
-        </Link>
-      </section>
-
-      {/* Loyalty currencies grid */}
       <section>
-        <h2 className="text-lg font-bold mb-3">Loyalty currencies</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {currencies.map((c) => {
-            const Wrap = c.cardId
-              ? ({ children }: { children: React.ReactNode }) => <Link href={`/cards/${c.cardId}`} className="block">{children}</Link>
-              : ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
-            return (
-              <Wrap key={c.label}>
-                <div className="stat-tile h-full hover:border-accent transition-colors">
-                  <div className="label">{c.label}</div>
-                  <div className="text-xl font-bold mt-1">{nfmt(c.units)}<span className="text-xs text-fg-muted ml-1 font-normal">{c.unitName}</span></div>
-                  <div className="text-xs text-success font-medium mt-0.5">≈ {inr(c.inrValue)}</div>
-                  {c.hint ? <div className="text-xs text-fg-muted mt-1">{c.hint}</div> : null}
-                </div>
-              </Wrap>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Card grid */}
-      <section>
-        <div className="flex items-baseline justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-bold">Your Cards</h2>
-            <p className="text-sm text-fg-muted mt-0.5">Click any card to see its transactions, milestones, and benefits</p>
-          </div>
-          <Link href="/cards" className="text-sm text-fg-muted hover:text-fg flex items-center gap-1">
-            View all <Icon.ArrowRight size={14} />
+        <h2 className="mb-3 text-lg font-bold">Where things stand</h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Link href="/portfolio" className="stat-tile block transition-colors hover:border-accent">
+            <div className="label">Net worth</div>
+            <div className="mt-1 text-2xl font-bold">{inr(worth.total)}</div>
+            <div className="mt-1 text-xs text-fg-muted">
+              {worth.property > 0 ? `${inr(worth.market)} market + ${inr(worth.property)} property` : `${holdings.length} holdings`}
+            </div>
+          </Link>
+          <Link href="/spend" className="stat-tile block transition-colors hover:border-accent">
+            <div className="label">Spent this month</div>
+            <div className="mt-1 text-2xl font-bold">{inr(spentThisMonth)}</div>
+            <div className="mt-1 text-xs text-fg-muted">{monthKey}</div>
+          </Link>
+          <Link href="/redemptions" className="stat-tile block transition-colors hover:border-accent">
+            <div className="label">Loyalty wallet</div>
+            <div className="mt-1 text-2xl font-bold text-success">{inr(loyaltyInr)}</div>
+            <div className="mt-1 text-xs text-fg-muted">{nfmt(state.amexMrPooled)} MR · {nfmt(state.indigoBluChips)} BluChips</div>
+          </Link>
+          <Link href="/cards" className="stat-tile block transition-colors hover:border-accent">
+            <div className="label">Active cards</div>
+            <div className="mt-1 text-2xl font-bold">{activeCards}</div>
+            <div className="mt-1 text-xs text-fg-muted">tap to review benefits</div>
           </Link>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {CARDS.filter((c) => c.status === "active").map((c) => (
-            <CardVisual key={c.id} card={c} href={`/cards/${c.id}`} size="md" />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-lg font-bold">Jump back in</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { href: "/travel", icon: <Icon.Plane size={18} />, title: "Travel", sub: trips.length ? `${trips.length} trip${trips.length === 1 ? "" : "s"} planned` : "Plan a trip" },
+            { href: "/notes", icon: <Icon.Note size={18} />, title: "Notes", sub: notes.length ? `${notes.length} note${notes.length === 1 ? "" : "s"}` : "Write something down" },
+            { href: "/transactions", icon: <Icon.Transaction size={18} />, title: "Transactions", sub: `${txns.length} logged` },
+            { href: "/milestones", icon: <Icon.Sparkles size={18} />, title: "Milestones", sub: "Spend gates & waivers" },
+          ].map((s) => (
+            <Link key={s.href} href={s.href} className="card-shell flex items-center gap-3 p-4 transition-colors hover:border-accent">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-chrome text-fg-muted">
+                {s.icon}
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium">{s.title}</div>
+                <div className="truncate text-xs text-fg-muted">{s.sub}</div>
+              </div>
+            </Link>
           ))}
         </div>
       </section>
 
-      {/* Recent transactions */}
       {txns.length > 0 && (
         <section>
-          <div className="flex items-baseline justify-between mb-4">
-            <h2 className="text-xl font-bold">Recent transactions</h2>
-            <Link href="/transactions" className="text-sm text-fg-muted hover:text-fg flex items-center gap-1">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-lg font-bold">Recent transactions</h2>
+            <Link href="/transactions" className="flex items-center gap-1 text-sm text-fg-muted hover:text-fg">
               View all <Icon.ArrowRight size={14} />
             </Link>
           </div>
           <div className="card-shell">
             <table className="w-full text-sm">
-              <thead className="text-fg-muted text-xs uppercase tracking-wide">
+              <thead className="text-xs uppercase tracking-wide text-fg-muted">
                 <tr>
-                  <th className="text-left p-3">Date</th>
+                  <th className="p-3 text-left">Date</th>
                   <th className="text-left">Merchant</th>
                   <th className="text-left">Card</th>
                   <th className="text-right">Amount</th>
-                  <th className="text-right p-3">Reward</th>
+                  <th className="p-3 text-right">Reward</th>
                 </tr>
               </thead>
               <tbody>
@@ -166,13 +210,17 @@ export default function DashboardPage() {
                   const card = CARDS.find((c) => c.id === t.cardId);
                   return (
                     <tr key={t.id} className="table-row">
-                      <td className="p-3 text-fg-muted">{new Date(t.date).toLocaleDateString("en-IN", { month: "short", day: "numeric" })}</td>
+                      <td className="p-3 text-fg-muted">
+                        {new Date(t.date).toLocaleDateString("en-IN", { month: "short", day: "numeric" })}
+                      </td>
                       <td className="font-medium">{t.merchant}</td>
                       <td>
-                        <Link href={`/cards/${t.cardId}`} className="pill-info hover:underline">{card?.short ?? t.cardId}</Link>
+                        <Link href={`/cards/${t.cardId}`} className="pill-info hover:underline">
+                          {card?.short ?? t.cardId}
+                        </Link>
                       </td>
                       <td className="text-right">{inrExact(t.amount)}</td>
-                      <td className="text-right text-success p-3">{inrExact(t.rewardInr)}</td>
+                      <td className="p-3 text-right text-success">{inrExact(t.rewardInr)}</td>
                     </tr>
                   );
                 })}

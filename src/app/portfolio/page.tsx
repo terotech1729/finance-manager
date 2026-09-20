@@ -22,20 +22,13 @@ export default function InvestmentAnalyzerPage() {
   useEffect(() => { setMounted(true); setHoldings(loadHoldings()); }, [dataVersion]);
 
   const data = useMemo(() => {
-    // Real estate is leveraged + illiquid, so we report it in its own section.
+    // Property is illiquid and has no cost basis worth reporting, so it sits in its own
+    // section — but its full value counts toward net worth.
     const liquid = holdings.filter((h) => h.type !== "real_estate");
     const reList = holdings.filter((h) => h.type === "real_estate");
 
-    const reRows = reList.map((h) => {
-      const down = holdingInvested(h);
-      const propertyValue = h.realEstate?.propertyValue ?? down;
-      const loan = h.realEstate?.loanAmount ?? 0;
-      return { h, down, propertyValue, loan, equity: propertyValue - loan, emi: h.realEstate?.emi ?? 0 };
-    });
-    const reTotals = reRows.reduce(
-      (a, r) => ({ value: a.value + r.propertyValue, loan: a.loan + r.loan, equity: a.equity + r.equity, down: a.down + r.down, emi: a.emi + r.emi }),
-      { value: 0, loan: 0, equity: 0, down: 0, emi: 0 }
-    );
+    const reRows = reList.map((h) => ({ h, value: holdingValue(h), updated: h.currentValueDate }));
+    const reTotals = { value: reRows.reduce((a, r) => a + r.value, 0) };
 
     const rows = liquid.map((h) => {
       const invested = holdingInvested(h);
@@ -221,19 +214,24 @@ export default function InvestmentAnalyzerPage() {
       </>
       )}
 
-      {/* ===== Real estate (own section: leveraged + illiquid) ===== */}
+      {/* ===== Property (illiquid, tracked as a worth figure) ===== */}
       {data.reRows.length > 0 && (
         <section className="space-y-4">
           <div className="flex items-center gap-2">
             <span className="text-xl">🏠</span>
-            <h2 className="text-lg font-bold">Real estate</h2>
+            <h2 className="text-lg font-bold">Property</h2>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="stat-tile"><div className="label">Property value</div><div className="text-2xl font-semibold mt-1">{inr(data.reTotals.value)}</div></div>
-            <div className="stat-tile"><div className="label">Outstanding loan</div><div className="text-2xl font-semibold mt-1 text-danger">{inr(data.reTotals.loan)}</div></div>
-            <div className="stat-tile"><div className="label">Net equity</div><div className="text-2xl font-semibold mt-1 text-success">{inr(data.reTotals.equity)}</div><div className="text-xs text-fg-muted mt-1">value − loan</div></div>
-            <div className="stat-tile"><div className="label">EMI / month</div><div className="text-2xl font-semibold mt-1">{inr(data.reTotals.emi)}</div></div>
+            <div className="stat-tile">
+              <div className="label">Total worth</div>
+              <div className="text-2xl font-semibold mt-1">{inr(data.reTotals.value)}</div>
+              <div className="text-xs text-fg-muted mt-1">counts in full toward net worth</div>
+            </div>
+            <div className="stat-tile">
+              <div className="label">Properties</div>
+              <div className="text-2xl font-semibold mt-1">{data.reRows.length}</div>
+            </div>
           </div>
 
           <div className="card-shell overflow-x-auto">
@@ -241,32 +239,28 @@ export default function InvestmentAnalyzerPage() {
               <thead className="text-fg-muted text-[10px] uppercase tracking-wide">
                 <tr>
                   <th className="text-left p-3">Property</th>
-                  <th className="text-right">Value</th>
-                  <th className="text-right">Down pmt</th>
-                  <th className="text-right">Loan</th>
-                  <th className="text-right">Equity</th>
-                  <th className="text-right">EMI</th>
-                  <th className="text-right">Rate</th>
-                  <th className="text-right p-3">Tenure</th>
+                  <th className="text-right">Worth</th>
+                  <th className="text-right p-3">Last updated</th>
                 </tr>
               </thead>
               <tbody>
                 {data.reRows.map((r) => (
                   <tr key={r.h.id} className="table-row">
-                    <td className="p-3 font-medium">{r.h.name}{r.h.realEstate?.lender ? <span className="text-fg-muted font-normal"> · {r.h.realEstate.lender}</span> : ""}</td>
-                    <td className="text-right">{inrExact(r.propertyValue)}</td>
-                    <td className="text-right text-fg-muted">{inrExact(r.down)}</td>
-                    <td className="text-right text-danger">{inrExact(r.loan)}</td>
-                    <td className="text-right font-medium text-success">{inrExact(r.equity)}</td>
-                    <td className="text-right">{r.emi ? inrExact(r.emi) : "—"}</td>
-                    <td className="text-right text-fg-muted">{r.h.realEstate?.interestRate != null ? `${r.h.realEstate.interestRate}%` : "—"}</td>
-                    <td className="text-right p-3 text-fg-muted">{r.h.realEstate?.tenureMonths != null ? `${Math.round(r.h.realEstate.tenureMonths / 12)}y` : "—"}</td>
+                    <td className="p-3 font-medium">{r.h.name}</td>
+                    <td className="text-right font-medium">{inrExact(r.value)}</td>
+                    <td className="text-right p-3 text-fg-muted">
+                      {r.updated
+                        ? new Date(r.updated).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })
+                        : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-fg-muted">Net equity = current property value − outstanding loan. Update property value anytime via “Update values” on the Investments page.</p>
+          <p className="text-xs text-fg-muted">
+            Update the figure anytime via “Update values” on the Investments page.
+          </p>
         </section>
       )}
     </div>

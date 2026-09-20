@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   loadHoldings, addHolding, deleteHolding, addContribution, deleteContribution,
-  updateHolding, holdingInvested, holdingValue, holdingHasValue,
+  updateHolding, holdingInvested, holdingValue, holdingHasValue, holdingTracksPnl,
 } from "@/lib/storage";
 import { useDataVersion } from "@/lib/useLiveData";
 import type { Holding, InvestmentType, PaymentMethod } from "@/lib/types";
@@ -33,14 +33,8 @@ export default function InvestmentsPage() {
   const [date, setDate] = useState(() => todayLocal());
   const [method, setMethod] = useState<PaymentMethod>("upi");
   const [notes, setNotes] = useState("");
-  // Real-estate specific
+  // Property is just a worth figure you keep up to date — no loan, no EMI.
   const [reValue, setReValue] = useState("");
-  const [reDown, setReDown] = useState("");
-  const [reLoan, setReLoan] = useState("");
-  const [reLender, setReLender] = useState("");
-  const [reRate, setReRate] = useState("");
-  const [reEmi, setReEmi] = useState("");
-  const [reTenure, setReTenure] = useState("");
 
   const isRE = type === "real_estate";
 
@@ -54,14 +48,33 @@ export default function InvestmentsPage() {
   const dataVersion = useDataVersion();
   useEffect(() => { setHoldings(loadHoldings()); }, [dataVersion]);
 
-  const anyValues = useMemo(() => holdings.some((h) => holdingHasValue(h)), [holdings]);
+  const anyValues = useMemo(
+    () => holdings.some((h) => holdingTracksPnl(h) && holdingHasValue(h)),
+    [holdings]
+  );
   const totals = useMemo(() => {
-    let invested = 0, value = 0;
-    holdings.forEach((h) => { const p = pnl(h); invested += p.invested; value += p.value; });
+    // Property sits outside the P/L maths but still counts toward what you're worth.
+    let invested = 0, value = 0, property = 0, propertyCount = 0;
+    holdings.forEach((h) => {
+      if (!holdingTracksPnl(h)) {
+        property += holdingValue(h);
+        propertyCount++;
+        return;
+      }
+      const p = pnl(h);
+      invested += p.invested;
+      value += p.value;
+    });
     const thisMonth = holdings.reduce((a, h) => a + (h.contributions ?? [])
       .filter((c) => c.date.slice(0, 7) === todayLocal().slice(0, 7))
       .reduce((s, c) => s + c.amount, 0), 0);
-    return { invested, value, abs: value - invested, pct: invested > 0 ? ((value - invested) / invested) * 100 : 0, thisMonth };
+    return {
+      invested, value, property, propertyCount,
+      netWorth: value + property,
+      abs: value - invested,
+      pct: invested > 0 ? ((value - invested) / invested) * 100 : 0,
+      thisMonth,
+    };
   }, [holdings]);
 
   const sorted = useMemo(
@@ -75,26 +88,14 @@ export default function InvestmentsPage() {
     if (!name.trim()) return;
     let h: Holding;
     if (isRE) {
-      const down = num(reDown) ?? 0;
       h = {
         id: newId(),
         name: name.trim(),
         type,
         platform: platform.trim() || undefined,
-        // Down payment is the equity you've actually deployed (cost basis).
-        contributions: down > 0
-          ? [{ id: newId(), date: localDateToISO(date), amount: down, note: "Down payment" }]
-          : [],
+        contributions: [],
+        currentValue: num(reValue),
         currentValueDate: localDateToISO(date),
-        realEstate: {
-          propertyValue: num(reValue),
-          downPayment: down || undefined,
-          loanAmount: num(reLoan),
-          lender: reLender.trim() || undefined,
-          interestRate: num(reRate),
-          emi: num(reEmi),
-          tenureMonths: reTenure.trim() ? Math.round((num(reTenure) ?? 0) * 12) : undefined,
-        },
         notes: notes.trim() || undefined,
       };
     } else {
@@ -115,7 +116,7 @@ export default function InvestmentsPage() {
     }
     setHoldings(addHolding(h));
     setName(""); setPlatform(""); setOpening(""); setCurVal(""); setNotes(""); setDate(todayLocal());
-    setReValue(""); setReDown(""); setReLoan(""); setReLender(""); setReRate(""); setReEmi(""); setReTenure("");
+    setReValue("");
     setShowAdd(false);
   };
 
@@ -150,12 +151,23 @@ export default function InvestmentsPage() {
           <div className="text-2xl font-semibold mt-1">{inr(totals.thisMonth)}</div>
           <div className="text-xs text-fg-muted mt-1">contributions in {todayLocal().slice(0, 7)}</div>
         </div>
+        {totals.property > 0 && (
+          <div className="stat-tile">
+            <div className="label">Property</div>
+            <div className="text-2xl font-semibold mt-1">{inr(totals.property)}</div>
+            <div className="text-xs text-fg-muted mt-1">
+              {totals.propertyCount} propert{totals.propertyCount === 1 ? "y" : "ies"} · counts in full
+            </div>
+          </div>
+        )}
         {anyValues ? (
           <>
             <div className="stat-tile">
-              <div className="label">Current value</div>
-              <div className="text-2xl font-semibold mt-1">{inr(totals.value)}</div>
-              <div className="text-xs text-fg-muted mt-1">as last updated by you</div>
+              <div className="label">{totals.property > 0 ? "Net worth" : "Current value"}</div>
+              <div className="text-2xl font-semibold mt-1">{inr(totals.netWorth)}</div>
+              <div className="text-xs text-fg-muted mt-1">
+                {totals.property > 0 ? `${inr(totals.value)} market + ${inr(totals.property)} property` : "as last updated by you"}
+              </div>
             </div>
             <div className="stat-tile">
               <div className="label">Unrealized P/L</div>
@@ -164,6 +176,7 @@ export default function InvestmentsPage() {
               </div>
               <div className={`text-xs mt-1 ${totals.abs >= 0 ? "text-success" : "text-danger"}`}>
                 {totals.abs >= 0 ? "+" : "−"}{Math.abs(totals.pct).toFixed(2)}%
+                {totals.property > 0 && <span className="text-fg-muted"> · market holdings only</span>}
               </div>
             </div>
           </>
@@ -189,12 +202,7 @@ export default function InvestmentsPage() {
             let next = holdings;
             Object.entries(map).forEach(([id, val]) => {
               if (val == null) return;
-              const hh = holdings.find((x) => x.id === id);
-              if (hh?.type === "real_estate") {
-                next = updateHolding(id, { realEstate: { ...(hh.realEstate ?? {}), propertyValue: val }, currentValueDate: localDateToISO(d) });
-              } else {
-                next = updateHolding(id, { currentValue: val, currentValueDate: localDateToISO(d) });
-              }
+              next = updateHolding(id, { currentValue: val, currentValueDate: localDateToISO(d) });
             });
             setHoldings(next);
             setShowBulkValues(false);
@@ -230,36 +238,18 @@ export default function InvestmentsPage() {
               {isRE ? (
                 <>
                   <div>
-                    <div className="label mb-1">Property value (₹)</div>
+                    <div className="label mb-1">What it&apos;s worth (₹)</div>
                     <input className="input" placeholder="e.g. 8000000" value={reValue} onChange={(e) => setReValue(e.target.value)} inputMode="numeric" />
-                  </div>
-                  <div>
-                    <div className="label mb-1">Down payment (₹)</div>
-                    <input className="input" placeholder="e.g. 1600000" value={reDown} onChange={(e) => setReDown(e.target.value)} inputMode="numeric" />
-                  </div>
-                  <div>
-                    <div className="label mb-1">Loan amount (₹)</div>
-                    <input className="input" placeholder="outstanding e.g. 6400000" value={reLoan} onChange={(e) => setReLoan(e.target.value)} inputMode="numeric" />
                   </div>
                   <div>
                     <div className="label mb-1">As of date</div>
                     <input type="date" className="input" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} />
                   </div>
-                  <div>
-                    <div className="label mb-1">Lender <span className="text-fg-muted text-[10px] normal-case">(optional)</span></div>
-                    <input className="input" placeholder="e.g. HDFC, SBI" value={reLender} onChange={(e) => setReLender(e.target.value)} />
-                  </div>
-                  <div>
-                    <div className="label mb-1">Interest % p.a. <span className="text-fg-muted text-[10px] normal-case">(optional)</span></div>
-                    <input className="input" placeholder="e.g. 8.5" value={reRate} onChange={(e) => setReRate(e.target.value)} inputMode="numeric" />
-                  </div>
-                  <div>
-                    <div className="label mb-1">EMI / month (₹) <span className="text-fg-muted text-[10px] normal-case">(optional)</span></div>
-                    <input className="input" placeholder="e.g. 55000" value={reEmi} onChange={(e) => setReEmi(e.target.value)} inputMode="numeric" />
-                  </div>
-                  <div>
-                    <div className="label mb-1">Tenure (years) <span className="text-fg-muted text-[10px] normal-case">(optional)</span></div>
-                    <input className="input" placeholder="e.g. 20" value={reTenure} onChange={(e) => setReTenure(e.target.value)} inputMode="numeric" />
+                  <div className="sm:col-span-2 lg:col-span-2 self-end">
+                    <p className="text-xs text-fg-muted">
+                      The full value counts toward your net worth. Update it whenever your estimate changes —
+                      no loan, EMI or down payment to maintain.
+                    </p>
                   </div>
                 </>
               ) : (
@@ -339,25 +329,15 @@ export default function InvestmentsPage() {
                       </div>
                       <div className="text-xs text-fg-muted mt-1">
                         {h.type === "real_estate"
-                          ? <>Down payment {inrExact(p.invested)}{(h.contributions ?? []).length > 1 ? ` + ${(h.contributions ?? []).length - 1} top-up(s)` : ""}</>
+                          ? <>Counts in full toward net worth</>
                           : <>Invested {inrExact(p.invested)} · {(h.contributions ?? []).length} contribution{(h.contributions ?? []).length === 1 ? "" : "s"}</>}
                         {p.hasValue && h.currentValueDate && <> · as of {new Date(h.currentValueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })}</>}
                       </div>
-                      {h.type === "real_estate" && h.realEstate && (
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs">
-                          <span>Property <b>{inrExact(h.realEstate.propertyValue ?? 0)}</b></span>
-                          <span className="text-danger">Loan {inrExact(h.realEstate.loanAmount ?? 0)}</span>
-                          {h.realEstate.emi != null && <span>EMI {inrExact(h.realEstate.emi)}/mo</span>}
-                          {h.realEstate.interestRate != null && <span>{h.realEstate.interestRate}% p.a.</span>}
-                          {h.realEstate.tenureMonths != null && <span>{Math.round(h.realEstate.tenureMonths / 12)}y</span>}
-                          {h.realEstate.lender && <span className="text-fg-muted">· {h.realEstate.lender}</span>}
-                        </div>
-                      )}
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-xl font-bold">{inrExact(p.value)}</div>
-                      <div className="text-[11px] text-fg-muted uppercase tracking-wide">{h.type === "real_estate" ? "net equity" : p.hasValue ? "current value" : "invested"}</div>
-                      {p.hasValue && (
+                      <div className="text-[11px] text-fg-muted uppercase tracking-wide">{h.type === "real_estate" ? "worth" : p.hasValue ? "current value" : "invested"}</div>
+                      {p.hasValue && holdingTracksPnl(h) && (
                         <div className={`text-xs font-medium ${p.abs >= 0 ? "text-success" : "text-danger"}`}>
                           {p.abs >= 0 ? "+" : "−"}{inrExact(Math.abs(p.abs))} ({p.abs >= 0 ? "+" : "−"}{Math.abs(p.pct).toFixed(2)}%)
                         </div>
@@ -392,15 +372,11 @@ export default function InvestmentsPage() {
 
                   {valueFor === h.id && (
                     <UpdateValueRow
-                      current={h.type === "real_estate" ? h.realEstate?.propertyValue : h.currentValue}
-                      label={h.type === "real_estate" ? "Property value (₹)" : "Current value (₹)"}
+                      current={h.currentValue}
+                      label={h.type === "real_estate" ? "What it's worth (₹)" : "Current value (₹)"}
                       onCancel={() => setValueFor(null)}
                       onSubmit={(val, d) => {
-                        if (h.type === "real_estate") {
-                          setHoldings(updateHolding(h.id, { realEstate: { ...(h.realEstate ?? {}), propertyValue: val }, currentValueDate: localDateToISO(d) }));
-                        } else {
-                          setHoldings(updateHolding(h.id, { currentValue: val, currentValueDate: localDateToISO(d) }));
-                        }
+                        setHoldings(updateHolding(h.id, { currentValue: val, currentValueDate: localDateToISO(d) }));
                         setValueFor(null);
                       }}
                     />
@@ -471,7 +447,7 @@ function AddMoneyRow({ onSubmit, onCancel }: { onSubmit: (amount: number, date: 
 function BulkValueEditor({ holdings, onSave, onCancel }: { holdings: Holding[]; onSave: (map: Record<string, number | null>, date: string) => void; onCancel: () => void; }) {
   const [vals, setVals] = useState<Record<string, string>>(
     () => Object.fromEntries(holdings.map((h) => {
-      const cur = h.type === "real_estate" ? h.realEstate?.propertyValue : h.currentValue;
+      const cur = h.currentValue;
       return [h.id, cur != null ? String(cur) : ""];
     }))
   );
@@ -497,12 +473,12 @@ function BulkValueEditor({ holdings, onSave, onCancel }: { holdings: Holding[]; 
               <div key={h.id} className="grid grid-cols-[1fr_auto] items-center gap-3">
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{typeIcon(h.type)} {h.name}</div>
-                  <div className="text-[11px] text-fg-muted">{h.type === "real_estate" ? "down payment" : "invested"} {inrExact(invested)}{h.platform ? ` · ${h.platform}` : ""}</div>
+                  <div className="text-[11px] text-fg-muted">{h.type === "real_estate" ? "property" : `invested ${inrExact(invested)}`}{h.platform ? ` · ${h.platform}` : ""}</div>
                 </div>
                 <input
                   className="input w-40"
                   inputMode="numeric"
-                  placeholder={h.type === "real_estate" ? "property ₹" : "current ₹"}
+                  placeholder={h.type === "real_estate" ? "worth ₹" : "current ₹"}
                   value={vals[h.id] ?? ""}
                   onChange={(e) => setVals((m) => ({ ...m, [h.id]: e.target.value }))}
                 />
