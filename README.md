@@ -158,6 +158,57 @@ Visit `https://yourdomain.com/api/scrape-cashkaro` to get a quick scrape-on-dema
 
 ---
 
+## Keeping Supabase from pausing
+
+Supabase pauses a free project after **7 days without database activity**. The app only
+talks to Supabase while a signed-in tab is open, so a quiet week gets the project paused
+even if you're using the portal every day — the data sits happily in localStorage and
+never touches the server.
+
+A heartbeat fixes this: one row written per day into a `keepalive` table, with anything
+older than 14 days deleted in the same request. Real database traffic, and it can't grow.
+
+**One-time setup**
+
+1. Re-run `supabase-schema.sql` in the Supabase SQL Editor. It's idempotent, so running
+   it again is safe — it adds the `keepalive` table and its policies and leaves
+   `finance_data` alone.
+2. Add two repo secrets under **Settings → Secrets and variables → Actions**:
+   - `SUPABASE_URL` — `https://<project-ref>.supabase.co`
+   - `SUPABASE_ANON_KEY` — Project Settings → API → *anon public*
+3. Unpause the project once from the dashboard if it's already paused.
+
+**What runs**
+
+| Trigger | Schedule | Independent of |
+| --- | --- | --- |
+| `vercel.json` cron → `/api/keepalive` | daily, 03:30 UTC | GitHub |
+| `.github/workflows/keepalive.yml` | every other day | Vercel |
+
+Two triggers on purpose: either alone is enough, so a failed deploy or a disabled
+workflow doesn't quietly cost you the database. Both hit the same table, and both are
+well inside the 7-day window.
+
+**Checking it works**
+
+Open `https://yourdomain.com/api/keepalive` — it returns `{"ok":true,...}` and writes a
+row there and then. Or run the workflow by hand from the Actions tab. In Supabase,
+`select * from keepalive order by pinged_at desc limit 5;` shows the recent beats.
+
+**Two caveats worth knowing**
+
+- GitHub disables scheduled workflows in a repo with no commits for 60 days — exactly
+  when you'd be relying on this. The workflow's last step notices when the newest commit
+  is over 50 days old and touches `.github/last-keepalive` to reset that clock.
+- The `keepalive` table is deliberately writable by the `anon` role, unlike
+  `finance_data`. It holds only timestamps, the anon key is already public in the browser
+  bundle, and deletes are restricted to rows older than 14 days so nobody can wipe the
+  history. `scripts/keepalive-rls-check.sql` proves those boundaries against a throwaway
+  Postgres. If you'd rather not expose even that, set `SUPABASE_SERVICE_ROLE_KEY` in
+  Vercel and the route will use it instead.
+
+---
+
 ## Adapting to your portfolio changes
 
 ### When a new card arrives (e.g., Swiggy BLCK)

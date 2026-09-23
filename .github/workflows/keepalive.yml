@@ -1,0 +1,87 @@
+name: Supabase keep-alive
+
+# Free Supabase projects are paused after 7 days without database activity, and the
+# app only reaches Supabase while a signed-in tab is open. This writes a heartbeat
+# row every other day so a quiet week can't get the project paused.
+#
+# Deliberately independent of the Vercel cron that hits /api/keepalive: either one
+# alone is enough, and running both means a broken deployment or a disabled workflow
+# doesn't silently cost you the database.
+#
+# One-time setup — repo Settings → Secrets and variables → Actions:
+#   SUPABASE_URL       https://<project-ref>.supabase.co
+#   SUPABASE_ANON_KEY  Project Settings → API → "anon public"
+# Then run supabase-schema.sql so the keepalive table exists.
+
+on:
+  schedule:
+    - cron: "17 4 */2 * *" # every other day at 04:17 UTC (~09:47 IST)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write heartbeat row
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "::error::SUPABASE_URL / SUPABASE_ANON_KEY secrets are not set."
+            exit 1
+          fi
+          BASE="${SUPABASE_URL%/}"
+          CODE=$(curl -sS -o /tmp/insert.json -w '%{http_code}' \
+            -X POST "$BASE/rest/v1/keepalive" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" \
+            -d '{"source":"github-actions"}')
+          echo "insert HTTP $CODE"
+          cat /tmp/insert.json || true
+          # A paused or misconfigured project shows up here rather than failing quietly.
+          case "$CODE" in
+            200|201) ;;
+            *) echo "::error::Heartbeat insert failed (HTTP $CODE)"; exit 1 ;;
+          esac
+
+      - name: Prune rows older than 14 days
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          BASE="${SUPABASE_URL%/}"
+          CUTOFF=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          CODE=$(curl -sS -o /tmp/prune.json -w '%{http_code}' \
+            -X DELETE "$BASE/rest/v1/keepalive?pinged_at=lt.$CUTOFF" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "prune HTTP $CODE (cutoff $CUTOFF)"
+
+      # GitHub disables scheduled workflows in a repo with no commits for 60 days —
+      # which would silently kill this heartbeat exactly when you're least active and
+      # need it most. Touch a file well before that deadline to reset the clock.
+      - name: Keep the schedule from being disabled
+        run: |
+          set -euo pipefail
+          AGE_DAYS=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          echo "Last commit was $AGE_DAYS day(s) ago"
+          if [ "$AGE_DAYS" -lt 50 ]; then
+            echo "Repo is active; nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          date -u +%Y-%m-%dT%H:%M:%SZ > .github/last-keepalive
+          git add .github/last-keepalive
+          git commit -m "chore: keep scheduled workflows enabled"
+          git push
