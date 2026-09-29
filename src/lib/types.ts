@@ -13,6 +13,12 @@ export type Card = {
   notes?: string;
   /** "closed" keeps the record so historical transactions still resolve, but the card never competes for new spend. */
   status: "active" | "applied" | "future" | "closed";
+  /**
+   * Last statement month (YYYY-MM) a closed card still has a bill for. Closing a card
+   * doesn't settle its final statement, so Bills keeps showing it up to and including
+   * this month and drops it on its own afterwards.
+   */
+  finalBillMonth?: string;
   pointValue: number; // ₹ per point at best redemption
   baseRatePct: number;
   bestRatePct: number;

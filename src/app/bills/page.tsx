@@ -3,16 +3,13 @@
 import { useEffect, useState } from "react";
 import { addTransaction, loadState, loadTransactions, saveState, type AppState } from "@/lib/storage";
 import { useDataVersion } from "@/lib/useLiveData";
-import { CARDS } from "@/lib/cards";
+import { billableCardsFor } from "@/lib/cards";
 import { HISTORICAL_SPEND } from "@/lib/history";
 import { applyCardSpend } from "@/lib/spendTracking";
 import { inr, inrExact, newId, todayLocal, localDateToISO } from "@/lib/utils";
 import type { Transaction } from "@/lib/types";
 import { Icon } from "@/components/Icons";
 import { Callout } from "@/components/Callout";
-
-// Only cards you actually hold/use for billing.
-const BILL_CARDS = CARDS.filter((c) => c.status === "active");
 
 function monthLabelFull(ym: string): string {
   const [y, m] = ym.split("-").map(Number);
@@ -33,6 +30,7 @@ export default function BillsPage() {
 
   if (!state) return <div className="text-fg-muted">Loading…</div>;
 
+  const billCards = billableCardsFor(month);
   const seedForMonth = HISTORICAL_SPEND.find((m) => m.month === month)?.byCard ?? {};
 
   const loggedSum = (cardId: string) =>
@@ -86,7 +84,7 @@ export default function BillsPage() {
 
   // Summary
   let totalBilled = 0, totalPaid = 0, unpaid = 0, anyBill = 0;
-  BILL_CARDS.forEach((c) => {
+  billCards.forEach((c) => {
     const b = getBill(c.id);
     const amt = b?.billAmount ?? (seedForMonth[c.id] ?? 0);
     if (amt > 0) { anyBill++; totalBilled += amt; if (b?.paid) totalPaid += amt; else unpaid++; }
@@ -123,7 +121,7 @@ export default function BillsPage() {
             </tr>
           </thead>
           <tbody>
-            {BILL_CARDS.map((c) => {
+            {billCards.map((c) => {
               const logged = loggedSum(c.id);
               const billStr = billValue(c.id);
               const bill = Number(billStr.replace(/[^0-9.]/g, "")) || 0;
@@ -131,7 +129,14 @@ export default function BillsPage() {
               const b = getBill(c.id);
               return (
                 <tr key={c.id} className="table-row align-middle">
-                  <td className="p-3 font-medium">{c.short}</td>
+                  <td className="p-3 font-medium">
+                    {c.short}
+                    {c.status === "closed" && (
+                      <span className="ml-2 pill-warning text-[10px] normal-case" title={`Card closed — ${monthLabelFull(c.finalBillMonth ?? month)} is its last statement, after which it drops off this page.`}>
+                        final bill
+                      </span>
+                    )}
+                  </td>
                   <td className="text-right text-fg-muted">{inrExact(logged)}</td>
                   <td className="text-right">
                     <input

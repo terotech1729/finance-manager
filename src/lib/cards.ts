@@ -82,6 +82,9 @@ export const CARDS: readonly Card[] = [
     // ₹7L Taj voucher not being chased, card closing before the ~3 Dec renewal fee.
     // Kept in the catalogue only so past PT transactions still resolve a name.
     status: "closed",
+    // September 2026 was the last statement; it appears on Bills through that month
+    // so the final payment can be recorded, then drops out by itself in October.
+    finalBillMonth: "2026-09",
     pointValue: 0.5,
     baseRatePct: 1.0,
     // Post-nerf ceiling at ₹7L: 14,000 base MR + 10,000 milestone MR + ₹20k Taj ≈ 4.6%.
@@ -277,6 +280,20 @@ export function getCardById(id: string): Card | undefined {
 export function isRoutableCard(cardId: string): boolean {
   const card = getCardById(cardId);
   return !card || card.status !== "closed";
+}
+
+/**
+ * Cards that can carry a bill for a given statement month (YYYY-MM).
+ *
+ * Closing a card doesn't settle its last statement, so a closed card stays billable
+ * through its `finalBillMonth` and disappears by itself the month after — no cleanup
+ * edit needed once the final payment is recorded.
+ */
+export function billableCardsFor(month: string, cards: readonly Card[] = CARDS): Card[] {
+  return cards.filter((c) => {
+    if (c.status === "active") return true;
+    return c.status === "closed" && !!c.finalBillMonth && month <= c.finalBillMonth;
+  });
 }
 
 /** Sum of preset limits on active cards. Charge cards with creditLimit 0 (e.g. Amex Gold) are excluded. */
