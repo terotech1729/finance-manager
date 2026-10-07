@@ -78,9 +78,11 @@ export const CARDS: readonly Card[] = [
     feeWaivable: false,
     forexPct: 3.5,
     loungeRule: "8/yr domestic (needs ₹1L prior qtr) + Priority Pass",
-    // Being wound down after the 10 Sept 2026 devaluation: ₹4L milestone collected,
-    // ₹7L Taj voucher not being chased, card closing before the ~3 Dec renewal fee.
-    // Kept in the catalogue only so past PT transactions still resolve a name.
+    // Closed 7 Oct 2026 after the 10 Sept devaluation: ₹4L milestone collected,
+    // ₹7L Taj voucher not chased, shut before the ~3 Dec renewal fee. The full
+    // ₹10.2L limit was reassigned to Amex MRCC on closure — the figure above is
+    // retained as history only, and every limit aggregate filters to active cards.
+    // Kept in the catalogue so past PT transactions still resolve a name.
     status: "closed",
     // September 2026 was the last statement; it appears on Bills through that month
     // so the final payment can be recorded, then drops out by itself in October.
@@ -98,7 +100,8 @@ export const CARDS: readonly Card[] = [
     short: "Amex MRCC",
     network: "Amex",
     issuer: "American Express",
-    creditLimit: 480000,
+    // Was ₹4.8L; Amex moved Platinum Travel's full ₹10.2L here when PT closed (7 Oct 2026).
+    creditLimit: 1020000,
     annualFee: 5310,
     feeWaivable: true,
     feeWaiverAt: 150000,
