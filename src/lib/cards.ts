@@ -235,6 +235,7 @@ export const CARDS: readonly Card[] = [
     feeWaivable: true,
     feeWaiverAt: 200000,
     forexPct: 1.99,
+    // The only international lounge access left in the portfolio after Amex PT closed.
     loungeRule: "2 domestic/yr + 1 international/yr",
     status: "active",
     pointValue: 1.0,
@@ -243,7 +244,42 @@ export const CARDS: readonly Card[] = [
     statementDay: 1,
     notes: "Visa Infinite. 10% statement CB (auto ~45d) on dining, food delivery, grocery, shopping & utilities — shared cap ₹1,200/mo; Amazon/Flipkart = 1.5% only; Myntra 10% promo till 31 Oct 2026 then 1.5%. Hospital/local transport = 0%. Welcome: ₹1k CB @ ₹25k/30d + app login; activate ≥₹300 → ₹750 Amazon/Zomato/Swiggy voucher; online+VKYC → ₹250 Amazon. Live+ Reserve (DineWithTimesPrime) from 1 Aug 2026. Perks: District + BookMyShow BOGO, District Play sports, Sephora 10%, Times Prime lifestyle, 2 domestic + 1 intl lounge/yr, ₹250/qtr contactless fuel CB (≥₹10k spend), ITC/Avis/IHG/Agoda/Meet&Greet via Infinite. Forex 1.99%. Fee ₹999+GST, waived at ₹2L/yr.",
   },
+  {
+    id: "hdfc_regalia_gold",
+    name: "HDFC Bank Regalia Gold",
+    short: "Regalia Gold",
+    network: "Visa / Mastercard",
+    issuer: "HDFC Bank",
+    // Unknown until issued. Applied cards don't render a limit, so 0 is safe here.
+    creditLimit: 0,
+    annualFee: 2950, // ₹2,500 + 18% GST
+    feeWaivable: true,
+    feeWaiverAt: 400000,
+    forexPct: 2.0,
+    // 3 domestic/qtr became spend-gated on ₹60k in the preceding quarter from 1 Jul 2026.
+    loungeRule: "3 domestic/qtr (₹60k prior qtr) + 6 international/yr",
+    status: "applied",
+    // 1 RP = ₹0.65 on the Exclusive Gold Catalogue; ₹0.50 flights/airmiles, ₹0.35 vouchers.
+    pointValue: 0.65,
+    // 5 RP/₹200 valued at the ₹0.50 flight rate — the redemption actually used for vouchers.
+    baseRatePct: 1.25,
+    // 5X on Myntra / Nykaa / Reliance Digital = 25 RP/₹200 at ₹0.65.
+    bestRatePct: 8.1,
+    notes:
+      "Applied 8 Oct 2026, pending issuance. Taken as the general-purpose big-purchase card: " +
+      "jewellery and automotive both earn (exclusions are only fuel, cash advances, balance " +
+      "payments, card fees and SmartEMI), unlike Live+ which pays 0% on MCC 5944. Milestones " +
+      "₹1,500 voucher per ₹1.5L calendar quarter and ₹5,000 SmartBuy flight voucher at ₹5L " +
+      "annual, so one ₹5L purchase returns ≈₹12,750 and waives the ₹4L fee bar by itself. " +
+      "Also the stepping stone to Diners Black Metal, whose upgrade route needs a ₹5L limit " +
+      "plus ₹5–6L of spend in 6 months and grants first year free.",
+  },
 ];
+
+// Regalia Gold's ₹1.5L-quarterly and ₹5L/₹7.5L annual milestones are deliberately NOT in
+// ANNUAL_MILESTONES yet — that list is rendered unfiltered by /milestones, so adding them
+// before the card is issued would show thresholds at 0% progress for a card not yet held.
+// Add them when status flips to "active".
 
 export const ANNUAL_MILESTONES: readonly AnnualMilestone[] = [
   // Amex PT milestones removed with the card (₹4L collected; ₹7L Taj not being chased).
@@ -278,11 +314,13 @@ export function getCardById(id: string): Card | undefined {
 
 /**
  * Can this route still be recommended? Non-card route ids ("upi", "giftcard",
- * "amazon_pay_balance"…) always pass; closed cards never do.
+ * "amazon_pay_balance"…) always pass. A known card must be in hand: "closed" is gone and
+ * "applied"/"future" aren't here yet, so neither can be ranked, shown as an alternative,
+ * trigger a tip, or raise a benefit-claim reminder.
  */
 export function isRoutableCard(cardId: string): boolean {
   const card = getCardById(cardId);
-  return !card || card.status !== "closed";
+  return !card || card.status === "active";
 }
 
 /**

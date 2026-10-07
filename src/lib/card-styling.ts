@@ -103,6 +103,14 @@ export const CARD_STYLES: Record<string, CardStyle> = {
     topLabel: "LIVE+",
     patternClass: "card-pattern-platinum",
   },
+  hdfc_regalia_gold: {
+    bgClass: "bg-gradient-to-br from-yellow-700 via-amber-600 to-yellow-900",
+    fgClass: "text-amber-50",
+    network: "visa",
+    issuerLabel: "HDFC BANK",
+    topLabel: "REGALIA GOLD",
+    patternClass: "card-pattern-diagonal",
+  },
   amazon_pay_icici: {
     bgClass: "bg-gradient-to-br from-orange-500 via-amber-600 to-slate-800",
     fgClass: "text-white",
