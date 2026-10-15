@@ -224,7 +224,36 @@ With an AI key configured, the portal keeps itself current instead:
 - **`/api/scan/portfolio`** (daily, 01:40 UTC) asks whether any card is worth adding or
   dropping, judged against your actual spend by category and the milestones you already
   have in flight, so it accounts for cannibalisation rather than chasing headline rates.
+- **`/api/scan/offers`** (daily, 02:20 UTC) looks for live, time-limited offers on the
+  cards you hold — issuer offer zones, SmartBuy and ShopWise rotations, festival
+  campaigns. These are always advisory and carry an expiry, because an offer that lapses
+  must never be written into a card's baseline terms the way a term change is.
 - **`/intel`** shows what the scans found, with sources.
+
+### The deterministic half
+
+Not everything here is a model. Four modules do real arithmetic over your own data, with
+no network and no AI key required — they work on a fresh install:
+
+- **Deadline watcher** (`src/lib/deadlines.ts`) — expiring points, closing milestone
+  windows and one-off programme cutoffs, each with the rupees at stake and days left.
+- **Anomaly watch** (`src/lib/anomalies.ts`) — double charges, subscription price creep,
+  fee waivers running behind pace, and spend sitting on cards that earn nothing on it.
+  Deliberately rule-based: these are questions with exact answers.
+- **Milestone planner** (`src/lib/planner.ts`) — what is still collectable, ordered by
+  return on the spend still required rather than by prize size, so a small reward within
+  reach outranks a large one that isn't. Capacity is inferred from your logged history.
+- **Ask Jarvis** (`src/lib/ai/ask.ts`) — the one place the two halves meet. Every number
+  in the answer is computed by the same code that renders the portal; the model only
+  selects from that and explains it. Asked unaided, a model will produce a fluent wrong
+  answer, because the real one depends on milestone positions and credit limits it can't
+  see.
+
+**Quick log** (`/transactions`) parses "2400 at Toit last night on MRCC" into a draft.
+It always lands on the normal form for confirmation — the parse is good, but not good
+enough to write to a financial log unattended, and a wrong row costs more to find later
+than the typing it saved. The model picks a card and category from fixed lists, so the
+worst case is a wrong choice from a valid set rather than an id that fails every lookup.
 
 ### What applies automatically, and what doesn't
 
@@ -256,7 +285,8 @@ empty overlay simply leaves the shipped values in place.
 Run one by hand with `curl "https://<your-app>/api/scan/terms?key=$CRON_SECRET"`.
 
 `npm run test:intel` covers the safety boundary — patch sanitising, value coercion and
-the auto-apply policy — without calling a model.
+the auto-apply policy. `npm run test:jarvis` covers the deterministic modules and the
+clamping every model answer passes through. Neither calls a model.
 
 ---
 

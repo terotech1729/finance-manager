@@ -14,6 +14,7 @@ import { CARD_COLORS } from "@/lib/chartColors";
 import { inr, inrExact, newId, todayLocal, localDateToISO } from "@/lib/utils";
 import type { Transaction } from "@/lib/types";
 import { Icon } from "@/components/Icons";
+import { QuickLog } from "@/components/QuickLog";
 import { toast } from "@/components/Toast";
 
 // Payment modes for the manual logger: cards in hand + non-card routes.
@@ -47,6 +48,10 @@ export default function TransactionsPage() {
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  // A parsed draft awaiting confirmation. Held separately from `adding` so the form can
+  // be remounted with the parsed values rather than trying to push them into live state.
+  const [draft, setDraft] = useState<FormValues | null>(null);
+  const [draftKey, setDraftKey] = useState(0);
 
   // filter + sort
   const [sort, setSort] = useState<SortKey>("date_desc");
@@ -169,15 +174,44 @@ export default function TransactionsPage() {
         </div>
       </div>
 
+      {!editing && (
+        <QuickLog
+          onDraft={(d) => {
+            setDraft({
+              date: d.date,
+              merchant: d.merchant,
+              category: d.category,
+              amount: d.amount != null ? String(d.amount) : "",
+              mode: d.cardId ?? "upi",
+              reward: "",
+              notes: d.note ?? "",
+            });
+            setDraftKey((k) => k + 1);
+            setAdding(true);
+          }}
+        />
+      )}
+
       {/* Add form */}
       {adding && !editing && (
         <TxnForm
-          key="new"
-          title="Log a transaction manually"
-          subtitle="For spends you made your own way (any card / UPI / cash) — for record-keeping"
+          key={`new-${draftKey}`}
+          title={draft ? "Confirm the parsed transaction" : "Log a transaction manually"}
+          subtitle={
+            draft
+              ? "Read from your note — check every field before logging it."
+              : "For spends you made your own way (any card / UPI / cash) — for record-keeping"
+          }
           submitLabel="Log transaction"
-          onSubmit={onCreate}
-          onCancel={() => setAdding(false)}
+          initial={draft ?? undefined}
+          onSubmit={(v) => {
+            onCreate(v);
+            setDraft(null);
+          }}
+          onCancel={() => {
+            setAdding(false);
+            setDraft(null);
+          }}
         />
       )}
 

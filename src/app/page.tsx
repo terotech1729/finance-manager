@@ -18,6 +18,10 @@ import { inr, inrExact, todayLocal } from "@/lib/utils";
 import { buildBriefing, greeting, type BriefingItem } from "@/lib/briefing";
 import { buildRewardLedger } from "@/lib/rewards";
 import { summariseLounges } from "@/lib/lounges";
+import { upcomingDeadlines, urgencyOf } from "@/lib/deadlines";
+import { findAnomalies } from "@/lib/anomalies";
+import { buildPlan, inferMonthlyCapacity } from "@/lib/planner";
+import { AskJarvis } from "@/components/AskJarvis";
 import type { Transaction, Holding } from "@/lib/types";
 import type { Trip } from "@/lib/travel/itinerary/trips";
 import type { Note } from "@/lib/notes";
@@ -99,8 +103,16 @@ export default function HomePage() {
 
   const ledger = useMemo(() => (state ? buildRewardLedger(state) : null), [state]);
   const lounges = useMemo(() => (state ? summariseLounges(state) : null), [state]);
+  const deadlines = useMemo(() => (state ? upcomingDeadlines(state) : []), [state]);
+  const anomalies = useMemo(() => (state ? findAnomalies(state, txns) : []), [state, txns]);
+  // Capacity is inferred from logged history, so the plan reflects what you actually
+  // spend rather than a guess at what you could.
+  const plan = useMemo(
+    () => (state ? buildPlan(state, inferMonthlyCapacity(txns)) : null),
+    [state, txns]
+  );
 
-  if (!state || !ledger || !lounges) return <div className="text-fg-muted">Initialising…</div>;
+  if (!state || !ledger || !lounges || !plan) return <div className="text-fg-muted">Initialising…</div>;
 
   const monthKey = todayLocal().slice(0, 7);
   const spentThisMonth = txns
@@ -177,6 +189,90 @@ export default function HomePage() {
           </Link>
         </div>
       </HudPanel>
+
+      <AskJarvis />
+
+      {deadlines.length > 0 && (
+        <HudPanel
+          title="Closing soon"
+          action={
+            <span className="font-mono text-[10px] uppercase tracking-wider text-fg-muted">
+              {deadlines.length} dated
+            </span>
+          }
+        >
+          {deadlines.slice(0, 5).map((d) => {
+            const u = urgencyOf(d);
+            return (
+              <Link
+                key={d.id}
+                href={d.href}
+                className="flex items-start justify-between gap-3 border-b border-border py-2.5 last:border-0 hover:opacity-80"
+              >
+                <div className="min-w-0">
+                  <div className={`text-sm ${u === "critical" ? "text-danger" : u === "soon" ? "text-warning" : "text-fg"}`}>
+                    {d.title}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-fg-muted">{d.action}</div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className={`readout text-sm ${u === "critical" ? "text-danger" : "text-fg"}`}>
+                    {d.daysLeft}d
+                  </div>
+                  {d.valueInr ? (
+                    <div className="text-[11px] text-fg-subtle">{inr(d.valueInr)}</div>
+                  ) : null}
+                </div>
+              </Link>
+            );
+          })}
+        </HudPanel>
+      )}
+
+      {plan.steps.length > 0 && (
+        <HudPanel
+          title="Worth chasing"
+          action={
+            <span className="font-mono text-[10px] uppercase tracking-wider text-fg-muted">
+              {inr(plan.collectableInr)} collectable
+            </span>
+          }
+        >
+          <p className="mb-2 text-[11px] text-fg-muted">
+            Ordered by return on the spend still required, not by prize size — a small reward
+            close by beats a large one out of reach.
+          </p>
+          {plan.steps.slice(0, 5).map((s) => (
+            <div key={`${s.cardId}-${s.label}`} className="flex items-baseline justify-between gap-3 border-b border-border py-2 last:border-0">
+              <div className="min-w-0">
+                <span className="text-sm text-fg">{s.cardShort}</span>
+                <span className="ml-2 text-[11px] text-fg-muted">{s.label}</span>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="readout text-sm text-success">{(s.efficiency * 100).toFixed(1)}%</div>
+                <div className="text-[11px] text-fg-subtle">
+                  {inr(s.remainingInr)} → {inr(s.rewardInr)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </HudPanel>
+      )}
+
+      {anomalies.length > 0 && (
+        <HudPanel title="Worth a second look">
+          {anomalies.slice(0, 4).map((a) => (
+            <Link
+              key={a.id}
+              href={a.href}
+              className="block border-b border-border py-2.5 last:border-0 hover:opacity-80"
+            >
+              <div className={`text-sm ${a.severity === "high" ? "text-danger" : "text-fg"}`}>{a.title}</div>
+              <div className="mt-0.5 text-[11px] text-fg-muted">{a.detail}</div>
+            </Link>
+          ))}
+        </HudPanel>
+      )}
 
       {briefing.length > 0 && (
         <section>

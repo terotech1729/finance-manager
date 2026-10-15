@@ -4,6 +4,7 @@
     { "path": "/api/scrape-cashkaro", "schedule": "0 2 * * *" },
     { "path": "/api/keepalive", "schedule": "30 3 * * *" },
     { "path": "/api/scan/terms", "schedule": "0 1 * * *" },
-    { "path": "/api/scan/portfolio", "schedule": "40 1 * * *" }
+    { "path": "/api/scan/portfolio", "schedule": "40 1 * * *" },
+    { "path": "/api/scan/offers", "schedule": "20 2 * * *" }
   ]
 }
