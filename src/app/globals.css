@@ -18,7 +18,7 @@ body {
   min-height: 100%;
   min-height: 100dvh;
   color: #d6e9fb;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   overflow-x: hidden;
   /* iOS Safari breaks background-attachment: fixed — use scroll.
      Two cyan pools plus a faint 32px grid give the holographic depth; the grid is the
@@ -211,7 +211,7 @@ img, svg, video, canvas {
     display: block !important;
     color: #000;
     background: #fff;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
     font-size: 9.5pt;
     line-height: 1.45;
   }

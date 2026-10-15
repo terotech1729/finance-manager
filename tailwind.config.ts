@@ -30,9 +30,14 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
-        // One mono face, committed to — all readouts and labels use it.
-        mono: ["ui-monospace", "SFMono-Regular", "SF Mono", "JetBrains Mono", "Menlo", "Consolas", "monospace"],
+        // One superfamily, two widths. IBM Plex Sans and Plex Mono are drawn from the
+        // same skeletons, so the places this UI mixes them inside a single line
+        // ("Unlimited per statement cycle") read as one typeface at two settings rather
+        // than as two unrelated fonts. The previous stack resolved to the OS default —
+        // SF Pro beside SF Mono on macOS, Segoe beside Consolas on Windows — which is
+        // where the ransom-note effect came from.
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       borderRadius: { sm: "2px", md: "3px", lg: "4px", xl: "6px" },
       boxShadow: {

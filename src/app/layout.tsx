@@ -1,9 +1,29 @@
 import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 import { Sidebar, MobileNav } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { AuthGate } from "@/components/AuthGate";
 import { Toaster } from "@/components/Toast";
+
+/**
+ * Self-hosted at build time by next/font, so the portal renders identically on every
+ * machine instead of inheriting the OS default. `display: "swap"` keeps first paint fast;
+ * the fallback metrics are close enough to Plex that the swap doesn't shift layout.
+ */
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Jarvis",
@@ -28,8 +48,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="h-full overflow-x-hidden">
-      <body className="min-h-full min-h-[100dvh] bg-bg text-fg overflow-x-hidden antialiased">
+    <html lang="en" className={`h-full overflow-x-hidden ${plexSans.variable} ${plexMono.variable}`}>
+      <body className="min-h-full min-h-[100dvh] bg-bg text-fg overflow-x-hidden antialiased font-sans">
         <AuthGate>
           <div className="flex min-h-[100dvh] w-full max-w-[100vw]">
             <Sidebar />
