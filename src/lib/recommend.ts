@@ -4244,6 +4244,26 @@ function finalize(
         .filter(Boolean)
         .join(" · ");
     }
+    // Credit limit. A card that can't carry the amount is not a route, however good its
+    // rate — on a big-ticket spend the best-paying card is often simply too small, and
+    // crowning it sends you to a counter for a guaranteed decline. `creditLimit` is the
+    // sanctioned limit, not live headroom (we don't track outstanding balances), so a
+    // near-limit spend is flagged rather than blocked.
+    const limit = getCardById(o.cardId)?.creditLimit ?? 0;
+    if (limit > 0 && amt > limit && o.feasible !== false) {
+      o.feasible = false;
+      o.feasibilityNote = [
+        o.feasibilityNote,
+        `${inr(amt)} exceeds this card's ${inr(limit)} limit — it will decline. Split the spend or use a higher-limit card.`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    } else if (limit > 0 && amt > limit * 0.8 && o.feasible !== false) {
+      o.cons = [
+        ...o.cons,
+        `Uses ${Math.round((amt / limit) * 100)}% of the ${inr(limit)} limit — may decline if anything is already outstanding, and spikes utilisation on your report.`,
+      ];
+    }
     if (!o.ifCardNotAllowed) {
       o.ifCardNotAllowed = cardDeclinedFallbackFor(input, amt, o.cardId);
     }

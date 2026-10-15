@@ -16,11 +16,13 @@ import type { Transaction } from "@/lib/types";
 import { Icon } from "@/components/Icons";
 import { toast } from "@/components/Toast";
 
-// Payment modes for the manual logger: every open card + non-card routes.
-// Closed cards are excluded so no new spend can be logged against them; existing
-// rows still resolve their label through getCardById.
+// Payment modes for the manual logger: cards in hand + non-card routes.
+// Only "active" qualifies — a closed card can't take new spend, and an "applied" or
+// "future" card isn't in your wallet yet, so logging against it would inflate milestone
+// progress for a card you don't hold. Existing rows still resolve their label through
+// getCardById, so historical closed-card transactions keep their name.
 const PAYMENT_MODES: { id: string; label: string; isCard: boolean }[] = [
-  ...CARDS.filter((c) => c.status !== "closed").map((c) => ({ id: c.id, label: c.short, isCard: true })),
+  ...CARDS.filter((c) => c.status === "active").map((c) => ({ id: c.id, label: c.short, isCard: true })),
   { id: "upi", label: "UPI (bank / PhonePe / GPay)", isCard: false },
   { id: "amazon_pay_balance", label: "Amazon Pay balance", isCard: false },
   { id: "cash", label: "Cash", isCard: false },

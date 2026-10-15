@@ -3,6 +3,7 @@ import {
   clearAll,
   exportAll,
   getCachedOwner,
+  hasLocalData,
   importAll,
   notifyRemoteDataApplied,
   onStorageChange,
@@ -227,8 +228,12 @@ export async function startCloudSync(): Promise<void> {
   setCachedOwner(uid);
 
   const { hadRemote } = await runExclusive(() => pullFromCloud());
-  if (!hadRemote) {
+  if (!hadRemote && hasLocalData()) {
     // First time on this account — seed the cloud with current local data.
+    // Only when there IS local data: with empty storage `exportAll()` serialises
+    // DEFAULT_STATE, whose seeded balances and milestone progress would otherwise be
+    // uploaded as this account's real figures. A genuinely new account (or one signing
+    // in after a reset) should start empty and push on its first actual edit instead.
     await runExclusive(() => pushToCloud());
   }
   unsubStorage = onStorageChange((origin) => {

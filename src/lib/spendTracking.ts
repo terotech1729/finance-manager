@@ -1,4 +1,11 @@
 import type { AppState } from "./storage";
+import { getCardById } from "./cards";
+
+/** A catalogue card that hasn't been issued yet — "applied" or "future". */
+export function isUnissuedCard(cardId: string): boolean {
+  const s = getCardById(cardId)?.status;
+  return s === "applied" || s === "future";
+}
 
 /**
  * SBI SimplyCLICK annual-fee waiver: eligible retail only.
@@ -29,6 +36,13 @@ export function applyCardSpend(
   category?: string,
   merchant?: string
 ): void {
+  // A card you haven't been issued yet can't accrue anything, so spend logged against it
+  // must not advance milestone counters. Deliberately NOT gated on `isRoutableCard`:
+  // that would also exclude "closed", and since `reverseCardSpend` has no such guard,
+  // editing an old closed-card transaction would subtract on the reverse and skip the
+  // re-apply, silently draining the historical total.
+  if (isUnissuedCard(cardId)) return;
+
   if (cardId === "amex_plat_travel") next.ptccEligibleSpend += amt;
   if (cardId === "amex_mrcc") {
     next.mrccCycleSpend += amt;

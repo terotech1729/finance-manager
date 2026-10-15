@@ -2,7 +2,7 @@ import type { Transaction, Investment, Holding, Contribution } from "./types";
 import type { Note } from "./notes";
 import type { Trip } from "./travel/itinerary/trips";
 import { thisMonthKey, newId, statementCycleRange, todayLocal } from "./utils";
-import { calQuarterKey } from "./cards";
+import { calQuarterKey, getCardById } from "./cards";
 import { sbiFeeWaiverEligible } from "./spendTracking";
 
 /** Scapia Federal lounge / airport privileges — ₹20k per billing cycle (statement day 24 → 25…24). */
@@ -80,15 +80,6 @@ export type AppState = {
   sbiOnlineYearKey?: string;
   // SBI fee-waiver year key (from sbiFeeAnniversaryDate MD).
   sbiFeeYearKey?: string;
-  // Monthly counters (legacy, kept for compat)
-  monthlyTxns: {
-    [yearMonth: string]: {
-      goldTxns: { count: number; amount: number };
-      mrccTxns: { count: number; amount: number; total: number };
-      scapiaSpend: number;
-      kiwiSpend: number;
-    };
-  };
   // Reward balances
   amexMrPooled: number;
   indigoBluChips: number;
@@ -127,6 +118,12 @@ export const DEFAULT_STATE: AppState = {
   bobQuarterSpend: 72108,
   // Apr–Jun 2026 cleared the ₹40k gate that applied then, so lounge is live this quarter.
   bobPriorQuarterSpend: 40000,
+  // Stamps the quarter the two figures above belong to. Without it, a first load in a
+  // LATER quarter takes the `!st.bobQuarterKey` branch, which sets the key without
+  // rolling over — leaving Jul–Sep spend mislabelled as the current quarter and the
+  // lounge gate resolved against the wrong figure. Every other seeded period counter
+  // carries its key for the same reason.
+  bobQuarterKey: "2026-Q3",
   // From SBI Jul-2026 ONLINE SPENDS SUMMARY (voucher year starting ~22 May 2026).
   sbiYtdSpend: 32762,
   // Eligible retail since day after Oct-2025 fee (excl. tax/rent/fees); ~₹616 short of ₹1L waiver.
@@ -160,7 +157,6 @@ export const DEFAULT_STATE: AppState = {
   kiwiYearKey: "2026",
   sbiOnlineYearKey: "2026",
   sbiFeeYearKey: "2025",
-  monthlyTxns: {},
   amexMrPooled: 128532,
   indigoBluChips: 14172,
   scapiaCoins: 7205,
@@ -358,7 +354,10 @@ export function loadState(): AppState {
   let changed = false;
 
   // One-time migrate old calendar-year SBI default when statement fields first merge.
-  if (st.sbiYtdSpend === 91614) {
+  // Gated on the anniversary fields being absent, not on the spend value alone: matching
+  // ₹91,614 by itself would silently reset a real balance that happened to land on that
+  // figure. Only pre-merge state lacks `sbiOnlineYearStart`.
+  if (st.sbiYtdSpend === 91614 && !st.sbiOnlineYearStart) {
     st.sbiYtdSpend = DEFAULT_STATE.sbiYtdSpend;
     st.sbiFeeWaiverSpend = DEFAULT_STATE.sbiFeeWaiverSpend;
     st.sbiFeeAnniversaryDate = DEFAULT_STATE.sbiFeeAnniversaryDate;
@@ -427,13 +426,17 @@ export function loadState(): AppState {
     st.hsbcLivePlusYtdSpend = 0;
     changed = true;
   }
-  // Amex Plat Travel membership year (3 Dec)
+  // Amex Plat Travel membership year (3 Dec). A closed card has no new membership year,
+  // so only advance the key — zeroing the counters would wipe the historical figures the
+  // card page still shows for past PT transactions.
   if (!st.ptccYearKey) { st.ptccYearKey = pk; changed = true; }
   else if (st.ptccYearKey !== pk) {
     st.ptccYearKey = pk;
-    st.ptccEligibleSpend = 0;
-    st.ptccLoungesUsed = 0;
-    st.ptccLoungesUsedThisQuarter = 0;
+    if (getCardById("amex_plat_travel")?.status === "active") {
+      st.ptccEligibleSpend = 0;
+      st.ptccLoungesUsed = 0;
+      st.ptccLoungesUsedThisQuarter = 0;
+    }
     changed = true;
   }
   // Kiwi Neon membership year (1 Apr)
@@ -877,6 +880,21 @@ export function deleteContribution(holdingId: string, contribId: string): Holdin
   );
   saveHoldings(all);
   return all;
+}
+
+/**
+ * Has this browser ever held real user data?
+ *
+ * `loadState()` can never answer this: with nothing stored it returns DEFAULT_STATE,
+ * which ships with seeded personal figures and is indistinguishable from a real state
+ * blob. Cloud sync needs the distinction so that signing in on a fresh account — or
+ * straight after a reset — doesn't upload the seed as if it were your data.
+ */
+export function hasLocalData(): boolean {
+  if (typeof localStorage === "undefined") return false;
+  return [KEYS.STATE, KEYS.TXNS, KEYS.INVESTMENTS, KEYS.HOLDINGS, KEYS.NOTES, KEYS.TRIPS].some(
+    (k) => localStorage.getItem(k) !== null
+  );
 }
 
 export function exportAll(): string {

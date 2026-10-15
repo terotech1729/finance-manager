@@ -130,6 +130,20 @@ export default function CardDetailPage({ params }: { params: { id: string } }) {
         <span className="text-fg">{card.short}</span>
       </div>
 
+      {/* A closed card keeps its page so old transactions still resolve, but every
+          "use this for…" tip and progress bar below describes a card you no longer
+          hold — say so once, up top, rather than letting it read as live strategy. */}
+      {card.status !== "active" && (
+        <Callout
+          tone={card.status === "closed" ? "danger" : "warning"}
+          title={card.status === "closed" ? "This card is closed" : "Not issued yet"}
+        >
+          {card.status === "closed"
+            ? "Kept for history so past transactions still resolve a name. Spend tips, milestones and progress below are a record of how the card was used — not current strategy. It never appears in recommendations."
+            : "Applied for but not in your wallet yet. Nothing below counts toward real progress, and it can't be recommended or logged against until it's issued."}
+        </Callout>
+      )}
+
       {/* Hero: card + key info */}
       <div className="grid lg:grid-cols-2 gap-6 items-start">
         <div className="max-w-md">

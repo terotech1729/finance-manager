@@ -89,7 +89,6 @@ export default function SettingsPage() {
         <div className="font-medium mb-1">Milestone periods (not all calendar year)</div>
         <ul className="text-sm space-y-1 list-disc pl-4">
           <li><b>Amex Gold 6×≥₹1k / MRCC 4×≥₹1.5k + ₹20k</b> — calendar month (auto-reset on the 1st; Direct, Online, or ShopWise all count)</li>
-          <li><b>Amex PT annual</b> — membership year (ends ~3 Dec), not Jan–Dec</li>
           <li><b>Amex MRCC fee waiver</b> — renewal / membership year (see card cycle end), not calendar year</li>
           <li><b>SBI fee waiver</b> — fee anniversary (~21 Oct); spend counts from the day after the fee posts</li>
           <li><b>SBI online vouchers</b> — separate year (statement reset ~22 May); not the Oct fee year</li>

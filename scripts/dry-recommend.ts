@@ -4,6 +4,7 @@
  * Exits non-zero on any assertion failure.
  */
 import assert from "node:assert/strict";
+import { getCardById } from "../src/lib/cards";
 import { detectCategory } from "../src/lib/categorize";
 import { recommend, type RecommendInput } from "../src/lib/recommend";
 
@@ -33,7 +34,6 @@ const BASE: Partial<RecommendInput> = {
   today: "2026-08-04",
   hsbcLivePlusYtdSpend: 30000,
   livePlusAccelCashbackUsedThisMonth: 50,
-  ptccEligibleSpend: 180000,
   mrccCycleSpend: 70000,
   mrccThisCycleTxnsAt1500: 4,
   mrccThisCycleAmount: 9000,
@@ -352,27 +352,10 @@ const CASES: Case[] = [
     },
   },
   {
-    name: "Amex PT near milestone → ifAmexNotAccepted is non-Amex",
+    name: "offline dining → every credit route carries a declined fallback",
     query: "offline restaurant",
     amount: 2000,
     expect: { requireDeclinedFallback: true },
-    input: {
-      ptccEligibleSpend: 399000,
-    },
-  },
-  {
-    name: "Amex PT at ₹1.84L targets 1.9L not 4L (stale hit ignored)",
-    query: "offline restaurant",
-    amount: 940,
-    expect: {
-      bestCard: "hsbc_live_plus",
-      requireDeclinedFallback: true,
-    },
-    input: {
-      ptccEligibleSpend: 184231,
-      // Stale claim must not skip 1.9L when till-date is still below it
-      milestonesHit: ["amex_plat_travel:190000"],
-    },
   },
   {
     name: "IndiGo + BluChip voucher boosts IDFC route",
@@ -382,14 +365,16 @@ const CASES: Case[] = [
     input: { indigoBluChipVoucherInr: 5000 },
   },
   {
-    name: "₹2.2L phone — Amex PT unlocks 1.9L + 4L (not 1.9L only)",
+    // Big-ticket spend should be steered to whichever card the amount actually finishes
+    // a milestone on, rather than to the best headline rate.
+    name: "₹2.2L phone → routed to the card the spend completes a milestone on",
     query: "new phone purchase",
     amount: 220000,
     expect: {
-      bestCard: "amex_plat_travel",
+      bestCard: ["hsbc_live_plus", "sbi_simplyclick", "idfc_indigo"],
+      bestLabelIncludes: /completes/i,
     },
     input: {
-      ptccEligibleSpend: 184231,
       idfcYtdSpend: 800000,
       sbiYtdSpend: 95000,
       hsbcLivePlusYtdSpend: 180000,
@@ -470,37 +455,37 @@ const CASES: Case[] = [
     },
     input: {
       scapiaMonthlySpend: 25000, // lounge already unlocked this month
-      ptccEligibleSpend: 500000, // past PT annual milestones — no completing unlock
       idfcYtdSpend: 800000,
     },
   },
   {
-    name: "large forex + Amex milestones can beat Scapia after netting 3.5%",
+    // A large markup-bearing milestone can still beat a 0%-forex card, so the winner
+    // must be chosen on net return rather than on markup alone.
+    name: "large forex → winner chosen on net return, markup disclosed",
     query: "foreign hotel usd",
     amount: 220000,
     expect: {
       channel: "foreign",
-      bestCard: ["amex_plat_travel", "bob_eterna", "scapia", "idfc_indigo"],
+      bestCard: ["bob_eterna", "scapia", "idfc_indigo"],
     },
     input: {
-      ptccEligibleSpend: 184231,
       idfcYtdSpend: 800000,
     },
   },
   {
-    name: "₹1.95L phone before PT 4L deadline → Amex PT beats SBI Cleartrip",
+    // SBI's ₹1L/₹2L voucher thresholds are worth far more than any headline rate here.
+    name: "₹1.95L online phone → SBI milestone stack wins once the fee waiver is done",
     query: "phone purchase samsung",
     amount: 195000,
     expect: {
       channel: "online",
-      bestCard: ["amex_plat_travel"],
-      bestLabelIncludes: /deadline push|4,?00,?000|₹4/i,
+      bestCard: ["sbi_simplyclick"],
+      bestLabelIncludes: /completes/i,
     },
     input: {
       today: "2026-08-17",
-      ptccEligibleSpend: 192873, // ₹2.07L left to ₹4L — this spend nearly finishes
       sbiYtdSpend: 32762,
-      sbiFeeWaiverSpend: 100000, // fee done → online vouchers would otherwise win
+      sbiFeeWaiverSpend: 100000, // fee done → online vouchers are pure upside
       idfcYtdSpend: 800000,
       hsbcLivePlusYtdSpend: 180000,
     },
@@ -511,20 +496,26 @@ const CASES: Case[] = [
     amount: 220000,
     expect: {
       channel: "upi",
-      bestCard: ["hsbc_live_plus", "amex_plat_travel", "bob_eterna", "yes_kiwi", "idfc_indigo"],
+      bestCard: ["hsbc_live_plus", "bob_eterna", "yes_kiwi", "idfc_indigo"],
       bestLabelAvoid: /~5\.0%|5% with Neon|Neon completing milestone\)/i,
     },
     input: {
       kiwiNeonCycleSpend: 79243, // ₹20,757 short of ₹1L — big spend crosses 1L + 1.5L
-      ptccEligibleSpend: 184231,
     },
   },
 ];
 
 let failed = 0;
 
+/**
+ * Does this card actually charge a markup worth disclosing?
+ *
+ * Read from the catalogue rather than a hardcoded list: the old list still named
+ * idfc_indigo, which went zero-forex on 9 Sep 2026, so the suite demanded netting copy
+ * on a card that has nothing to net.
+ */
 function cardLikelyHasForex(cardId: string): boolean {
-  return ["amex_gold", "amex_plat_travel", "amex_mrcc", "idfc_indigo", "bob_eterna", "hsbc_live_plus", "sbi_simplyclick", "yes_kiwi", "amazon_pay_icici"].includes(cardId);
+  return (getCardById(cardId)?.forexPct ?? 0) > 0;
 }
 
 function runCase(c: Case) {
@@ -622,35 +613,10 @@ function runCase(c: Case) {
     }
   }
 
-  // Amex PT must chase the next unpaid threshold from till-date spend (not a stale 4L jump)
-  if (/targets 1\.9L/i.test(c.name)) {
-    const pt = rows.find((r) => r.cardId === "amex_plat_travel");
-    if (!pt) {
-      errors.push("expected an Amex PT route in the ranking");
-    } else {
-      const blob = `${pt.label} ${pt.rationale} ${pt.pros.join(" ")}`;
-      if (!/1[,.]?90|190,?000|₹1\.9/i.test(blob)) {
-        errors.push(`Amex PT should reference 1.9L milestone, got: ${pt.label} | ${pt.rationale}`);
-      }
-      if (/4[,.]?00,?000|₹4\.0|build ₹4/i.test(blob) && !/1[,.]?90/i.test(blob)) {
-        errors.push(`Amex PT incorrectly jumped to 4L: ${pt.label}`);
-      }
-    }
-  }
-  // Large phone spend must credit BOTH 1.9L and 4L Amex PT unlocks
-  if (/unlocks 1\.9L \+ 4L/i.test(c.name)) {
-    const pt = rows.find((r) => r.cardId === "amex_plat_travel");
-    if (!pt) errors.push("expected Amex PT on large phone spend");
-    else {
-      const blob = `${pt.label} ${pt.rationale} ${pt.pros.join(" ")}`;
-      if (!/1[,.]?90|190,?000/i.test(blob) || !/4[,.]?00,?000|₹4/i.test(blob)) {
-        errors.push(`Amex PT should cite both 1.9L and 4L, got: ${pt.label} | ${pt.rationale}`);
-      }
-      if (pt.bonusRewardInr < 8000) {
-        errors.push(`Amex PT milestone bonus too small (want ≥₹8.75k for 1.9L+4L): ${pt.bonusRewardInr}`);
-      }
-    }
-    // Ranked list should be descending by ₹ return among feasible rows
+  // The ranked list must descend by ₹ return among feasible rows. This used to run only
+  // inside the (now deleted) Amex PT case, but it's a universal invariant — check it
+  // everywhere so a future scoring change can't quietly misorder any category.
+  {
     const feasible = rows.filter((r) => r.feasible !== false);
     for (let i = 1; i < Math.min(feasible.length, 6); i++) {
       if (feasible[i].totalRewardInr > feasible[i - 1].totalRewardInr + 50) {
@@ -670,22 +636,10 @@ function runCase(c: Case) {
         errors.push(`forex netting missing on ${r.cardId}: ${r.label}`);
       }
     }
-    if (/small forex/i.test(c.name)) {
-      const pt = rows.find((r) => r.cardId === "amex_plat_travel");
-      if (pt && best.cardId === "amex_plat_travel") {
-        errors.push(`small forex should not crown Amex PT (net ₹${Number(pt.totalRewardInr).toFixed(0)})`);
-      }
-    }
-    if (/large forex/i.test(c.name)) {
-      const pt = rows.find((r) => r.cardId === "amex_plat_travel");
-      if (!pt) errors.push("expected Amex PT row on large forex");
-      else if (!/3\.5%|net after/i.test(`${pt.label} ${pt.cons.join(" ")}`)) {
-        errors.push(`large forex Amex should show 3.5% netting: ${pt.label}`);
-      }
-      // Dual milestone ₹8750 − 3.5% of 220k (₹7700) ≈ +₹1250 net → should beat Scapia 0
-      if (pt && pt.bonusRewardInr >= 8000 && pt.totalRewardInr <= 0) {
-        errors.push(`Amex with dual milestones should stay net-positive after 3.5%: got ₹${pt.totalRewardInr}`);
-      }
+    // No route may be crowned on a net-negative return abroad — if the markup eats the
+    // rewards, a 0%-forex card or cash is always the better answer.
+    if (best.totalRewardInr < 0) {
+      errors.push(`forex winner is net-negative: ${best.cardId} ₹${best.totalRewardInr.toFixed(0)}`);
     }
   }
   // Neon: 5% is YTD true-up, not rate on this txn; after ₹1.5L remainder is 2%
