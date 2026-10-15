@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { startCloudSync, stopCloudSync } from "@/lib/cloudSync";
+import { hydrateOverlayFromCloud } from "@/lib/overlaySync";
 
 type AuthState = "loading" | "signedOut" | "syncing" | "signedIn";
 
@@ -58,7 +59,10 @@ function AuthGated({ children }: { children: React.ReactNode }) {
       setAuth("syncing");
       try {
         await Promise.race([
-          startCloudSync(),
+          // Card terms are hydrated alongside the user's data, not after it: a page
+          // that rendered with compiled rates and then silently swapped in overlaid
+          // ones would be showing two different answers to the same question.
+          Promise.all([startCloudSync(), hydrateOverlayFromCloud()]),
           new Promise((r) => setTimeout(r, FIRST_SYNC_TIMEOUT_MS)),
         ]);
       } finally {

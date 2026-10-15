@@ -67,3 +67,101 @@ create policy "keepalive prune" on public.keepalive
 -- Policies decide which rows are visible; grants decide whether the role may touch
 -- the table at all. Stated explicitly rather than relying on default privileges.
 grant select, insert, delete on public.keepalive to anon, authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- Card intelligence: daily scan output
+-- ---------------------------------------------------------------------------
+-- Card terms move constantly — issuers devalue rewards, raise lounge gates and
+-- withdraw milestones, usually with a month's notice. Those terms live in
+-- src/lib/cards.ts, which is compiled into the bundle, so keeping up used to mean
+-- a code change and a redeploy every time.
+--
+-- These three tables move card facts to runtime:
+--   scan_runs    — one row per scan, so you can see when it last ran and why it failed
+--   card_intel   — what the scan found: proposed term changes, new-card candidates
+--   card_overlay — accepted changes, merged over the compiled catalogue at load
+--
+-- The split between card_intel and card_overlay is deliberate. A scan is a language
+-- model reading the web; it can be wrong. Nothing it finds touches the scoring engine
+-- until it lands in card_overlay, which happens either by your approval or — for
+-- changes that can't alter a recommendation — automatically.
+
+create table if not exists public.scan_runs (
+  id          bigint generated always as identity primary key,
+  kind        text not null,                      -- 'terms' | 'portfolio'
+  status      text not null default 'running',    -- running | ok | error
+  started_at  timestamptz not null default now(),
+  finished_at timestamptz,
+  model       text,
+  cards_scanned int,
+  findings    int,
+  error       text
+);
+
+create index if not exists scan_runs_started_idx on public.scan_runs (started_at desc);
+
+create table if not exists public.card_intel (
+  id             bigint generated always as identity primary key,
+  -- Catalogue id for a card you hold, or a slug like "hdfc-infinia" for one you don't.
+  card_id        text not null,
+  card_name      text,
+  kind           text not null,                   -- term_change | new_card | drop_suggestion
+  -- proposed → waiting on you; applied → in card_overlay; rejected → dismissed;
+  -- advisory → informational only, never touches the overlay.
+  status         text not null default 'proposed',
+  direction      text,                            -- devaluation | revaluation | neutral
+  -- The Card field this would patch (e.g. "forexPct"). Null for advisory findings.
+  field          text,
+  current_value  text,
+  proposed_value text,
+  summary        text not null,
+  detail         text,
+  effective_on   date,
+  -- [{ "title": ..., "url": ..., "issuer": true }]
+  sources        jsonb not null default '[]'::jsonb,
+  confidence     text not null default 'medium',  -- high | medium | low
+  scan_run_id    bigint references public.scan_runs (id) on delete set null,
+  -- Lets a re-scan recognise a finding it already reported instead of duplicating it.
+  fingerprint    text unique,
+  created_at     timestamptz not null default now(),
+  decided_at     timestamptz
+);
+
+create index if not exists card_intel_status_idx on public.card_intel (status, created_at desc);
+
+create table if not exists public.card_overlay (
+  card_id    text primary key,
+  -- Partial Card object merged over the compiled catalogue entry, e.g.
+  -- { "forexPct": 1.99, "loungeRule": "2 domestic/yr" }.
+  patch      jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.scan_runs   enable row level security;
+alter table public.card_intel  enable row level security;
+alter table public.card_overlay enable row level security;
+
+-- Card terms are public facts, not personal data — unlike finance_data, there is
+-- nothing here worth hiding from a signed-in session. Reads are open; writes are
+-- not, because the scan runs server-side with the service-role key, which bypasses
+-- RLS. The one exception is card_intel updates, so you can accept or reject a
+-- proposal straight from the browser.
+drop policy if exists "intel read" on public.card_intel;
+create policy "intel read" on public.card_intel
+  for select to anon, authenticated using (true);
+
+drop policy if exists "intel decide" on public.card_intel;
+create policy "intel decide" on public.card_intel
+  for update to authenticated using (true) with check (true);
+
+drop policy if exists "overlay read" on public.card_overlay;
+create policy "overlay read" on public.card_overlay
+  for select to anon, authenticated using (true);
+
+drop policy if exists "scan runs read" on public.scan_runs;
+create policy "scan runs read" on public.scan_runs
+  for select to anon, authenticated using (true);
+
+grant select on public.card_overlay, public.scan_runs to anon, authenticated;
+grant select, update on public.card_intel to anon, authenticated;

@@ -2,6 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     { "path": "/api/scrape-cashkaro", "schedule": "0 2 * * *" },
-    { "path": "/api/keepalive", "schedule": "30 3 * * *" }
+    { "path": "/api/keepalive", "schedule": "30 3 * * *" },
+    { "path": "/api/scan/terms", "schedule": "0 1 * * *" },
+    { "path": "/api/scan/portfolio", "schedule": "40 1 * * *" }
   ]
 }

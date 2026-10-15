@@ -209,6 +209,57 @@ row there and then. Or run the workflow by hand from the Actions tab. In Supabas
 
 ---
 
+## Daily card-intelligence scan
+
+Issuers change terms constantly — HSBC removed international cashback from Live+ in July
+2026, BOBCARD nearly doubled its lounge gate in October, Amex is withdrawing an MRCC fee
+waiver in November. Card terms live in `src/lib/cards.ts`, which is compiled into the
+bundle, so keeping up used to mean a code change and a redeploy every time.
+
+With an AI key configured, the portal keeps itself current instead:
+
+- **`/api/scan/terms`** (daily, 01:00 UTC) audits every card you hold against the
+  issuers' published terms, using a web-grounded model. Grounding is mandatory — an
+  ungrounded model would confidently invent terms.
+- **`/api/scan/portfolio`** (daily, 01:40 UTC) asks whether any card is worth adding or
+  dropping, judged against your actual spend by category and the milestones you already
+  have in flight, so it accounts for cannibalisation rather than chasing headline rates.
+- **`/intel`** shows what the scans found, with sources.
+
+### What applies automatically, and what doesn't
+
+A scan is a language model reading the web, and it can be wrong. The dividing line is
+whether a wrong answer could cost money:
+
+| Finding | Behaviour |
+| --- | --- |
+| Rates, fees, forex, lounge rules, status | Queued on `/intel` for one-tap approval |
+| `notes` (display-only, never scored) | Applies itself unless confidence is low |
+| New-card and drop suggestions | Advisory — never touches the catalogue |
+
+Approving a change writes it to the `card_overlay` table, which is merged over the
+compiled catalogue at load. **It takes effect immediately, with no redeploy** — that is
+the whole point of the overlay. `CARDS` stays the baseline, so a failed fetch or an
+empty overlay simply leaves the shipped values in place.
+
+### Setup
+
+1. Re-run `supabase-schema.sql` (idempotent) to create `card_intel`, `card_overlay` and
+   `scan_runs`.
+2. In Vercel → Settings → Environment Variables, add:
+   - **one** of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GEMINI_API_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` — the scan writes findings; the anon key can only read
+   - `CRON_SECRET` — any long random string (`openssl rand -hex 32`). Vercel Cron sends
+     it automatically. Without it anyone who found the URL could run your paid scans.
+3. Redeploy once. After that the scans run themselves.
+
+Run one by hand with `curl "https://<your-app>/api/scan/terms?key=$CRON_SECRET"`.
+
+`npm run test:intel` covers the safety boundary — patch sanitising, value coercion and
+the auto-apply policy — without calling a model.
+
+---
+
 ## Adapting to your portfolio changes
 
 ### When a new card arrives (e.g., Swiggy BLCK)

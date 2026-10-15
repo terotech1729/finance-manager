@@ -10,6 +10,7 @@
     "scrape-cashkaro": "tsx scripts/scrape-cashkaro.ts",
     "scrape-vouchers": "tsx scripts/scrape-voucher-stores.ts",
     "test:recommend": "tsx scripts/dry-recommend.ts",
+    "test:intel": "tsx scripts/dry-intel.ts",
     "test:travel": "tsx scripts/dry-travel.ts",
     "test:journey": "tsx scripts/dry-journey.ts"
   },

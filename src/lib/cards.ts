@@ -1,4 +1,5 @@
 import type { Card, AnnualMilestone, MonthlyMilestone } from "./types";
+import { withOverlay } from "./cardOverlay";
 
 /**
  * BOBCARD Eterna's unlimited domestic lounge access is gated on the PRECEDING calendar
@@ -287,8 +288,21 @@ export const MONTHLY_MILESTONES: readonly MonthlyMilestone[] = [
   { cardId: "hsbc_live_plus", rule: "Shared 10% accel cap ₹1,200/mo (~₹12k dining/food/grocery/utility/shopping)", rewardMr: 0, rewardInr: 1200, minSpend: 12000 },
 ];
 
+/**
+ * The catalogue as it currently stands, with any accepted runtime patches applied.
+ *
+ * Prefer this over the raw `CARDS` export anywhere a live term matters — rates, fees,
+ * limits, lounge rules. `CARDS` remains the compiled baseline and is still correct when
+ * no overlay is hydrated (tests, cold server render), but it won't reflect an issuer
+ * change you accepted since the last deploy.
+ */
+export function effectiveCards(): readonly Card[] {
+  return CARDS.map(withOverlay);
+}
+
 export function getCardById(id: string): Card | undefined {
-  return CARDS.find((c) => c.id === id);
+  const base = CARDS.find((c) => c.id === id);
+  return base ? withOverlay(base) : undefined;
 }
 
 /**
@@ -309,7 +323,7 @@ export function isRoutableCard(cardId: string): boolean {
  * through its `finalBillMonth` and disappears by itself the month after — no cleanup
  * edit needed once the final payment is recorded.
  */
-export function billableCardsFor(month: string, cards: readonly Card[] = CARDS): Card[] {
+export function billableCardsFor(month: string, cards: readonly Card[] = effectiveCards()): Card[] {
   return cards.filter((c) => {
     if (c.status === "active") return true;
     return c.status === "closed" && !!c.finalBillMonth && month <= c.finalBillMonth;
@@ -317,7 +331,7 @@ export function billableCardsFor(month: string, cards: readonly Card[] = CARDS):
 }
 
 /** Sum of preset limits on active cards. Charge cards with creditLimit 0 (e.g. Amex Gold) are excluded. */
-export function netCreditLimit(cards: readonly Card[] = CARDS): number {
+export function netCreditLimit(cards: readonly Card[] = effectiveCards()): number {
   return cards
     .filter((c) => c.status === "active" && c.creditLimit > 0)
     .reduce((sum, c) => sum + c.creditLimit, 0);
