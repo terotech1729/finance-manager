@@ -12,6 +12,14 @@ import { SCAPIA_LOUNGE_CYCLE_INR } from "./storage";
 import { bobLoungeGateFor, quarterLabel, nextQuarterLabel, getCardById } from "./cards";
 import { inr } from "./utils";
 
+/**
+ * HDFC doubled this from ₹5,000 on 10 Jan 2026 and moved to vouchers at the same time.
+ * Both halves matter: the gate is harder AND a cleared gate no longer lets you simply
+ * swipe at the desk, so an unclaimed voucher means no entry however much you spent.
+ */
+export const HDFC_DEBIT_LOUNGE_QUARTER_INR = 10000;
+export const HDFC_DEBIT_LOUNGE_PER_QUARTER = 2;
+
 export type LoungeScope = "domestic" | "international";
 
 /** How an allowance refreshes — shown so a "2" reads as 2/year rather than 2/visit. */
@@ -146,6 +154,32 @@ export function loungeEntitlements(state: AppState): LoungeEntitlement[] {
     visits: 1,
     period: "year",
     note: "The portfolio's only international lounge access (added 1 Sep 2026).",
+  });
+
+  // —— HDFC EasyShop Platinum DEBIT: 2 per quarter, gated on ₹10k of qualifying spend ——
+  // Pushed directly rather than through `push`, which resolves ids against the credit
+  // catalogue and would silently drop this one. It belongs in the ledger regardless:
+  // the headline "how many lounge visits do I have" is a question about airports, not
+  // about which of your cards happens to be a credit card.
+  const debitSpend = state.hdfcDebitQuarterSpend ?? 0;
+  const debitMet = debitSpend >= HDFC_DEBIT_LOUNGE_QUARTER_INR;
+  const debitLeft = Math.max(0, HDFC_DEBIT_LOUNGE_PER_QUARTER - (state.hdfcDebitLoungeUsed ?? 0));
+  out.push({
+    cardId: "hdfc_visa_platinum_debit",
+    cardShort: "HDFC Platinum Debit",
+    scope: "domestic",
+    visits: debitLeft,
+    period: "quarter",
+    gate: {
+      label: `${inr(HDFC_DEBIT_LOUNGE_QUARTER_INR)} of qualifying spend this quarter`,
+      met: debitMet,
+      current: debitSpend,
+      target: HDFC_DEBIT_LOUNGE_QUARTER_INR,
+      unlocks: "voucher link arrives by SMS/email in 2–3 working days",
+    },
+    note: debitMet
+      ? "Claim the voucher from the SMS/email link — since 10 Jan 2026 the lounge desk needs the 12–18 digit code, and swiping the card no longer works."
+      : `${inr(HDFC_DEBIT_LOUNGE_QUARTER_INR - debitSpend)} more this quarter unlocks 2 visits. Credit-card bill payments do NOT count toward this gate.`,
   });
 
   return out;

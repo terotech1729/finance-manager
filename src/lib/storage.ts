@@ -103,6 +103,16 @@ export type AppState = {
   gyftrBalance: number;
   hdfcDebitCashbackPts: number; // NetBanking cashback points ≈ ₹1
   hdfcDebitWelcomeGyftrClaimed: boolean; // ₹500/₹750 new-account GyFTR already received
+  /**
+   * Qualifying debit spend this calendar quarter, for the ₹10k lounge gate.
+   * "Qualifying" excludes credit-card bill payments and MCC 6010/6011/6012/6211/7995 —
+   * HDFC states this explicitly, so routing a card bill through the debit card builds
+   * nothing toward the gate.
+   */
+  hdfcDebitQuarterSpend: number;
+  hdfcDebitQuarterKey: string;
+  /** Lounge vouchers claimed off the link HDFC sends once the gate is cleared. */
+  hdfcDebitLoungeUsed: number;
   gyftrVouchers: { id: string; description: string; valueInr: number; expires: string; redeemed?: boolean; source?: string }[];
   /** Manual claim checklist (/claims) — benefit id → claimed. */
   benefitClaims: Record<string, boolean>;
@@ -175,6 +185,9 @@ export const DEFAULT_STATE: AppState = {
   gyftrBalance: 750,
   hdfcDebitCashbackPts: 0,
   hdfcDebitWelcomeGyftrClaimed: true,
+  hdfcDebitQuarterSpend: 0,
+  hdfcDebitQuarterKey: "2026-Q4",
+  hdfcDebitLoungeUsed: 0,
   gyftrVouchers: [
     {
       id: "gyftr-hdfc-dc-750",
@@ -415,6 +428,21 @@ export function loadState(): AppState {
       st.bobPriorQuarterSpend = st.bobQuarterSpend ?? 0;
       st.bobQuarterSpend = 0;
       st.bobQuarterKey = qk;
+      changed = true;
+    }
+  }
+  // HDFC debit lounge gate — also a calendar quarter, but resolved within the SAME
+  // quarter rather than the preceding one, so there is no prior-quarter figure to carry.
+  // Both the spend and the voucher count restart: the vouchers are issued per quarter.
+  {
+    const qk = calQuarterKey();
+    if (!st.hdfcDebitQuarterKey) {
+      st.hdfcDebitQuarterKey = qk;
+      changed = true;
+    } else if (st.hdfcDebitQuarterKey !== qk) {
+      st.hdfcDebitQuarterSpend = 0;
+      st.hdfcDebitLoungeUsed = 0;
+      st.hdfcDebitQuarterKey = qk;
       changed = true;
     }
   }

@@ -9,6 +9,8 @@ import { CardVisual } from "@/components/CardVisual";
 import { Callout } from "@/components/Callout";
 import { Icon } from "@/components/Icons";
 import { inr, inrExact } from "@/lib/utils";
+import { HDFC_DEBIT_LOUNGE_QUARTER_INR } from "@/lib/lounges";
+import { liveRoutes, deadRoutes } from "@/lib/billRoutes";
 
 export default function DebitPage() {
   const [state, setState] = useState<AppState | null>(null);
@@ -22,6 +24,7 @@ export default function DebitPage() {
     saveState(next);
   };
 
+  const debitGateMet = (state.hdfcDebitQuarterSpend ?? 0) >= HDFC_DEBIT_LOUNGE_QUARTER_INR;
   const card = DEBIT_CARDS[0];
   const vouchers = state.gyftrVouchers ?? [];
   const openBal = vouchers.filter((v) => !v.redeemed).reduce((s, v) => s + v.valueInr, 0);
@@ -204,6 +207,80 @@ export default function DebitPage() {
               <p className="text-xs text-fg-muted mt-3">
                 Account-level monthly cap is typically ~750 pts across cards on the account. Points appear in NetBanking within ~2 working days; min redemption 250; lapse ~12 months after credit.
               </p>
+            </div>
+          </section>
+
+          <section className="card-shell">
+            <div className="card-header font-semibold">Lounge gate — ₹10,000 this quarter</div>
+            <div className="card-body space-y-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm text-fg-muted">Qualifying spend logged</span>
+                <span className="readout text-sm">
+                  {inr(state.hdfcDebitQuarterSpend ?? 0)} / {inr(HDFC_DEBIT_LOUNGE_QUARTER_INR)}
+                </span>
+              </div>
+              <div className="bar">
+                <div
+                  className={`bar-fill ${debitGateMet ? "bar-fill-success" : "bar-fill-warning"}`}
+                  style={{
+                    width: `${Math.min(100, ((state.hdfcDebitQuarterSpend ?? 0) / HDFC_DEBIT_LOUNGE_QUARTER_INR) * 100)}%`,
+                  }}
+                />
+              </div>
+              <label className="block">
+                <span className="label">Update qualifying spend this quarter</span>
+                <input
+                  className="input mt-1"
+                  inputMode="numeric"
+                  value={state.hdfcDebitQuarterSpend ?? 0}
+                  onChange={(e) => update("hdfcDebitQuarterSpend", Number(e.target.value.replace(/[^0-9]/g, "")) || 0)}
+                />
+              </label>
+              <Callout tone={debitGateMet ? "success" : "warning"}>
+                {debitGateMet
+                  ? "Gate cleared — HDFC sends a link by SMS/email within 2–3 working days. Claim it: since 10 Jan 2026 the desk needs the 12–18 digit voucher code and swiping the card is refused."
+                  : `${inr(HDFC_DEBIT_LOUNGE_QUARTER_INR - (state.hdfcDebitQuarterSpend ?? 0))} more unlocks 2 domestic visits (8/yr). Telecom and utility spend is the cheapest way there — it also earns 1%.`}
+              </Callout>
+              <p className="text-xs text-fg-muted">
+                Credit-card bill payments and MCC 6010/6011/6012/6211/7995 are excluded from this
+                gate, so paying a card bill on this debit card builds nothing toward it.
+              </p>
+            </div>
+          </section>
+
+          <section className="card-shell">
+            <div className="card-header font-semibold">Paying credit-card bills — what actually pays</div>
+            <div className="card-body space-y-3">
+              <p className="text-xs text-fg-muted">
+                Networks tag card-bill payments as MCC 6012, which nearly every rewards programme
+                excludes. The default return is zero; anything above it is a promotion the platform
+                funds and can pull without notice. Figures are per ₹1,00,000 paid.
+              </p>
+              {liveRoutes().map((r) => (
+                <div key={r.id} className="border-b border-border pb-2 last:border-0">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm text-fg">{r.name}</span>
+                    <span className="readout shrink-0 text-sm text-success">
+                      {r.per1LInr === null ? "varies" : `≈${inr(r.per1LInr)}`}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-fg-muted">{r.rate}</div>
+                  <div className="mt-1 text-[11px] text-fg-subtle">{r.verdict}</div>
+                </div>
+              ))}
+
+              <div className="label pt-1 text-warning">Closed or misleading — don&apos;t re-try</div>
+              {deadRoutes().map((r) => (
+                <div key={r.id} className="border-b border-border pb-2 last:border-0">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm text-fg-muted line-through">{r.name}</span>
+                    <span className={`pill ${r.status === "trap" ? "pill-danger" : "pill-neutral"}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-fg-subtle">{r.verdict}</div>
+                </div>
+              ))}
             </div>
           </section>
 

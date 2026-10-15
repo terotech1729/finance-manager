@@ -35,7 +35,7 @@ export const DEBIT_CARDS: readonly DebitCard[] = [
     annualFee: 0, // LTF for this account (waived / lifetime free variant)
     status: "active",
     notes:
-      "LTF for you. Debit on HDFC savings/salary. Cashback posts as points (≈₹1) in NetBanking/MobileBanking — separate from GyFTR campaign vouchers emailed after welcome/activation spends.",
+      "LTF for you. Debit on HDFC savings/salary. Cashback posts as points (≈₹1) in NetBanking/MobileBanking — separate from GyFTR campaign vouchers emailed after welcome/activation spends. No spend milestones exist on this card: the ₹10k/quarter lounge gate is the only threshold it has, and everything else is a flat capped rate.",
     monthlyCashback: [
       { rule: "1 pt / ₹100 on telecom & utilities (POS/ecom/contactless)", capInr: 750 },
       { rule: "1 pt / ₹200 on groceries, restaurants, apparel, entertainment", capInr: 750 },
@@ -43,6 +43,14 @@ export const DEBIT_CARDS: readonly DebitCard[] = [
       { rule: "25% BookMyShow (up to 250 pts/mo)", capInr: 250 },
       { rule: "5 pts on intl spends ≥₹200 (up to 350 pts/mo)", capInr: 350 },
       { rule: "Shared account-level monthly cashback cap ≈ ₹750 pts across cards on the account", capInr: 750 },
+      {
+        // Confirmed by HDFC's own customer email and by the MCC 4814 → 6012 reclassification
+        // in March 2026. Worth carrying as an explicit zero rather than an omission, because
+        // the SmartPay + debit-card route was a well-known 1% trick and still reads as live
+        // in most blog write-ups.
+        rule: "Credit-card bill payments: ZERO — tagged MCC 6012 since Mar 2026, and excluded from the lounge gate too",
+        capInr: 0,
+      },
     ],
     campaigns: [
       {
@@ -63,6 +71,8 @@ export const DEBIT_CARDS: readonly DebitCard[] = [
       },
     ],
     perks: [
+      "2 domestic lounge visits per calendar quarter (8/yr) — needs ₹10,000 qualifying spend in that quarter, and the voucher code claimed from the SMS/email link",
+      "Up to ₹15L personal accident death cover, ₹3Cr international air accident cover, ₹2L fire & burglary, ₹2L travel insurance",
       "Higher daily shopping (~₹5L) & ATM (~₹1L) limits vs Classic (confirm on your plastic)",
       "Visa network offers (golf / lifestyle — see visa.co.in)",
       "PayZapp / SmartBuy promotional cashback windows (rotate)",
