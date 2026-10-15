@@ -136,6 +136,8 @@ export function loungeEntitlements(state: AppState): LoungeEntitlement[] {
     scope: "domestic",
     visits: 2,
     period: "year",
+    // The pacing matters as much as the count: both visits can't be used on one trip.
+    note: "2 per calendar year, but only 1 every 6 months — a second visit inside the same half-year is charged.",
   });
   push({
     cardId: "hsbc_live_plus",
@@ -143,7 +145,7 @@ export function loungeEntitlements(state: AppState): LoungeEntitlement[] {
     scope: "international",
     visits: 1,
     period: "year",
-    note: "The portfolio's only international lounge access.",
+    note: "The portfolio's only international lounge access (added 1 Sep 2026).",
   });
 
   return out;

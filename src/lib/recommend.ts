@@ -2,7 +2,7 @@ import {
   CARDS,
   getCardById,
   isRoutableCard,
-  ANNUAL_MILESTONES,
+  liveAnnualMilestones,
   BOB_LOUNGE_QUARTER_VALUE_INR,
   bobLoungeGateFor,
   nextQuarterStart,
@@ -328,6 +328,10 @@ function isLivePlusMarketplaceExcluded(merchant: string, category: string, today
 function livePlusAccelBucket(merchant: string, category: string, today?: string):
   "food" | "dining" | "grocery" | "utility" | "shopping" | null {
   if (isLivePlusMarketplaceExcluded(merchant, category, today)) return null;
+  // A 0%-cashback MCC can't reach the 10% band either. Checked before the bucket
+  // keywords because several excluded categories ("shopping" at a jeweller, a utility
+  // paid to a government biller) would otherwise match a bucket and claim 10%.
+  if (livePlusExcluded(category, merchant).excluded) return null;
   const c = category.toLowerCase();
   const m = merchant.toLowerCase();
   if (/\bmyntra\b/.test(`${m} ${c}`) && livePlusMyntraPromoActive(today)) return "shopping";
@@ -357,6 +361,55 @@ function livePlusAccelBucket(merchant: string, category: string, today?: string)
   return null;
 }
 
+/**
+ * MCCs that earn NO Live+ cashback — not the 10%, and not the 1.5% base either.
+ * Straight from the HSBC Live+ Services Guide MCC table ("0% Cashback" column).
+ *
+ * This matters most on jewellery: a big-ticket ring is exactly the spend where Live+
+ * looks like the right answer on headline rate and actually pays nothing.
+ */
+function livePlusExcluded(cat: string, merchant: string): { excluded: boolean; reason?: string } {
+  const c = `${cat} ${merchant}`.toLowerCase();
+  if (/jewel|antique|gold\s*coin|tanishq|kalyan|malabar|senco|bluestone|caratlane/.test(c))
+    return { excluded: true, reason: "jewellery & antiques (5094/5932/5937/5944)" };
+  if (/fuel|petrol|diesel|hpcl|bpcl|iocl|indian\s*oil/.test(c))
+    return { excluded: true, reason: "fuel MCCs (5013/5172/5541/5542/5552/5983)" };
+  if (/\brent\b|landlord|nobroker|redgirraffe|real estate/.test(c))
+    return { excluded: true, reason: "rent & property (6513/7012/7349)" };
+  if (/wallet|gift\s*card|gyftr/.test(c))
+    return { excluded: true, reason: "e-wallets (6540)" };
+  if (/insurance/.test(c))
+    return { excluded: true, reason: "insurance (5960/6300)" };
+  if (/education|tuition|school|college|university|\btax\b|govt|government/.test(c))
+    return { excluded: true, reason: "education & government (8211–8299, 9211–9950)" };
+  if (/\btoll\b|fastag|bridge fee/.test(c))
+    return { excluded: true, reason: "tolls & bridge fees (4784)" };
+  if (/hospital|nursing home/.test(c))
+    return { excluded: true, reason: "hospitals (8062)" };
+  if (/local bus|bus ticket|metro|subway/.test(c))
+    return { excluded: true, reason: "local transport (4111)" };
+  if (/gambling|betting|casino/.test(c))
+    return { excluded: true, reason: "gambling (7995)" };
+  if (/investment|trading|stocks|mutual fund|crypto|money transfer/.test(c))
+    return { excluded: true, reason: "financial institutions & quasi-cash (6010–6211/4829)" };
+  if (/wholesale|\bmetro cash\b/.test(c))
+    return { excluded: true, reason: "wholesale clubs (5300)" };
+  return { excluded: false };
+}
+
+/**
+ * Live+ earns nothing abroad. From 26 Jul 2026 HSBC cut the forex markup to 1.99% and
+ * removed the 1.5% on international spends in the same stroke, so a foreign swipe is a
+ * pure 1.99% cost with no offsetting cashback.
+ */
+function livePlusEarnsNothing(input: RecommendInput): { nothing: boolean; reason?: string } {
+  if (input.isForeign || input.channel === "foreign") {
+    return { nothing: true, reason: "international spends earn no cashback from 26 Jul 2026" };
+  }
+  const ex = livePlusExcluded(input.category || "", input.merchant || "");
+  return ex.excluded ? { nothing: true, reason: `excluded MCC — ${ex.reason}` } : { nothing: false };
+}
+
 function livePlusCashOnTxn(
   amt: number,
   input: RecommendInput,
@@ -364,6 +417,9 @@ function livePlusCashOnTxn(
 ): { inr: number; pct: number; headroom: number; cappedAccelInr: number } {
   const used = input.livePlusAccelCashbackUsedThisMonth ?? 0;
   const headroom = Math.max(0, LIVE_PLUS_ACCEL_CAP_INR - used);
+  if (livePlusEarnsNothing(input).nothing) {
+    return { inr: 0, pct: 0, headroom, cappedAccelInr: 0 };
+  }
   if (!accel || amt < 1) {
     const inr = amt * (LIVE_PLUS_BASE_PCT / 100);
     return { inr, pct: LIVE_PLUS_BASE_PCT, headroom, cappedAccelInr: 0 };
@@ -490,7 +546,9 @@ function livePlusWelcomeBonus(input: RecommendInput, amt: number): { inr: number
 /** Post-reval: hospital + local transport (bus/metro) earn 0% — not even 1.5% base. */
 function livePlusZeroBase(merchant: string, category: string): boolean {
   const t = `${merchant} ${category}`.toLowerCase();
-  return /hospital|healthcare|clinic|doctor|dermat|derma|medical|metro|local\s*transport|\bbus\b/.test(t);
+  // Healthcare wording the MCC list doesn't spell out but HSBC bills under 8062.
+  if (/healthcare|clinic|doctor|dermat|derma|medical/.test(t)) return true;
+  return livePlusExcluded(category, merchant).excluded;
 }
 
 /**
@@ -1842,7 +1900,7 @@ function annualMilestoneBonus(
   }
 
   const ytd = ytdForCard(cardId, input);
-  const ms = ANNUAL_MILESTONES.filter((m) => m.cardId === cardId).slice().sort((a, b) => a.threshold - b.threshold);
+  const ms = liveAnnualMilestones(input.today).filter((m) => m.cardId === cardId).slice().sort((a, b) => a.threshold - b.threshold);
   // Trust spend first. Ignore stale catalog `m.hit` and stale milestonesHit when YTD is still below the threshold
   // (e.g. Amex PT 1.9L was seeded as hit while till-date was still ~₹1.84L → wrongly jumped to 4L).
   const isUnlocked = (threshold: number) => ytd >= threshold;
@@ -2343,6 +2401,14 @@ function applyForexNetting(options: RouteOption[], amt: number): void {
         o.pros = ["0% forex markup — no currency conversion fee", ...o.pros];
       }
       continue;
+    }
+    // Live+ stopped earning on international spends on 26 Jul 2026, the same day the
+    // markup dropped to 1.99% — HSBC traded one for the other. Zero the base so the row
+    // isn't credited 1.5% it won't receive; milestone bonuses still count, since those
+    // track spend rather than category earn.
+    if (o.cardId === "hsbc_live_plus" && o.baseRewardInr > 0) {
+      o.baseRewardInr = 0;
+      o.cons = [...o.cons, "No cashback at all on international spends since 26 Jul 2026"];
     }
     const fee = amt * (fx / 100);
     const gross = o.baseRewardInr + o.bonusRewardInr;

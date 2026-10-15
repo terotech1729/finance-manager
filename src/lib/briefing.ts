@@ -6,7 +6,7 @@
  * link to the place you'd do something about it.
  */
 import {
-  ANNUAL_MILESTONES,
+  liveAnnualMilestones,
   BOB_LOUNGE_GATE_INR,
   bobLoungeGateFor,
   nextQuarterLabel,
@@ -153,7 +153,7 @@ function moneyItems(s: AppState, today: string): BriefingItem[] {
   }
 
   // —— Any annual milestone within reach ——
-  for (const m of ANNUAL_MILESTONES) {
+  for (const m of liveAnnualMilestones()) {
     const ytd = ytdFor(m.cardId, s);
     if (ytd == null || ytd >= m.threshold || m.rewardValueInr < 500) continue;
     const left = m.threshold - ytd;

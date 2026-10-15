@@ -236,19 +236,21 @@ export const CARDS: readonly Card[] = [
     feeWaiverAt: 200000,
     forexPct: 1.99,
     // The only international lounge access left in the portfolio after Amex PT closed.
-    loungeRule: "2 domestic/yr + 1 international/yr",
+    loungeRule: "2 domestic/yr (1 per 6 months) + 1 international/yr",
     status: "active",
     pointValue: 1.0,
     baseRatePct: 1.5,
     bestRatePct: 10.0,
     statementDay: 1,
-    notes: "Visa Infinite. 10% statement CB (auto ~45d) on dining, food delivery, grocery, shopping & utilities — shared cap ₹1,200/mo; Amazon/Flipkart = 1.5% only; Myntra 10% promo till 31 Oct 2026 then 1.5%. Hospital/local transport = 0%. Welcome: ₹1k CB @ ₹25k/30d + app login; activate ≥₹300 → ₹750 Amazon/Zomato/Swiggy voucher; online+VKYC → ₹250 Amazon. Live+ Reserve (DineWithTimesPrime) from 1 Aug 2026. Perks: District + BookMyShow BOGO, District Play sports, Sephora 10%, Times Prime lifestyle, 2 domestic + 1 intl lounge/yr, ₹250/qtr contactless fuel CB (≥₹10k spend), ITC/Avis/IHG/Agoda/Meet&Greet via Infinite. Forex 1.99%. Fee ₹999+GST, waived at ₹2L/yr.",
+    notes: "Visa Infinite. 10% statement CB (auto ~45d) on dining, food delivery, grocery, shopping & utilities — shared cap ₹1,200/mo; Amazon/Flipkart = 1.5% only; Myntra 10% promo till 31 Oct 2026 then 1.5%. 0% (no CB at all, not even 1.5%) on: jewellery/antiques 5094/5932/5937/5944, fuel, rent, wallets, insurance, education & govt, tolls, hospitals 8062, local transport 4111, gambling, wholesale, B2B, quasi-cash — and on ALL international spends since 26 Jul 2026 (traded for the 1.99% markup). Welcome: ₹1k CB @ ₹25k/30d + app login; activate ≥₹300 → ₹750 Amazon/Zomato/Swiggy voucher; online+VKYC → ₹250 Amazon. Live+ Reserve (DineWithTimesPrime) from 1 Aug 2026. Perks: District + BookMyShow BOGO, District Play sports, Sephora 10%, Times Prime lifestyle, 2 domestic + 1 intl lounge/yr, ₹250/qtr contactless fuel CB (≥₹10k spend), ITC/Avis/IHG/Agoda/Meet&Greet via Infinite. Forex 1.99%. Fee ₹999+GST, waived at ₹2L/yr.",
   },
 ];
 
 export const ANNUAL_MILESTONES: readonly AnnualMilestone[] = [
   // Amex PT milestones removed with the card (₹4L collected; ₹7L Taj not being chased).
-  { cardId: "amex_mrcc", threshold: 90000, reward: "50% renewal-fee waiver", rewardValueInr: 2655, hit: false },
+  // Amex withdraws the intermediate 50% band on 15 Nov 2026; after that a ₹90,000–₹1,49,999
+  // spender pays the full renewal and only the ₹1.5L full waiver is worth chasing.
+  { cardId: "amex_mrcc", threshold: 90000, reward: "50% renewal-fee waiver", rewardValueInr: 2655, hit: false, endsOn: "2026-11-15", notes: "Withdrawn from 15 Nov 2026 — only the ₹1.5L full waiver survives." },
   { cardId: "amex_mrcc", threshold: 150000, reward: "100% renewal-fee waiver", rewardValueInr: 5310, hit: false },
   { cardId: "sbi_simplyclick", threshold: 100000, reward: "₹2K Cleartrip/Yatra e-voucher (online)", rewardValueInr: 2000, hit: false, notes: "SMS code ~within 30 days of hitting; ~6 months validity. Separate from fee waiver." },
   { cardId: "sbi_simplyclick", threshold: 200000, reward: "Additional ₹2K Cleartrip/Yatra e-voucher (online)", rewardValueInr: 2000, hit: false },
@@ -263,6 +265,18 @@ export const ANNUAL_MILESTONES: readonly AnnualMilestone[] = [
   { cardId: "hsbc_live_plus", threshold: 25000, reward: "₹1,000 welcome cashback (₹25k/30d + app login)", rewardValueInr: 1000, hit: false },
   { cardId: "hsbc_live_plus", threshold: 200000, reward: "Annual fee waived (₹999+GST)", rewardValueInr: 1179, hit: false },
 ];
+
+/**
+ * Annual milestones still worth chasing on the given date — i.e. with any `endsOn`
+ * withdrawal date still in the future. Ranking and the briefing should use this rather
+ * than the raw array, so a milestone the issuer has already withdrawn can't be scored
+ * as marginal value and pull spend toward a reward that no longer exists.
+ */
+export function liveAnnualMilestones(today?: string | Date): readonly AnnualMilestone[] {
+  const now = today ? new Date(today) : new Date();
+  if (!Number.isFinite(now.getTime())) return ANNUAL_MILESTONES;
+  return ANNUAL_MILESTONES.filter((m) => !m.endsOn || new Date(m.endsOn) > now);
+}
 
 export const MONTHLY_MILESTONES: readonly MonthlyMilestone[] = [
   { cardId: "amex_gold", rule: "6 transactions ≥₹1,000 in calendar month", rewardMr: 1000, rewardInr: 580, minSpend: 6000 },

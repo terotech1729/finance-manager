@@ -33,6 +33,12 @@ export type AnnualMilestone = {
   rewardValueInr: number;
   hit: boolean;
   notes?: string;
+  /**
+   * ISO date after which the issuer withdraws this milestone. Kept as data rather than
+   * deleting the row, so a milestone announced ahead of time stays visible and keeps
+   * being chased until it actually lapses, then stops counting on its own.
+   */
+  endsOn?: string;
 };
 
 export type MonthlyMilestone = {

@@ -16,6 +16,8 @@ type Expect = {
   bestLabelIncludes?: RegExp;
   /** Best route steps should mention POS swipe for offline dining */
   stepsMatch?: RegExp;
+  /** Live+ must show zero BASE cashback (milestone/welcome bonuses may still apply). */
+  livePlusBaseZero?: boolean;
   /** Every credit-like route must carry ifCardNotAllowed */
   requireDeclinedFallback?: boolean;
   declinedFallbackIncludes?: RegExp;
@@ -503,6 +505,36 @@ const CASES: Case[] = [
       kiwiNeonCycleSpend: 79243, // ₹20,757 short of ₹1L — big spend crosses 1L + 1.5L
     },
   },
+  {
+    // HSBC Services Guide puts jewellery (5094/5932/5937/5944) in the 0% column — it earns
+    // no cashback at all, not even the 1.5% base. Live+ may still rank on milestone value,
+    // but its base earn must be zero.
+    name: "jewellery → Live+ earns no base cashback (0% MCC)",
+    query: "Tanishq jewellery",
+    amount: 500000,
+    expect: { livePlusBaseZero: true },
+  },
+  {
+    // From 26 Jul 2026 HSBC traded the 1.5% international earn for a 1.99% markup.
+    name: "foreign spend → Live+ earns nothing and nets negative",
+    query: "foreign hotel usd",
+    amount: 200000,
+    expect: { channel: "foreign", livePlusBaseZero: true },
+  },
+  {
+    name: "MRCC ₹90k waiver still scores before it is withdrawn",
+    query: "electronics store",
+    amount: 10000,
+    expect: { bestCard: ["amex_mrcc"], bestLabelIncludes: /90,?000/ },
+    input: { today: "2026-10-15", mrccCycleSpend: 88000, mrccThisCycleTxnsAt1500: 4, mrccThisCycleAmount: 25000 },
+  },
+  {
+    name: "MRCC ₹90k waiver stops scoring after 15 Nov 2026",
+    query: "electronics store",
+    amount: 10000,
+    expect: { bestLabelAvoid: /90,?000/ },
+    input: { today: "2026-11-20", mrccCycleSpend: 88000, mrccThisCycleTxnsAt1500: 4, mrccThisCycleAmount: 25000 },
+  },
 ];
 
 let failed = 0;
@@ -610,6 +642,15 @@ function runCase(c: Case) {
   if (/petrol|fuel|house rent|insurance/i.test(c.query)) {
     if (/build ₹|annual milestone/i.test(best.label) && !/completes/i.test(best.label)) {
       errors.push(`reward-dead category crowned thin annual: ${best.label}`);
+    }
+  }
+
+  if (c.expect.livePlusBaseZero) {
+    const lp = rows.find((r) => r.cardId === "hsbc_live_plus");
+    if (lp && lp.baseRewardInr > 0.5) {
+      errors.push(
+        `Live+ should earn 0 base here, got ₹${lp.baseRewardInr.toFixed(0)} (${lp.effectivePct.toFixed(2)}%): ${lp.label}`
+      );
     }
   }
 

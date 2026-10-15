@@ -68,8 +68,9 @@ export function buildRewardLedger(state: AppState): RewardLedger {
       unitValueInr: 0.58,
       confidence: "soft",
       liquidity: "travel",
-      redeemVia: "Airline/hotel transfer or Reward Multiplier",
-      caveat: "Pooled across Gold and MRCC. Statement credit is worth far less.",
+      redeemVia: "Airline/hotel transfer, or Gold Collection vouchers",
+      caveat:
+        "Amex ends MR pooling on 15 Nov 2026 — Gold and MRCC will hold separate balances with no transfer between them, so pool-dependent redemptions must be done before that date. Reward Multiplier closed on 30 Sep 2026. Statement credit is worth far less than transfers.",
     },
     {
       key: "indigoBluChips",
