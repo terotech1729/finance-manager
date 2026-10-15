@@ -1,25 +1,34 @@
+/**
+ * Chart colours, tuned for the HUD palette.
+ *
+ * Series sit on a deep-navy ground, so these are pulled toward the cyan/teal/gold end
+ * where they stay legible and read as part of the same instrument. Each card keeps a
+ * recognisable hue (Amex gold, BOB amber, HSBC magenta) so a series is identifiable
+ * across pages without a legend lookup.
+ */
 export const CARD_COLORS: Record<string, string> = {
-  amex_gold: "#d4a017",
-  amex_plat_travel: "#94a3b8",
-  amex_mrcc: "#4f46e5",
-  scapia: "#0ea5e9",
-  idfc_indigo: "#6366f1",
-  bob_eterna: "#f59e0b",
-  yes_kiwi: "#84cc16",
-  sbi_simplyclick: "#a855f7",
-  swiggy_blck: "#f97316",
-  amazon_pay_icici: "#fb923c",
-  hsbc_live_plus: "#db2777",
-  axis_ace: "#7c3aed",
-  cheq_au: "#059669",
-  giftcard: "#22d3ee",
-  upi: "#64748b",
-  cash: "#475569",
+  amex_gold: "#FFB454",
+  amex_plat_travel: "#8FA6BD",
+  amex_mrcc: "#6E8BFF",
+  scapia: "#00CFFF",
+  idfc_indigo: "#8B7BFF",
+  bob_eterna: "#FFC978",
+  yes_kiwi: "#7BE86B",
+  sbi_simplyclick: "#C47BFF",
+  swiggy_blck: "#FF9A4D",
+  amazon_pay_icici: "#FFAE6B",
+  hsbc_live_plus: "#FF5FA8",
+  axis_ace: "#9B6BFF",
+  cheq_au: "#00E6A8",
+  hdfc_diners_black_metal: "#C8D6E5",
+  giftcard: "#00FFF7",
+  upi: "#5E7893",
+  cash: "#44586D",
 };
 
 export const CHART_PALETTE = [
-  "#4f46e5", "#0ea5e9", "#84cc16", "#f59e0b", "#a855f7",
-  "#fb923c", "#22d3ee", "#ef4444", "#14b8a6", "#eab308",
+  "#00CFFF", "#00FFF7", "#00E6A8", "#FFB454", "#C47BFF",
+  "#FF5FA8", "#6E8BFF", "#FF3C3C", "#7BE86B", "#FFC978",
 ];
 
 export function colorFor(key: string, i = 0): string {

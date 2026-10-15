@@ -6,15 +6,46 @@ import { Icon } from "./Icons";
 import { MobileAccount } from "./TopBar";
 import { NAV_GROUPS as groups, isActive, sectionLabelFor } from "./navConfig";
 
+/** Arc reactor mark — concentric rings with a slow outer sweep, scaled to the rail. */
+function ArcMark({ size = 34 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" className="shrink-0" aria-hidden="true">
+      <circle cx="20" cy="20" r="18.5" fill="none" stroke="#14283E" strokeWidth="1" />
+      <g className="origin-center animate-sweep-slow">
+        <circle
+          cx="20" cy="20" r="18.5"
+          fill="none" stroke="#00CFFF" strokeWidth="1"
+          strokeDasharray="14 102" strokeLinecap="round" opacity="0.9"
+        />
+      </g>
+      <circle cx="20" cy="20" r="13" fill="none" stroke="#00CFFF" strokeWidth="1" opacity="0.35" />
+      {/* Eight segments — the reactor's coil ring */}
+      {Array.from({ length: 8 }).map((_, i) => {
+        const a = (i * 45 * Math.PI) / 180;
+        return (
+          <line
+            key={i}
+            x1={20 + 9 * Math.cos(a)} y1={20 + 9 * Math.sin(a)}
+            x2={20 + 12.5 * Math.cos(a)} y2={20 + 12.5 * Math.sin(a)}
+            stroke="#00CFFF" strokeWidth="1.4" opacity="0.6"
+          />
+        );
+      })}
+      <circle cx="20" cy="20" r="6.5" fill="#00CFFF" opacity="0.13" />
+      <circle cx="20" cy="20" r="4" fill="#00FFF7" className="animate-flicker" style={{ filter: "drop-shadow(0 0 5px #00FFF7)" }} />
+    </svg>
+  );
+}
+
 function Brand() {
   return (
     <Link href="/" className="flex items-center gap-2.5 min-w-0">
-      <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold text-lg shadow-md shadow-accent/30">
-        T
-      </div>
+      <ArcMark />
       <div className="min-w-0">
-        <div className="text-sm font-semibold leading-none truncate">Tero</div>
-        <div className="text-xs text-fg-muted leading-none mt-1">Personal manager</div>
+        <div className="font-mono text-sm font-semibold leading-none tracking-[0.22em] text-accent">JARVIS</div>
+        <div className="font-mono text-[9px] uppercase leading-none tracking-[0.14em] text-fg-subtle mt-1.5">
+          Personal assistant
+        </div>
       </div>
     </Link>
   );
@@ -25,7 +56,7 @@ function NavLinks({ path, onNavigate, compact }: { path: string; onNavigate?: ()
     <>
       {groups.map((g) => (
         <div key={g.title} className="mb-4">
-          <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-subtle">{g.title}</div>
+          <div className="px-3 mb-1.5 font-mono text-[9px] uppercase tracking-[0.2em] text-fg-subtle">{g.title}</div>
           <div className="space-y-0.5">
             {g.items.map((it) => {
               const active = isActive(path, it.href);
@@ -35,14 +66,16 @@ function NavLinks({ path, onNavigate, compact }: { path: string; onNavigate?: ()
                   key={it.href}
                   href={it.href}
                   onClick={onNavigate}
-                  className={`relative flex items-center gap-3 px-3 rounded-lg text-sm transition-colors ${
+                  className={`relative flex items-center gap-3 px-3 rounded-sm text-sm transition-all ${
                     compact ? "py-2.5 min-h-[44px]" : "py-2"
                   } ${
-                    active ? "bg-accent/15 text-fg font-medium" : "text-fg-muted hover:text-fg hover:bg-bg-elevated"
+                    active
+                      ? "bg-accent/12 text-accent font-medium"
+                      : "text-fg-muted hover:text-fg hover:bg-accent/[0.06]"
                   }`}
                 >
-                  {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r bg-accent" />}
-                  <I size={17} className={active ? "text-accent" : ""} />
+                  {active && <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 bg-accent shadow-[0_0_8px_#00CFFF]" />}
+                  <I size={16} className={active ? "text-accent" : ""} />
                   {it.label}
                 </Link>
               );
@@ -79,7 +112,9 @@ function SidebarChrome({
       </nav>
       {footer !== false && (
         <div className="p-4 border-t border-border" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
-          <div className="text-xs text-fg-subtle">Tero · v2.0</div>
+          <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-fg-subtle">
+            Mark III · Online
+          </div>
         </div>
       )}
     </div>

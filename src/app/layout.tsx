@@ -6,12 +6,12 @@ import { AuthGate } from "@/components/AuthGate";
 import { Toaster } from "@/components/Toast";
 
 export const metadata: Metadata = {
-  title: "Tero",
-  description: "Tero — a personal manager for money, travel, notes and investments: card routing, milestone tracking, trip planning and net worth in one place.",
+  title: "Jarvis",
+  description: "Jarvis — a personal assistant for money, travel, notes and investments: card routing, milestone tracking, lounge and reward ledgers, trip planning and net worth in one place.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Tero",
+    title: "Jarvis",
   },
 };
 
@@ -21,8 +21,8 @@ export const viewport: Viewport = {
   maximumScale: 5,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0b0d10" },
-    { media: "(prefers-color-scheme: light)", color: "#0b0d10" },
+    { media: "(prefers-color-scheme: dark)", color: "#060c18" },
+    { media: "(prefers-color-scheme: light)", color: "#060c18" },
   ],
 };
 

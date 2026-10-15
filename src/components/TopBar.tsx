@@ -197,8 +197,10 @@ export function TopBar() {
   return (
     <header className="hidden md:flex sticky top-0 z-30 h-14 items-center gap-3 border-b border-border bg-bg-chrome/90 backdrop-blur px-6">
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold truncate">{section}</div>
-        <div className="text-[11px] text-fg-subtle leading-tight">Tero</div>
+        <div className="truncate font-mono text-xs uppercase tracking-[0.18em] text-accent">{section}</div>
+        <div className="font-mono text-[9px] uppercase leading-tight tracking-[0.14em] text-fg-subtle">
+          Jarvis · online
+        </div>
       </div>
       <SyncPill />
       <UserMenu />

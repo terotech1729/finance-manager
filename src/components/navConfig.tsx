@@ -24,6 +24,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/bills", label: "Bills", icon: Icon.Card },
       { href: "/spend", label: "Spend analyzer", icon: Icon.Dashboard },
       { href: "/milestones", label: "Milestones", icon: Icon.Sparkles },
+      { href: "/rewards", label: "Reward wallet", icon: Icon.Trophy },
     ],
   },
   {
@@ -45,6 +46,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "Reference",
     items: [
       { href: "/cards", label: "Cards", icon: Icon.Card },
+      { href: "/lounges", label: "Lounge access", icon: Icon.Plane },
       { href: "/claims", label: "Benefit claims", icon: Icon.Sparkles },
       { href: "/debit", label: "Debit & GyFTR", icon: Icon.Trophy },
       { href: "/vouchers", label: "Vouchers & GCs", icon: Icon.Trophy },

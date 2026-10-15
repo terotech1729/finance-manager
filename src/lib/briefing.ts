@@ -244,8 +244,8 @@ export function buildBriefing(input: {
 
 export function greeting(d: Date = new Date()): string {
   const h = d.getHours();
-  if (h < 5) return "Up late";
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+  if (h < 5) return "Burning the midnight oil, sir";
+  if (h < 12) return "Good morning, sir";
+  if (h < 17) return "Good afternoon, sir";
+  return "Good evening, sir";
 }

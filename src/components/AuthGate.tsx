@@ -121,9 +121,11 @@ function AuthGated({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="card-shell p-6 max-w-sm w-full">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-info flex items-center justify-center text-white font-bold text-sm">T</div>
-            <div className="font-semibold">Tero</div>
+          <div className="flex items-center gap-2.5 mb-1">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-accent/50 bg-accent/10">
+              <span className="block h-2.5 w-2.5 rounded-full bg-hud-teal shadow-[0_0_8px_#00FFF7]" />
+            </div>
+            <div className="font-mono text-sm font-semibold tracking-[0.22em] text-accent">JARVIS</div>
           </div>
           <p className="text-sm text-fg-muted mb-4">
             {mode === "signin" ? "Sign in to sync your data across devices." : "Create your account to start syncing across devices."}
