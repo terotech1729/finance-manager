@@ -98,6 +98,11 @@ export type AppState = {
   // Lounge usage YTD
   ptccLoungesUsed: number;
   ptccLoungesUsedThisQuarter: number;
+  /** ISO date Platinum Travel was closed. Empty when unknown — the 30-day MR
+   * forfeiture clock runs from here and a guessed date would be worse than none. */
+  amexPtClosedOn: string;
+  /** MR balance sitting on PT at closure, for valuing what is at risk. */
+  amexPtMrAtClosure: number;
   // Debit / GyFTR (HDFC Visa Platinum debit — not credit)
   hdfcDebitIssueDate: string;
   gyftrBalance: number;
@@ -183,6 +188,8 @@ export const DEFAULT_STATE: AppState = {
   milestonesHit: ["idfc_indigo:200000", "idfc_indigo:500000"],
   ptccLoungesUsed: 1,
   ptccLoungesUsedThisQuarter: 1,
+  amexPtClosedOn: "",
+  amexPtMrAtClosure: 0,
   hdfcDebitIssueDate: "",
   gyftrBalance: 750,
   hdfcDebitCashbackPts: 0,

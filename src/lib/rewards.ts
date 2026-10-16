@@ -70,7 +70,7 @@ export function buildRewardLedger(state: AppState): RewardLedger {
       liquidity: "travel",
       redeemVia: "Airline/hotel transfer, or Gold Collection vouchers",
       caveat:
-        "Amex ends MR pooling on 15 Nov 2026 — Gold and MRCC will hold separate balances with no transfer between them, so pool-dependent redemptions must be done before that date. Reward Multiplier closed on 30 Sep 2026. Statement credit is worth far less than transfers.",
+        "Two separate clocks. Closing a card starts a 30-day window after which its points are forfeited, and during that window they can only become a statement credit at 4 points to ₹1 — transfers are already gone, so the closed card's share is worth ₹0.25/pt, not ₹0.58. Separately, Amex ends MR pooling on 15 Nov 2026: Gold and MRCC will hold separate balances with no transfer between them, so any redemption needing the combined balance must be done before that date. Reward Multiplier closed on 30 Sep 2026.",
     },
     {
       key: "indigoBluChips",
