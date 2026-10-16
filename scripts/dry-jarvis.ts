@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { DEFAULT_STATE, type AppState } from "../src/lib/storage";
 import type { Transaction } from "../src/lib/types";
-import { upcomingDeadlines, urgencyOf, amexClosureDeadline } from "../src/lib/deadlines";
+import { upcomingDeadlines, urgencyOf } from "../src/lib/deadlines";
 import { findAnomalies } from "../src/lib/anomalies";
 import { buildPlan, inferMonthlyCapacity } from "../src/lib/planner";
 import { sanitiseDraft } from "../src/lib/ai/parseSpend";
@@ -272,52 +272,6 @@ check("offers are never auto-applied", () => {
   assert.ok(o);
   assert.equal(o.status, "advisory", "an offer was queued as a patch to card terms");
   assert.equal(o.field, null, "an offer named a patchable field");
-});
-
-console.log("\nAmex closure forfeiture clock");
-
-check("stays silent when no closure date is recorded", () => {
-  // A guessed countdown is worse than none: it would either manufacture urgency or,
-  // far worse, imply time remains when the window has already shut.
-  assert.equal(amexClosureDeadline({ ...state, amexPtClosedOn: "" }, TODAY), null);
-  for (const bad of ["yesterday", "15/10/2026", "2026-13-45"]) {
-    const d = amexClosureDeadline({ ...state, amexPtClosedOn: bad }, TODAY);
-    assert.ok(d === null || Number.isFinite(new Date(d.on).getTime()), `bad date ${bad} produced a broken deadline`);
-  }
-});
-
-check("lands exactly 30 days after closure", () => {
-  const d = amexClosureDeadline({ ...state, amexPtClosedOn: "2026-10-01" }, TODAY);
-  assert.ok(d);
-  assert.equal(d.on, "2026-10-31");
-  assert.equal(d.daysLeft, 16, "2026-10-15 to 2026-10-31 should read 16 days");
-});
-
-check("values the balance at the statement-credit rate, not the transfer rate", () => {
-  // Post-closure the points can only become a statement credit at 4 to ₹1. Valuing them
-  // at the ~₹0.58 transfer rate would overstate what is actually recoverable.
-  const d = amexClosureDeadline(
-    { ...state, amexPtClosedOn: "2026-10-10", amexPtMrAtClosure: 40000 },
-    TODAY
-  );
-  assert.ok(d);
-  assert.equal(d.valueInr, 10000, "40,000 points should be valued at ₹10,000, not ₹23,200");
-});
-
-check("reports a lapsed window rather than hiding it", () => {
-  const d = amexClosureDeadline({ ...state, amexPtClosedOn: "2026-08-01" }, TODAY);
-  assert.ok(d, "a lapsed window must still be reported");
-  assert.equal(d.daysLeft, 0);
-  assert.ok(/closed/i.test(d.title), "a lapsed window should say so in the title");
-  assert.ok(/verify/i.test(d.action), "a lapsed window should tell you to check the statement");
-});
-
-check("surfaces through upcomingDeadlines when live", () => {
-  const withClosure = { ...state, amexPtClosedOn: "2026-10-10", amexPtMrAtClosure: 40000 };
-  const ids = upcomingDeadlines(withClosure, TODAY, 90).map((d) => d.id);
-  assert.ok(ids.includes("amex-pt-closure-forfeiture"), "the forfeiture clock never reached the list");
-  // And must not appear at all when there is no closure date.
-  assert.ok(!upcomingDeadlines(state, TODAY, 90).map((d) => d.id).includes("amex-pt-closure-forfeiture"));
 });
 
 console.log("\nSBI Unipay accrual");

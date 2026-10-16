@@ -35,8 +35,6 @@ const FIELDS: { key: keyof AppState; label: string; group: string; numeric?: boo
   { key: "sbiFeeAnniversaryDate", label: "SBI SimplyCLICK — annual fee date (YYYY-MM-DD)", group: "Milestone period dates", numeric: false },
   { key: "sbiOnlineYearStart", label: "SBI SimplyCLICK — online voucher year start (YYYY-MM-DD)", group: "Milestone period dates", numeric: false },
   { key: "amexMrPooled", label: "Amex MR — pooled balance", group: "Reward balances", numeric: true },
-  { key: "amexPtClosedOn", label: "Amex PT — date closed (YYYY-MM-DD, starts the 30-day MR forfeiture clock)", group: "Reward balances", numeric: false },
-  { key: "amexPtMrAtClosure", label: "Amex PT — MR balance sitting on that card when it closed", group: "Reward balances", numeric: true },
   { key: "indigoBluChips", label: "IndiGo BluChips balance", group: "Reward balances", numeric: true },
   { key: "scapiaCoins", label: "Scapia coins balance", group: "Reward balances", numeric: true },
   { key: "sbiRp", label: "SBI Reward Points balance", group: "Reward balances", numeric: true },

@@ -1,6 +1,6 @@
 import { getCardById, liveAnnualMilestones, nextQuarterStart, quarterLabel } from "./cards";
 import type { AppState } from "./storage";
-import { inr, toLocalISODate } from "./utils";
+import { inr } from "./utils";
 
 /**
  * Dated cliffs: things that stop being true on a particular day.
@@ -28,65 +28,6 @@ export type Deadline = {
   /** What to do about it, in one line. */
   action: string;
 };
-
-/**
- * Days you get to redeem Membership Rewards after closing an Amex card before the
- * balance on it is forfeited.
- *
- * This is the harshest clock in the portfolio and the easiest to miss, because closing a
- * card feels like the end of the admin rather than the start of a countdown. Amex's
- * Platinum Travel terms say the points "will get forfeited within 30 days of the
- * cancellation", and the Membership Rewards master terms add the sting: after
- * cancellation the points can ONLY go to a statement credit at 4 points to ₹1, so
- * transfer partners — where points are worth roughly twice that — are off the table the
- * moment the card closes.
- */
-export const AMEX_CLOSURE_REDEEM_DAYS = 30;
-/** Post-closure redemption is statement credit only, at 4 MR to ₹1. */
-export const AMEX_CLOSURE_POINT_VALUE_INR = 0.25;
-
-/**
- * The forfeiture clock on a closed Amex card, if a closure date is known.
- *
- * Returns null when `amexPtClosedOn` is unset rather than guessing a date — a wrong
- * countdown here is worse than none, since it would either manufacture false urgency or,
- * far worse, imply there is time left when the window has already shut.
- */
-export function amexClosureDeadline(s: AppState, today = new Date()): Deadline | null {
-  const closedOn = s.amexPtClosedOn;
-  if (!closedOn || !/^\d{4}-\d{2}-\d{2}$/.test(closedOn)) return null;
-
-  const closed = new Date(`${closedOn}T00:00:00`);
-  if (!Number.isFinite(closed.getTime())) return null;
-
-  const deadline = new Date(closed);
-  deadline.setDate(deadline.getDate() + AMEX_CLOSURE_REDEEM_DAYS);
-  // toLocalISODate, not toISOString: the latter renders an IST midnight as the previous
-  // day in UTC, which would show the window shutting 24 hours early.
-  const on = toLocalISODate(deadline);
-  const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / 86400_000);
-
-  const atRisk = s.amexPtMrAtClosure ?? 0;
-  const lapsed = daysLeft < 0;
-
-  return {
-    id: "amex-pt-closure-forfeiture",
-    kind: "points",
-    title: lapsed
-      ? "Amex PT points window has closed"
-      : `Amex PT points forfeit in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
-    detail: lapsed
-      ? `The 30 days from closing Platinum Travel on ${closedOn} ran out on ${on}. Anything still sitting on that card is gone — confirm against your statement and raise it with Amex immediately if the balance looks wrong.`
-      : `Closed ${closedOn}, so the 30-day redemption window ends ${on}. Post-closure these can only go to a statement credit at 4 points to ₹1 — transfers are already unavailable.`,
-    on,
-    daysLeft: Math.max(0, daysLeft),
-    valueInr: atRisk > 0 ? Math.round(atRisk * AMEX_CLOSURE_POINT_VALUE_INR) : undefined,
-    href: "/rewards",
-    action: lapsed
-      ? "Verify the balance against your statement"
-      : "Redeem as statement credit today — nothing else is available",
-  };
-}
 
 /**
  * Programme-level cutoffs that aren't derivable from state — an issuer announced a date
@@ -279,9 +220,7 @@ export function upcomingDeadlines(s: AppState, today = new Date(), horizonDays =
     action: c.action,
   }));
 
-  const closure = amexClosureDeadline(s, today);
-
-  return [...programme, ...withdrawnMilestones(today), ...periodWindows(s, today), ...(closure ? [closure] : [])]
+  return [...programme, ...withdrawnMilestones(today), ...periodWindows(s, today)]
     .filter((d) => d.daysLeft >= 0 && d.daysLeft <= horizonDays)
     .sort((a, b) => a.daysLeft - b.daysLeft || (b.valueInr ?? 0) - (a.valueInr ?? 0));
 }
