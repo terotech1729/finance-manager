@@ -17,6 +17,7 @@ import { buildPlan, inferMonthlyCapacity } from "../src/lib/planner";
 import { sanitiseDraft } from "../src/lib/ai/parseSpend";
 import { buildContext } from "../src/lib/ai/ask";
 import { normaliseOffer } from "../src/lib/ai/offerScan";
+import { sbiUnipayReturnInr, SBI_RP_OPTIMAL_TXN_INR } from "../src/lib/billRoutes";
 
 let passed = 0;
 let failed = 0;
@@ -271,6 +272,69 @@ check("offers are never auto-applied", () => {
   assert.ok(o);
   assert.equal(o.status, "advisory", "an offer was queued as a patch to card terms");
   assert.equal(o.field, null, "an offer named a patchable field");
+});
+
+console.log("\nSBI Unipay accrual");
+
+check("caps at 1,000 points per transaction, so ₹1L is the most one payment can earn", () => {
+  // The cap is the whole reason the split guidance exists; if this ever stops holding,
+  // the advice on /debit becomes wrong rather than merely stale.
+  for (const amt of [100000, 200000, 500000, 2000000]) {
+    assert.equal(
+      sbiUnipayReturnInr(amt, amt, false),
+      250,
+      `a single payment of ${amt} earned more than the ₹250 per-transaction ceiling`
+    );
+  }
+});
+
+check("splitting at ₹1L beats one lump payment, and by more as the bill grows", () => {
+  let lastGap = -1;
+  for (const amt of [150000, 200000, 300000, 500000]) {
+    const one = sbiUnipayReturnInr(amt, amt, false);
+    const split = sbiUnipayReturnInr(amt, SBI_RP_OPTIMAL_TXN_INR, false);
+    assert.ok(split > one, `splitting ${amt} did not beat paying it in one go`);
+    const gap = split - one;
+    assert.ok(gap > lastGap, `the penalty for not splitting should grow with the bill`);
+    lastGap = gap;
+  }
+});
+
+check("no chunk size beats ₹1L", () => {
+  const best = sbiUnipayReturnInr(300000, SBI_RP_OPTIMAL_TXN_INR, false);
+  for (const chunk of [10000, 25000, 50000, 75000, 125000, 150000, 300000]) {
+    assert.ok(
+      sbiUnipayReturnInr(300000, chunk, false) <= best,
+      `chunking at ${chunk} beat the ₹1L chunk, so the recommended split is wrong`
+    );
+  }
+});
+
+check("the monthly ceiling binds and never pays beyond ₹2,500", () => {
+  for (const amt of [1000000, 1500000, 5000000]) {
+    assert.equal(sbiUnipayReturnInr(amt, SBI_RP_OPTIMAL_TXN_INR, false), 2500);
+  }
+});
+
+check("the disputed milestone is additive and never subtracts", () => {
+  for (const amt of [50000, 100000, 250000]) {
+    const lo = sbiUnipayReturnInr(amt, SBI_RP_OPTIMAL_TXN_INR, false);
+    const hi = sbiUnipayReturnInr(amt, SBI_RP_OPTIMAL_TXN_INR, true);
+    assert.ok(hi >= lo, `including the milestone reduced the return at ${amt}`);
+  }
+  // Below ₹1L there is no bonus either way, so the range must collapse.
+  assert.equal(
+    sbiUnipayReturnInr(50000, SBI_RP_OPTIMAL_TXN_INR, true),
+    sbiUnipayReturnInr(50000, SBI_RP_OPTIMAL_TXN_INR, false)
+  );
+});
+
+check("degenerate inputs return zero rather than NaN", () => {
+  for (const [spend, chunk] of [[0, 100000], [-5000, 100000], [100000, 0], [100000, -1]]) {
+    const r = sbiUnipayReturnInr(spend, chunk, true);
+    assert.ok(Number.isFinite(r), `non-finite return for spend=${spend} chunk=${chunk}`);
+    assert.equal(r, 0);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

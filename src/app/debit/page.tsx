@@ -10,7 +10,15 @@ import { Callout } from "@/components/Callout";
 import { Icon } from "@/components/Icons";
 import { inr, inrExact } from "@/lib/utils";
 import { HDFC_DEBIT_LOUNGE_QUARTER_INR } from "@/lib/lounges";
-import { liveRoutes, deadRoutes, sbiUnipayReturnInr, SBI_RP_MILESTONE_INR, SBI_RP_MILESTONE_POINTS, SBI_RP_VALUE_INR } from "@/lib/billRoutes";
+import {
+  liveRoutes,
+  deadRoutes,
+  sbiUnipayReturnInr,
+  SBI_RP_MILESTONE_INR,
+  SBI_RP_MILESTONE_POINTS,
+  SBI_RP_VALUE_INR,
+  SBI_RP_OPTIMAL_TXN_INR,
+} from "@/lib/billRoutes";
 
 export default function DebitPage() {
   const [state, setState] = useState<AppState | null>(null);
@@ -25,6 +33,11 @@ export default function DebitPage() {
   };
 
   const sbiMilestoneMet = (state.sbiUnipayMonthSpend ?? 0) >= SBI_RP_MILESTONE_INR;
+  const sbiSpend = state.sbiUnipayMonthSpend ?? 0;
+  const sbiPayments = Math.max(1, Math.ceil(sbiSpend / SBI_RP_OPTIMAL_TXN_INR));
+  // Floor excludes the disputed milestone bonus, ceiling includes it.
+  const sbiFloor = sbiUnipayReturnInr(sbiSpend, SBI_RP_OPTIMAL_TXN_INR, false);
+  const sbiCeiling = sbiUnipayReturnInr(sbiSpend, SBI_RP_OPTIMAL_TXN_INR, true);
   const debitGateMet = (state.hdfcDebitQuarterSpend ?? 0) >= HDFC_DEBIT_LOUNGE_QUARTER_INR;
   const card = DEBIT_CARDS[0];
   const vouchers = state.gyftrVouchers ?? [];
@@ -283,16 +296,29 @@ export default function DebitPage() {
                   />
                 </label>
                 <div className="mt-2 flex items-baseline justify-between gap-3 text-[11px]">
-                  <span className="text-fg-muted">Earned so far</span>
+                  <span className="text-fg-muted">
+                    Earned so far{sbiPayments > 1 ? ` (split into ${sbiPayments} payments)` : ""}
+                  </span>
                   <span className="readout text-success">
-                    {inr(sbiUnipayReturnInr(state.sbiUnipayMonthSpend ?? 0))}
+                    {inr(sbiFloor)}
+                    {sbiCeiling > sbiFloor ? `–${inr(sbiCeiling)}` : ""}
                   </span>
                 </div>
+                {sbiPayments > 1 && (
+                  <p className="mt-1.5 text-[11px] text-fg-subtle">
+                    Pay as {sbiPayments} separate payments of ≤{inr(SBI_RP_OPTIMAL_TXN_INR)}. Accrual
+                    caps at 1,000 points per transaction, so one payment of{" "}
+                    {inr(state.sbiUnipayMonthSpend ?? 0)} would earn only{" "}
+                    {inr(sbiUnipayReturnInr(state.sbiUnipayMonthSpend ?? 0, state.sbiUnipayMonthSpend ?? 0, false))}{" "}
+                    instead of {inr(sbiFloor)}.
+                  </p>
+                )}
                 {!sbiMilestoneMet && (
                   <p className="mt-1.5 text-[11px] text-warning">
-                    {inr(SBI_RP_MILESTONE_INR - (state.sbiUnipayMonthSpend ?? 0))} more this month
-                    triggers the 1,000-point bonus — worth {inr(SBI_RP_MILESTONE_POINTS * SBI_RP_VALUE_INR)}.
-                    The last rupee before ₹1L is the most valuable one you will spend all month.
+                    {inr(SBI_RP_MILESTONE_INR - (state.sbiUnipayMonthSpend ?? 0))} more this month may
+                    trigger the 1,000-point bonus, worth {inr(SBI_RP_MILESTONE_POINTS * SBI_RP_VALUE_INR)} —
+                    SBI&apos;s product pages call it monthly, its rewards FAQ reads as yearly. Check
+                    rewardz.sbi after the first month to settle which.
                   </p>
                 )}
               </div>
