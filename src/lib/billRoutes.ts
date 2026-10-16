@@ -40,7 +40,7 @@ export const BILL_ROUTES: readonly BillRoute[] = [
     detail:
       "The only route paying a predictable rate on every payment rather than a scratch card. The 1% is in Chips, and 100 Chips redeem for ₹25 of cash discount or brand vouchers, so the honest cash-equivalent is well under the headline 1%.",
     verdict:
-      "Good fallback, and the best option for any bill you are not routing through SBI Unipay. Pays something every single time, which nothing else here does.",
+      "The default. Matches SBI Unipay's guaranteed 0.25% for a fraction of the effort — it fetches every bill and pays them together, where Unipay is a per-card lookup on a website. Lowest hassle per rupee returned.",
     url: "https://cheq.one/",
   },
   {
@@ -133,7 +133,7 @@ export const BILL_ROUTES: readonly BillRoute[] = [
     detail:
       "2 SBI Reward Points per ₹200 of PoS and e-commerce spend at ₹0.25 a point, so 0.25% is the floor. Accrual is capped at 1,000 RP per transaction, which lands at exactly ₹1,00,000 — split anything larger or the excess earns nothing. Monthly ceiling is 10,000 RP (₹2,500), reached around ₹10L. A further 1,000-point bonus applies at ₹1 lakh, but SBI's product pages say per month while its rewards FAQ reads as per financial year. Points last 24 months, locked 30 days after posting, 2× in your birthday month.",
     verdict:
-      "Your best route now the account exists, and the only one with no monthly cap worth worrying about. Both your Visa and Mastercard variants work — only non-SBI debit cards were removed. Keep every payment at or under ₹1,00,000.",
+      "Ties CheQ at 0.25% and only beats it if the ₹1L bonus turns out to be monthly. More clicks per bill than CheQ, since each card is looked up by last-4 and mobile. Worth one month's trial to see whether the bonus posts; not worth it otherwise.",
     url: "https://sbi.bank.in/web/personal-banking/cards/debit-card/sbi-rewardz",
   },
   {

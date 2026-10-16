@@ -34,7 +34,6 @@ export default function DebitPage() {
 
   const sbiMilestoneMet = (state.sbiUnipayMonthSpend ?? 0) >= SBI_RP_MILESTONE_INR;
   const sbiSpend = state.sbiUnipayMonthSpend ?? 0;
-  const sbiPayments = Math.max(1, Math.ceil(sbiSpend / SBI_RP_OPTIMAL_TXN_INR));
   // Floor excludes the disputed milestone bonus, ceiling includes it.
   const sbiFloor = sbiUnipayReturnInr(sbiSpend, SBI_RP_OPTIMAL_TXN_INR, false);
   const sbiCeiling = sbiUnipayReturnInr(sbiSpend, SBI_RP_OPTIMAL_TXN_INR, true);
@@ -296,23 +295,21 @@ export default function DebitPage() {
                   />
                 </label>
                 <div className="mt-2 flex items-baseline justify-between gap-3 text-[11px]">
-                  <span className="text-fg-muted">
-                    Earned so far{sbiPayments > 1 ? ` (split into ${sbiPayments} payments)` : ""}
-                  </span>
+                  <span className="text-fg-muted">Earned so far</span>
                   <span className="readout text-success">
                     {inr(sbiFloor)}
                     {sbiCeiling > sbiFloor ? `–${inr(sbiCeiling)}` : ""}
                   </span>
                 </div>
-                {sbiPayments > 1 && (
-                  <p className="mt-1.5 text-[11px] text-fg-subtle">
-                    Pay as {sbiPayments} separate payments of ≤{inr(SBI_RP_OPTIMAL_TXN_INR)}. Accrual
-                    caps at 1,000 points per transaction, so one payment of{" "}
-                    {inr(state.sbiUnipayMonthSpend ?? 0)} would earn only{" "}
-                    {inr(sbiUnipayReturnInr(state.sbiUnipayMonthSpend ?? 0, state.sbiUnipayMonthSpend ?? 0, false))}{" "}
-                    instead of {inr(sbiFloor)}.
-                  </p>
-                )}
+                {/* The 1,000-point cap is per PAYMENT, not per month, so it only bites on a
+                    single bill above ₹1L. Paying five separate card bills of ₹20k each is
+                    already five transactions — nothing needs splitting, and telling you to
+                    split a monthly total you never paid in one go would be wrong. */}
+                <p className="mt-1.5 text-[11px] text-fg-subtle">
+                  Each card&apos;s bill is its own payment, and the 1,000-point cap applies per
+                  payment — so this only needs managing if a single bill tops{" "}
+                  {inr(SBI_RP_OPTIMAL_TXN_INR)}. Below that you get the full 0.25% automatically.
+                </p>
                 {!sbiMilestoneMet && (
                   <p className="mt-1.5 text-[11px] text-warning">
                     {inr(SBI_RP_MILESTONE_INR - (state.sbiUnipayMonthSpend ?? 0))} more this month may
