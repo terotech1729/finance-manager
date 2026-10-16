@@ -86,7 +86,7 @@ function ItineraryCard({
       <ol className="space-y-2 border-t border-border pt-3">
         {it.legs.map((leg, i) => (
           <li key={leg.id || i} className="flex gap-3 text-sm">
-            <div className="w-16 shrink-0 text-xs uppercase tracking-wide text-fg-muted pt-0.5">
+            <div className="w-16 shrink-0 font-mono text-xs uppercase tracking-wide text-fg-muted pt-0.5">
               {leg.mode}
             </div>
             <div className="min-w-0 flex-1">
@@ -247,7 +247,7 @@ export function JourneyReach() {
         />
         <div className="relative p-4 sm:p-6 space-y-5">
           <div>
-            <div className="text-xs uppercase tracking-[0.18em] text-emerald-300/80">Reach by</div>
+            <div className="font-mono text-xs uppercase tracking-[0.18em] text-emerald-300/80">Reach by</div>
             <h2 className="text-xl sm:text-2xl font-semibold text-white mt-1">
               Best route tree to your deadline
             </h2>

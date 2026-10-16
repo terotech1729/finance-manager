@@ -101,7 +101,7 @@ export function PlaceTypeahead({ mode, label, placeholder, value, onChange, excl
                 <div className="font-medium flex items-center gap-2">
                   <span>{placeLabel(place)}</span>
                   {place.code && (
-                    <span className="text-[10px] uppercase tracking-wide text-fg-muted border border-border rounded px-1.5 py-0.5">
+                    <span className="font-mono text-[10px] uppercase tracking-wide text-fg-muted border border-border rounded px-1.5 py-0.5">
                       {place.code}
                     </span>
                   )}

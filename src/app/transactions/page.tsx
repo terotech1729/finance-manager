@@ -302,7 +302,7 @@ export default function TransactionsPage() {
         ) : (
           <div className="card-shell overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-fg-muted text-xs uppercase tracking-wide border-b border-border">
+              <thead className="text-fg-muted font-mono text-xs uppercase tracking-wide border-b border-border">
                 <tr>
                   <th className="text-left p-3 font-medium">Date</th>
                   <th className="text-left font-medium">Merchant</th>

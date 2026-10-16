@@ -192,7 +192,7 @@ export default function InvestmentAnalyzerPage() {
           <h2 className="font-semibold mb-4">Top holdings</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-fg-muted text-[10px] uppercase tracking-wide">
+              <thead className="text-fg-muted font-mono text-[10px] uppercase tracking-wide">
                 <tr><th className="text-left py-1">Holding</th><th className="text-right">Invested</th><th className="text-right">Value</th><th className="text-right">P/L</th></tr>
               </thead>
               <tbody>
@@ -236,7 +236,7 @@ export default function InvestmentAnalyzerPage() {
 
           <div className="card-shell overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-fg-muted text-[10px] uppercase tracking-wide">
+              <thead className="text-fg-muted font-mono text-[10px] uppercase tracking-wide">
                 <tr>
                   <th className="text-left p-3">Property</th>
                   <th className="text-right">Worth</th>

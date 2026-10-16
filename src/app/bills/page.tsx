@@ -111,7 +111,7 @@ export default function BillsPage() {
 
       <div className="card-shell">
         <table className="w-full text-sm">
-          <thead className="text-fg-muted text-xs uppercase tracking-wide">
+          <thead className="text-fg-muted font-mono text-xs uppercase tracking-wide">
             <tr>
               <th className="text-left p-3">Card</th>
               <th className="text-right">Logged</th>

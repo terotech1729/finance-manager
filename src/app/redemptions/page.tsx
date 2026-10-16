@@ -35,7 +35,7 @@ export default function RedemptionsPage() {
             </div>
             <div className="card-body">
               <table className="w-full text-sm">
-                <thead className="text-fg-muted text-xs uppercase tracking-wide">
+                <thead className="text-fg-muted font-mono text-xs uppercase tracking-wide">
                   <tr><th className="text-left pb-2">Redemption</th><th className="text-right pb-2">₹ / unit</th><th className="text-left pb-2 pl-4">Notes</th></tr>
                 </thead>
                 <tbody>

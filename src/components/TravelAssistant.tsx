@@ -267,7 +267,7 @@ export function TravelAssistant({ onLogged }: Props) {
         <div className="relative p-4 sm:p-6 space-y-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-sky-300/80">Search &amp; save</div>
+              <div className="font-mono text-xs uppercase tracking-[0.18em] text-sky-300/80">Search &amp; save</div>
               <h2 className="text-xl sm:text-2xl font-semibold text-white mt-1">Book the lowest all-in trip</h2>
               <p className="text-sm text-slate-300/90 mt-1 max-w-xl">
                 We pull market fares, apply Instant Discount + your card / Cashkaro stacks, and tell you where to checkout.
@@ -506,7 +506,7 @@ export function TravelAssistant({ onLogged }: Props) {
           <div className="card-shell border-accent/40 bg-gradient-to-br from-accent/10 via-bg-elevated to-bg-elevated p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div className="text-xs uppercase tracking-wide text-accent font-semibold">Best all-in</div>
+                <div className="font-mono text-xs uppercase tracking-wide text-accent font-semibold">Best all-in</div>
                 <div className="text-2xl font-bold mt-1">{routeToLog.platformLabel}</div>
                 <div className="text-sm text-fg-muted mt-1">Pay with {routeToLog.cardLabel}</div>
                 {routeToLog.offerLabel && routeToLog.offerDiscountInr > 0 && (
@@ -516,7 +516,7 @@ export function TravelAssistant({ onLogged }: Props) {
                 )}
               </div>
               <div className="text-left sm:text-right">
-                <div className="text-xs text-fg-muted uppercase tracking-wide">You effectively pay</div>
+                <div className="font-mono text-xs text-fg-muted uppercase tracking-wide">You effectively pay</div>
                 <div className="text-3xl font-bold text-success mt-1">{inr(routeToLog.netInr)}</div>
                 <div className="text-xs text-fg-muted mt-1">
                   Sticker {inr(routeToLog.fareInr)}
@@ -562,13 +562,13 @@ export function TravelAssistant({ onLogged }: Props) {
               <div className="mt-3 grid sm:grid-cols-2 gap-3">
                 {routeToLog.ifCardNotAllowed && (
                   <div className="rounded-lg p-3 border border-border bg-bg-chrome/60">
-                    <div className="text-xs font-semibold uppercase text-fg-muted">If card not allowed</div>
+                    <div className="font-mono text-xs font-semibold uppercase text-fg-muted">If card not allowed</div>
                     <div className="text-sm text-accent font-medium mt-1">{routeToLog.ifCardNotAllowed.label}</div>
                   </div>
                 )}
                 {routeToLog.ifAmexNotAccepted && (
                   <div className="rounded-lg p-3 border border-warning/40 bg-warning/5">
-                    <div className="text-xs font-semibold uppercase text-fg-muted">If Amex not accepted</div>
+                    <div className="font-mono text-xs font-semibold uppercase text-fg-muted">If Amex not accepted</div>
                     <div className="text-sm text-accent font-medium mt-1">{routeToLog.ifAmexNotAccepted.label}</div>
                   </div>
                 )}

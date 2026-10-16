@@ -30,7 +30,7 @@ export default function CashkaroPage() {
         </h2>
         <div className="card-shell">
           <table className="w-full text-sm">
-            <thead className="text-fg-muted text-xs uppercase tracking-wide">
+            <thead className="text-fg-muted font-mono text-xs uppercase tracking-wide">
               <tr><th className="text-left p-3">Merchant</th><th className="text-left">Category</th><th className="text-right p-3">Cashkaro Rate</th></tr>
             </thead>
             <tbody>
@@ -52,7 +52,7 @@ export default function CashkaroPage() {
         </h2>
         <div className="card-shell">
           <table className="w-full text-sm">
-            <thead className="text-fg-muted text-xs uppercase tracking-wide">
+            <thead className="text-fg-muted font-mono text-xs uppercase tracking-wide">
               <tr><th className="text-left p-3">Merchant</th><th className="text-left">Category</th><th className="text-left">Notes</th></tr>
             </thead>
             <tbody>
@@ -74,7 +74,7 @@ export default function CashkaroPage() {
         </h2>
         <div className="card-shell">
           <table className="w-full text-sm">
-            <thead className="text-fg-muted text-xs uppercase tracking-wide">
+            <thead className="text-fg-muted font-mono text-xs uppercase tracking-wide">
               <tr><th className="text-left p-3">Merchant</th><th className="text-left">Category</th><th className="text-right p-3">Cashkaro Rate</th></tr>
             </thead>
             <tbody>

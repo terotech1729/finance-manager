@@ -41,7 +41,7 @@ function PerkTile({ perk, open, onToggle }: { perk: VisaPerk; open: boolean; onT
           <I size={20} />
         </div>
         {perk.valueHint && (
-          <span className="text-[10px] uppercase tracking-wide text-success font-semibold shrink-0 text-right leading-tight max-w-[40%]">
+          <span className="font-mono text-[10px] uppercase tracking-wide text-success font-semibold shrink-0 text-right leading-tight max-w-[40%]">
             {perk.valueHint}
           </span>
         )}
@@ -77,7 +77,7 @@ export default function NetworkPerksPage() {
           <div className="text-[88px] font-black italic tracking-tighter leading-none text-white">VISA</div>
         </div>
         <div className="relative max-w-xl">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-fg-muted font-semibold">Plastic tier · not bank cashback</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-fg-muted font-semibold">Plastic tier · not bank cashback</div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mt-1.5">Network perks</h1>
           <p className="text-sm text-fg-muted mt-1.5 leading-relaxed">
             Pick a Visa tier. See the cards you hold. Tap a perk to claim it.

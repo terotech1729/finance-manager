@@ -255,7 +255,7 @@ export default function CardDetailPage({ params }: { params: { id: string } }) {
           <h2 className="text-lg font-bold mb-3">Monthly milestones</h2>
           <div className="card-shell">
             <table className="w-full text-sm">
-              <thead className="text-fg-muted text-xs uppercase tracking-wide">
+              <thead className="text-fg-muted font-mono text-xs uppercase tracking-wide">
                 <tr><th className="text-left p-3">Rule</th><th className="text-right">Min spend</th><th className="text-right p-3">Reward</th></tr>
               </thead>
               <tbody>
@@ -312,7 +312,7 @@ export default function CardDetailPage({ params }: { params: { id: string } }) {
         ) : (
           <div className="card-shell">
             <table className="w-full text-sm">
-              <thead className="text-fg-muted text-xs uppercase tracking-wide">
+              <thead className="text-fg-muted font-mono text-xs uppercase tracking-wide">
                 <tr>
                   <th className="text-left p-3">Date</th>
                   <th className="text-left">Merchant</th>

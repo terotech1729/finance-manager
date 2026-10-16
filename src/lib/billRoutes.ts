@@ -40,7 +40,7 @@ export const BILL_ROUTES: readonly BillRoute[] = [
     detail:
       "The only route paying a predictable rate on every payment rather than a scratch card. The 1% is in Chips, and 100 Chips redeem for ₹25 of cash discount or brand vouchers, so the honest cash-equivalent is well under the headline 1%.",
     verdict:
-      "Keep as the default. It is the only one that pays something every single time, and on a large bill the Chips actually accumulate to a usable balance.",
+      "Good fallback, and the best option for any bill you are not routing through SBI Unipay. Pays something every single time, which nothing else here does.",
     url: "https://cheq.one/",
   },
   {
@@ -126,16 +126,51 @@ export const BILL_ROUTES: readonly BillRoute[] = [
   },
   {
     id: "sbi_unipay",
-    name: "SBI Unipay with an SBI debit card",
-    status: "marginal",
-    per1LInr: 250,
-    rate: "≈0.25–0.37% in SBI reward points",
+    name: "SBI Unipay with your SBI debit card",
+    status: "works",
+    per1LInr: 500,
+    rate: "0.25% base, 0.50% on the first ₹1L each month",
     detail:
-      "The one route still paying a flat rate on any amount with no monthly cap, widely reported at roughly 0.25%, reaching about 0.37% with bonuses on larger payments. Points redeem for vouchers and recharges through SBI's own portal.",
+      "2 SBI Reward Points per ₹200 of PoS and e-commerce spend, and 1 RP = ₹0.25, so the base rate is 0.25%. On top, a 1,000-point milestone bonus lands once in any month where PoS and e-comm spend reaches ₹1 lakh — which doubles the return on that first lakh to 0.50% and then decays back toward 0.25% beyond it. Monthly accrual ceiling is 10,000 RP (₹2,500), so you will not hit it. Points last 24 months and are locked for 30 days after posting. 2× in your birthday month.",
     verdict:
-      "Genuinely the best uncapped option in the market — but it needs an SBI savings account and debit card, which you do not have. Only worth it if you were opening an SBI account anyway.",
+      "Your best route, now that the account exists. Beats CheQ on the first ₹1 lakh of each month and matches it beyond. Unipay takes SBI Visa and Mastercard debit cards, so both of yours work — only non-SBI debit cards were removed.",
+    url: "https://sbi.bank.in/web/personal-banking/cards/debit-card/sbi-rewardz",
+  },
+  {
+    id: "sbi_elsewhere",
+    name: "SBI debit card on MobiKwik / third-party apps",
+    status: "trap",
+    per1LInr: 0,
+    rate: "Often zero despite the card being eligible",
+    detail:
+      "The reward depends on how the platform tags the transaction, not on the card. Users paying with an SBI debit card through MobiKwik report the merchant resolving to 'Mobikwik' and no points accruing at all. MCC 6540 (wallet load) is explicitly excluded from the milestone bonus.",
+    verdict:
+      "Use SBI's own Unipay portal, not a third-party app, when paying with the SBI debit card. Same card, same bill, but the points only reliably post on Unipay.",
   },
 ];
+
+/**
+ * The spend at which SBI's monthly milestone bonus lands. Worth knowing precisely: the
+ * bonus is a flat 1,000 points for crossing ₹1 lakh of PoS/e-comm spend in a calendar
+ * month, so the marginal value of the rupees just below the line is far higher than the
+ * rupees just above it.
+ *
+ * SBI's own Rewardz and Virtual Debit Card pages both state "in a month". Several blogs
+ * say "in a year"; they are wrong, and the distinction is worth ₹250 a month.
+ */
+export const SBI_RP_MILESTONE_INR = 100000;
+export const SBI_RP_MILESTONE_POINTS = 1000;
+export const SBI_RP_VALUE_INR = 0.25;
+
+/** Rupee value of SBI Rewardz earned by routing `spendInr` through Unipay in one month. */
+export function sbiUnipayReturnInr(spendInr: number): number {
+  if (spendInr <= 0) return 0;
+  const base = Math.floor(spendInr / 200) * 2;
+  const bonus = spendInr >= SBI_RP_MILESTONE_INR ? SBI_RP_MILESTONE_POINTS : 0;
+  // The 10,000 RP monthly ceiling binds around ₹10L of spend, well above any real bill.
+  const points = Math.min(10000, base + bonus);
+  return points * SBI_RP_VALUE_INR;
+}
 
 /** Routes worth actually using, best first. */
 export function liveRoutes(): BillRoute[] {

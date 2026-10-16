@@ -10,7 +10,7 @@ import { Callout } from "@/components/Callout";
 import { Icon } from "@/components/Icons";
 import { inr, inrExact } from "@/lib/utils";
 import { HDFC_DEBIT_LOUNGE_QUARTER_INR } from "@/lib/lounges";
-import { liveRoutes, deadRoutes } from "@/lib/billRoutes";
+import { liveRoutes, deadRoutes, sbiUnipayReturnInr, SBI_RP_MILESTONE_INR, SBI_RP_MILESTONE_POINTS, SBI_RP_VALUE_INR } from "@/lib/billRoutes";
 
 export default function DebitPage() {
   const [state, setState] = useState<AppState | null>(null);
@@ -24,6 +24,7 @@ export default function DebitPage() {
     saveState(next);
   };
 
+  const sbiMilestoneMet = (state.sbiUnipayMonthSpend ?? 0) >= SBI_RP_MILESTONE_INR;
   const debitGateMet = (state.hdfcDebitQuarterSpend ?? 0) >= HDFC_DEBIT_LOUNGE_QUARTER_INR;
   const card = DEBIT_CARDS[0];
   const vouchers = state.gyftrVouchers ?? [];
@@ -256,6 +257,45 @@ export default function DebitPage() {
                 excludes. The default return is zero; anything above it is a promotion the platform
                 funds and can pull without notice. Figures are per ₹1,00,000 paid.
               </p>
+
+              <div className="rounded-md border border-border bg-bg-chrome p-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="label">SBI Unipay this month</span>
+                  <span className="readout text-sm">
+                    {inr(state.sbiUnipayMonthSpend ?? 0)} / {inr(SBI_RP_MILESTONE_INR)}
+                  </span>
+                </div>
+                <div className="bar mt-1.5">
+                  <div
+                    className={`bar-fill ${sbiMilestoneMet ? "bar-fill-success" : "bar-fill-warning"}`}
+                    style={{
+                      width: `${Math.min(100, ((state.sbiUnipayMonthSpend ?? 0) / SBI_RP_MILESTONE_INR) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <label className="mt-2 block">
+                  <span className="label">Paid via Unipay this month</span>
+                  <input
+                    className="input mt-1"
+                    inputMode="numeric"
+                    value={state.sbiUnipayMonthSpend ?? 0}
+                    onChange={(e) => update("sbiUnipayMonthSpend", Number(e.target.value.replace(/[^0-9]/g, "")) || 0)}
+                  />
+                </label>
+                <div className="mt-2 flex items-baseline justify-between gap-3 text-[11px]">
+                  <span className="text-fg-muted">Earned so far</span>
+                  <span className="readout text-success">
+                    {inr(sbiUnipayReturnInr(state.sbiUnipayMonthSpend ?? 0))}
+                  </span>
+                </div>
+                {!sbiMilestoneMet && (
+                  <p className="mt-1.5 text-[11px] text-warning">
+                    {inr(SBI_RP_MILESTONE_INR - (state.sbiUnipayMonthSpend ?? 0))} more this month
+                    triggers the 1,000-point bonus — worth {inr(SBI_RP_MILESTONE_POINTS * SBI_RP_VALUE_INR)}.
+                    The last rupee before ₹1L is the most valuable one you will spend all month.
+                  </p>
+                )}
+              </div>
               {liveRoutes().map((r) => (
                 <div key={r.id} className="border-b border-border pb-2 last:border-0">
                   <div className="flex items-baseline justify-between gap-3">

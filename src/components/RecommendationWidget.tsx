@@ -642,7 +642,7 @@ export function RecommendationWidget({ onLogged }: Props) {
 
             {(rankedMovieOffers.length > 0 || movieGcLive?.offers?.some((o) => o.status === "unavailable")) && (
               <div className="rounded-md border border-sky-200/80 dark:border-sky-800/50 overflow-hidden bg-white/60 dark:bg-black/20">
-                <div className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-fg-muted border-b border-sky-200/60 dark:border-sky-800/40 flex justify-between gap-2">
+                <div className="px-3 py-1.5 label border-b border-sky-200/60 dark:border-sky-800/40 flex justify-between gap-2">
                   <span>Where to buy the GC</span>
                   <span>
                     {movieGcLoading ? "updating…" : movieGcError ? "catalog fallback" : "live + catalog"}
@@ -655,7 +655,7 @@ export function RecommendationWidget({ onLogged }: Props) {
                         <div className="font-medium">
                           {o.sourceLabel} · {o.brandLabel}
                           {o.status === "live" && (
-                            <span className="ml-1.5 text-[10px] uppercase text-success">live</span>
+                            <span className="ml-1.5 font-mono text-[10px] uppercase tracking-wider text-success">live</span>
                           )}
                         </div>
                         <div className="text-xs text-fg-muted truncate">
@@ -1050,10 +1050,16 @@ export function RecommendationWidget({ onLogged }: Props) {
               <div className="text-sm text-fg-muted mt-0.5 leading-relaxed">{routeToLog.rationale}</div>
             </div>
 
+            {/* Pros and cons are the same kind of content, so they get the same treatment.
+                Pros used to render as pills, which carry font-mono + uppercase for short
+                labels — fine for a channel tag, wrong for a full sentence, and jarring
+                directly above the sans prose of the cons. */}
             {routeToLog.pros.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {routeToLog.pros.map((p, i) => <span key={i} className="pill-success text-xs">{p}</span>)}
-              </div>
+              <Callout tone="success" title="Why it wins">
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {routeToLog.pros.map((p, i) => <li key={i}>{p}</li>)}
+                </ul>
+              </Callout>
             )}
 
             {routeToLog.cons.filter(Boolean).length > 0 && (
@@ -1070,16 +1076,14 @@ export function RecommendationWidget({ onLogged }: Props) {
               </div>
             )}
 
+            {/* Was a hand-rolled copy of Callout with a different corner radius and the
+                heading inline instead of on its own line, so it read as a different
+                component from every other tip on the page. */}
             {rec.milestoneTip && (
-              <div className="rounded-lg p-3 border border-info/40 bg-info-muted">
-                <div className="flex items-start gap-2">
-                  <Icon.Trophy size={16} className="text-info shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <span className="font-semibold text-info">Milestone tip — </span>
-                    consider <b>{routeName(rec.milestoneTip.cardId)}</b> instead ({rec.milestoneTip.effectivePct.toFixed(2)}%): {rec.milestoneTip.note}
-                  </div>
-                </div>
-              </div>
+              <Callout tone="info" title="Milestone tip">
+                Consider <b>{routeName(rec.milestoneTip.cardId)}</b> instead (
+                {rec.milestoneTip.effectivePct.toFixed(2)}%): {rec.milestoneTip.note}
+              </Callout>
             )}
 
             {/* Alternatives — full ranked table with reasoning */}
@@ -1092,7 +1096,7 @@ export function RecommendationWidget({ onLogged }: Props) {
                 {showAlts && (
                   <div className="mt-3 overflow-x-auto">
                     <table className="w-full text-sm border-separate border-spacing-y-1">
-                      <thead className="text-fg-muted text-[11px] uppercase tracking-wide">
+                      <thead className="text-fg-muted font-mono text-[11px] uppercase tracking-wide">
                         <tr>
                           <th className="text-left font-medium px-2 w-8">#</th>
                           <th className="text-left font-medium px-2">Card / instrument</th>

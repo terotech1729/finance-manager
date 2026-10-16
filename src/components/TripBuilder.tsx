@@ -595,7 +595,7 @@ export function TripBuilder() {
         <div className="relative p-4 sm:p-6 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-amber-300/80">Build itinerary</div>
+              <div className="font-mono text-xs uppercase tracking-[0.18em] text-amber-300/80">Build itinerary</div>
               <h2 className="text-xl sm:text-2xl font-semibold text-white mt-1">Your plan, day by day</h2>
               <p className="text-sm text-slate-300/90 mt-1 max-w-2xl">
                 Type in the flights, stays and cabs you actually find. Costs roll up per day and per person,

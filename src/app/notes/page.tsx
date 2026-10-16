@@ -108,7 +108,7 @@ function NoteCard({
           </button>
         </div>
         {note.pinned && (
-          <span className="shrink-0 text-[10px] uppercase tracking-wide text-fg-muted group-hover:hidden">
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-fg-muted group-hover:hidden">
             Pinned
           </span>
         )}

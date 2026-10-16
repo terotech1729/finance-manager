@@ -113,6 +113,8 @@ export type AppState = {
   hdfcDebitQuarterKey: string;
   /** Lounge vouchers claimed off the link HDFC sends once the gate is cleared. */
   hdfcDebitLoungeUsed: number;
+  /** Bill payments routed through SBI Unipay this calendar month, for the ₹1L milestone. */
+  sbiUnipayMonthSpend: number;
   gyftrVouchers: { id: string; description: string; valueInr: number; expires: string; redeemed?: boolean; source?: string }[];
   /** Manual claim checklist (/claims) — benefit id → claimed. */
   benefitClaims: Record<string, boolean>;
@@ -188,6 +190,7 @@ export const DEFAULT_STATE: AppState = {
   hdfcDebitQuarterSpend: 0,
   hdfcDebitQuarterKey: "2026-Q4",
   hdfcDebitLoungeUsed: 0,
+  sbiUnipayMonthSpend: 0,
   gyftrVouchers: [
     {
       id: "gyftr-hdfc-dc-750",
@@ -392,6 +395,9 @@ export function loadState(): AppState {
     st.livePlusBogoUsedThisMonth = false;
     st.bobCycleSpend5x = 0;
     st.livePlusAccelCashbackUsedThisMonth = 0;
+    // SBI Rewardz milestone is per calendar month, so the counter it is measured
+    // against has to restart with the month or the bonus looks already-earned.
+    st.sbiUnipayMonthSpend = 0;
     changed = true;
   }
   // Scapia lounge cycle (statement day 24 → spend window 25…24)

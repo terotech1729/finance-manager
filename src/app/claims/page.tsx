@@ -185,7 +185,7 @@ export default function ClaimsPage() {
                                 {b.title}
                               </span>
                               <span
-                                className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${URGENCY_CLASS[b.urgency]}`}
+                                className={`font-mono text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${URGENCY_CLASS[b.urgency]}`}
                               >
                                 {URGENCY_LABEL[b.urgency]}
                               </span>

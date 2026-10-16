@@ -336,7 +336,7 @@ export default function InvestmentsPage() {
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-xl font-bold">{inrExact(p.value)}</div>
-                      <div className="text-[11px] text-fg-muted uppercase tracking-wide">{h.type === "real_estate" ? "worth" : p.hasValue ? "current value" : "invested"}</div>
+                      <div className="font-mono text-[11px] text-fg-muted uppercase tracking-wide">{h.type === "real_estate" ? "worth" : p.hasValue ? "current value" : "invested"}</div>
                       {p.hasValue && holdingTracksPnl(h) && (
                         <div className={`text-xs font-medium ${p.abs >= 0 ? "text-success" : "text-danger"}`}>
                           {p.abs >= 0 ? "+" : "−"}{inrExact(Math.abs(p.abs))} ({p.abs >= 0 ? "+" : "−"}{Math.abs(p.pct).toFixed(2)}%)
@@ -388,14 +388,14 @@ export default function InvestmentsPage() {
                         <div className="text-xs text-fg-muted py-2">No contributions logged. Use “Add money”.</div>
                       ) : (
                         <table className="w-full text-sm">
-                          <thead className="text-fg-muted text-[10px] uppercase tracking-wide">
+                          <thead className="text-fg-muted font-mono text-[10px] uppercase tracking-wide">
                             <tr><th className="text-left py-1">Date</th><th className="text-left">Method</th><th className="text-left">Note</th><th className="text-right">Amount</th><th></th></tr>
                           </thead>
                           <tbody>
                             {contribs.map((c) => (
                               <tr key={c.id} className="border-t border-border/60">
                                 <td className="py-1.5 text-fg-muted">{new Date(c.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })}</td>
-                                <td className="text-fg-muted text-xs uppercase">{c.paymentMethod ?? "—"}</td>
+                                <td className="text-fg-muted font-mono text-xs uppercase">{c.paymentMethod ?? "—"}</td>
                                 <td className="text-fg-muted">{c.note ?? "—"}</td>
                                 <td className="text-right font-medium">{inrExact(c.amount)}</td>
                                 <td className="text-right"><button className="btn-ghost text-[11px] text-danger" onClick={() => setHoldings(deleteContribution(h.id, c.id))}>Remove</button></td>
