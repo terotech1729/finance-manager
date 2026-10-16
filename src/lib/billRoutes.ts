@@ -34,25 +34,37 @@ export const BILL_ROUTES: readonly BillRoute[] = [
   {
     id: "cheq",
     name: "CheQ",
-    status: "works",
-    per1LInr: 250,
-    rate: "1% in CheQ Chips, 100 Chips ≈ ₹25",
+    status: "marginal",
+    // NOT 1% and not 0.25%. Redemption, not accrual, is the binding constraint.
+    per1LInr: 100,
+    rate: "1% in Chips, but only ₹100 of Chips redeemable per month",
     detail:
-      "The only route paying a predictable rate on every payment rather than a scratch card. The 1% is in Chips, and 100 Chips redeem for ₹25 of cash discount or brand vouchers, so the honest cash-equivalent is well under the headline 1%.",
+      "Chips accrue at 1% and redeem at 100 Chips = ₹25, which reads as 0.25%. The catch is a redemption ceiling of about 1,000 Chips (₹100) per calendar month regardless of how much you paid, so the realisable return is capped at ₹100 a month however large the bills. Chips earned above that rate form a backlog that drains at ₹100/month and, if you keep paying through CheQ, may never clear. The Amazon Pay voucher — the one good escape valve — has been out of stock for long stretches.",
     verdict:
-      "The default. Matches SBI Unipay's guaranteed 0.25% for a fraction of the effort — it fetches every bill and pays them together, where Unipay is a per-card lookup on a website. Lowest hassle per rupee returned.",
+      "The 1% headline is throttled by the redemption cap, so on ₹1L a month this is 0.10%, not 0.25%. Fine as a payment app; a poor place to accumulate value.",
     url: "https://cheq.one/",
+  },
+  {
+    id: "cheq_reserve",
+    name: "CheQ Reserve (Chips auction)",
+    status: "marginal",
+    per1LInr: null,
+    rate: "Lowest unique bid — a game, not a price",
+    detail:
+      "The showcase for Chips: 600+ products, iPhones, PS5s, MacBooks, Dyson, Taj vouchers, around ₹30 lakh of inventory. Bids are placed in Chips and the LOWEST UNIQUE BID wins, so there is no fixed Chip price for anything and no guarantee of winning at any stack size. Access tiers off the size of your stack, and it only runs in windows — the last edition was 30 Jul–3 Aug 2026.",
+    verdict:
+      "Worth a punt with a backlog you cannot redeem anyway, since those Chips have no better use. Not a reason to route bills through CheQ, and not something to bank on.",
   },
   {
     id: "cred",
     name: "CRED",
-    status: "marginal",
+    status: "works",
     per1LInr: null,
-    rate: "Coins, plus occasional campaign cashback",
+    rate: "Coins — lumpy, but no monthly redemption cap",
     detail:
-      "Direct cashback has been effectively dormant through 2026 — typical reports are ₹1–5 per payment outside promotions. The real residual value is the voucher shelf (BigBasket, Instamart and similar at ₹50–100 off low minimums) and the brand discounts unlocked above ₹50k.",
+      "Per-payment cashback is dead (₹1–5 typical). The value is concentrated in Coin Rush, which ran four editions through 2026, most recently 29 Sep–5 Oct. Observed rates there vary enormously: Uber ₹1,000 voucher at 10% off for 1,000 coins is about ₹0.10 a coin, Tanishq ₹25,000 at 7.5% off for 25,000 coins is ₹0.075, Flipkart ₹10,000 at 7.5% off for 50,000 coins is ₹0.015, and PVR at 2,00,000 coins for ₹1,000 off is ₹0.005. The good deals are inventory-capped and one per customer, so value is limited by how many you can catch, not by your coin balance.",
     verdict:
-      "Worth keeping installed for the vouchers and the payment reminders, not for cashback. Do not route a bill here expecting a return.",
+      "Better than CheQ if you actually redeem, because nothing caps you at ₹100 a month. Earn rate reportedly halved to 1 coin per ₹2 around Sep 2026, and idle coins reset after each Coin Rush — so spend during the event rather than hoarding past it.",
     url: "https://cred.club/credit-card-bill-payment-online",
   },
   {
@@ -133,7 +145,7 @@ export const BILL_ROUTES: readonly BillRoute[] = [
     detail:
       "2 SBI Reward Points per ₹200 of PoS and e-commerce spend at ₹0.25 a point, so 0.25% is the floor. Accrual is capped at 1,000 RP per transaction, which lands at exactly ₹1,00,000 — split anything larger or the excess earns nothing. Monthly ceiling is 10,000 RP (₹2,500), reached around ₹10L. A further 1,000-point bonus applies at ₹1 lakh, but SBI's product pages say per month while its rewards FAQ reads as per financial year. Points last 24 months, locked 30 days after posting, 2× in your birthday month.",
     verdict:
-      "Ties CheQ at 0.25% and only beats it if the ₹1L bonus turns out to be monthly. More clicks per bill than CheQ, since each card is looked up by last-4 and mobile. Worth one month's trial to see whether the bonus posts; not worth it otherwise.",
+      "The only route here paying real, uncapped, redeemable value — ₹250 a lakh in points you can actually spend, against CheQ's ₹100 monthly ceiling. Costs more clicks per bill, since each card is a separate last-4-and-mobile lookup.",
     url: "https://sbi.bank.in/web/personal-banking/cards/debit-card/sbi-rewardz",
   },
   {
