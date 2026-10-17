@@ -149,6 +149,20 @@ export const BILL_ROUTES: readonly BillRoute[] = [
     url: "https://sbi.bank.in/web/personal-banking/cards/debit-card/sbi-rewardz",
   },
   {
+    id: "savesage",
+    name: "SaveSage (IndiGo BluChips on bill payments)",
+    status: "trap",
+    // Gross, at the portal's own ₹0.45 BluChip valuation. The subscription takes
+    // almost all of it back — see the verdict.
+    per1LInr: 45,
+    rate: "1 BluChip per ₹1,000 — about 0.045%, and behind a paid plan",
+    detail:
+      "Launched 10 Aug 2026, the first platform to pay an airline currency on card-bill payments. Every news write-up quoted 'up to 1,000 BluChips a month', but SaveSage's own terms tier that cap by membership: 100 a month on Pro, 300 on Elite, 1,000 on Private. The 1,000 figure the press ran with needs the ₹14,999/year plan. There is no free tier — an active paid membership is required to earn at all.",
+    verdict:
+      "Not the route it looks like. On Pro (₹399 + GST ≈ ₹39/month) the cap is 100 BluChips, so ₹1L of bills is already the ceiling and earns about ₹45 — a net of roughly ₹6 a month. Elite costs ₹157/month for a cap worth ₹135, so it loses money. Worse, paying here means not paying on Unipay, which returns ₹250 a lakh in points you can spend anywhere. Only worth it if you were buying the subscription for the app itself.",
+    url: "https://savesage.club/blogs/earn-indigo-bluchip-through-savesage",
+  },
+  {
     id: "sbi_elsewhere",
     name: "SBI debit card on MobiKwik / third-party apps",
     status: "trap",
@@ -160,6 +174,48 @@ export const BILL_ROUTES: readonly BillRoute[] = [
       "Use SBI's own Unipay portal, not a third-party app, when paying with the SBI debit card. Same card, same bill, but the points only reliably post on Unipay.",
   },
 ];
+
+/**
+ * SaveSage membership tiers: annual price before GST, and the monthly BluChip earning
+ * cap each one unlocks.
+ *
+ * The cap is the part every news story left out. CNBC, Moneycontrol and the press
+ * release all reported a flat "up to 1,000 BluChips per month"; that is the Private
+ * tier alone, and Private is ₹14,999 a year.
+ */
+export const SAVESAGE_TIERS = [
+  { id: "pro", name: "Pro", annualInr: 399, monthlyCapChips: 100 },
+  { id: "elite", name: "Elite", annualInr: 1599, monthlyCapChips: 300 },
+  { id: "private", name: "Private", annualInr: 14999, monthlyCapChips: 1000 },
+] as const;
+
+export const SAVESAGE_CHIPS_PER_INR = 1 / 1000;
+export const SAVESAGE_GST_PCT = 18;
+
+/**
+ * Net monthly rupee value of routing `spendInr` of bills through SaveSage on a given
+ * tier, after the subscription is amortised.
+ *
+ * Net rather than gross because the subscription is not optional — SaveSage has no free
+ * tier, so the fee is a cost of earning at all, not a separate product you might buy
+ * anyway. Quoting the gross 0.1% would make this look like the best route on the list
+ * when on two of the three tiers it is actively negative.
+ *
+ * `chipValueInr` defaults to the same ₹0.45 the reward ledger uses, not the ₹0.60–1.50
+ * SaveSage advertises.
+ */
+export function savesageNetMonthlyInr(
+  spendInr: number,
+  tierId: (typeof SAVESAGE_TIERS)[number]["id"] = "pro",
+  chipValueInr = 0.45
+): number {
+  const tier = SAVESAGE_TIERS.find((t) => t.id === tierId);
+  if (!tier || spendInr <= 0) return 0;
+
+  const chips = Math.min(tier.monthlyCapChips, Math.floor(spendInr * SAVESAGE_CHIPS_PER_INR));
+  const monthlyFee = (tier.annualInr * (1 + SAVESAGE_GST_PCT / 100)) / 12;
+  return Math.round(chips * chipValueInr - monthlyFee);
+}
 
 export const SBI_RP_VALUE_INR = 0.25;
 export const SBI_RP_MILESTONE_INR = 100000;

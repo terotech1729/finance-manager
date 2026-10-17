@@ -17,7 +17,7 @@ import { buildPlan, inferMonthlyCapacity } from "../src/lib/planner";
 import { sanitiseDraft } from "../src/lib/ai/parseSpend";
 import { buildContext } from "../src/lib/ai/ask";
 import { normaliseOffer } from "../src/lib/ai/offerScan";
-import { sbiUnipayReturnInr, SBI_RP_OPTIMAL_TXN_INR } from "../src/lib/billRoutes";
+import { sbiUnipayReturnInr, SBI_RP_OPTIMAL_TXN_INR, savesageNetMonthlyInr } from "../src/lib/billRoutes";
 
 let passed = 0;
 let failed = 0;
@@ -272,6 +272,51 @@ check("offers are never auto-applied", () => {
   assert.ok(o);
   assert.equal(o.status, "advisory", "an offer was queued as a patch to card terms");
   assert.equal(o.field, null, "an offer named a patchable field");
+});
+
+console.log("\nSaveSage net economics");
+
+check("the tier cap, not the spend, is what binds past ₹1L", () => {
+  // Pro caps at 100 chips, which ₹1,00,000 of bills already reaches. Ten times the
+  // bills earns exactly the same, so there is no scaling into the subscription.
+  assert.equal(savesageNetMonthlyInr(100000, "pro"), savesageNetMonthlyInr(1000000, "pro"));
+});
+
+check("Pro nets approximately nothing on ₹1L of bills", () => {
+  const net = savesageNetMonthlyInr(100000, "pro");
+  assert.ok(net > 0 && net < 25, `expected a near-zero positive net, got ${net}`);
+});
+
+check("Elite loses money even at its own cap", () => {
+  // 300 chips at ₹0.45 is ₹135 against a ₹157/month fee. Paying more for a bigger cap
+  // makes it worse, which is the opposite of how the tiers are marketed.
+  assert.ok(savesageNetMonthlyInr(300000, "elite") < 0);
+  assert.ok(savesageNetMonthlyInr(1000000, "private") < 0);
+});
+
+check("loses to SBI Unipay on the same ₹1L of bills", () => {
+  // The decisive comparison: these are mutually exclusive for a given bill.
+  assert.ok(
+    savesageNetMonthlyInr(100000, "pro") < sbiUnipayReturnInr(100000, 100000, false),
+    "SaveSage should not beat Unipay's guaranteed floor"
+  );
+});
+
+check("Private only breaks even on marketing-grade chip values at a ₹10L routing", () => {
+  // At the ₹0.45 the ledger actually uses it bleeds over a thousand a month. It turns
+  // positive only at SaveSage's own top-of-range ₹1.50 and only once the full 1,000-chip
+  // cap is reached, i.e. ₹10 lakh of bills — and then by ₹25. Both conditions have to
+  // hold at once, which is the honest reason not to buy it.
+  assert.ok(savesageNetMonthlyInr(1000000, "private", 0.45) < -1000);
+  assert.ok(savesageNetMonthlyInr(1000000, "private", 1.5) < 50);
+  assert.ok(savesageNetMonthlyInr(500000, "private", 1.5) < 0, "half the cap should still lose");
+});
+
+check("unknown tier and degenerate spend return zero rather than NaN", () => {
+  assert.equal(savesageNetMonthlyInr(0, "pro"), 0);
+  assert.equal(savesageNetMonthlyInr(-5000, "pro"), 0);
+  // @ts-expect-error deliberately probing an id outside the union
+  assert.equal(savesageNetMonthlyInr(100000, "nope"), 0);
 });
 
 console.log("\nSBI Unipay accrual");
