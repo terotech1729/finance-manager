@@ -41,6 +41,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/investments", label: "Holdings", icon: Icon.Trophy },
       { href: "/portfolio", label: "Net worth", icon: Icon.Dashboard },
+      { href: "/stock", label: "Market heatmap", icon: Icon.Dashboard },
     ],
   },
   {
