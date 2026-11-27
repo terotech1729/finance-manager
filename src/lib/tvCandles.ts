@@ -32,6 +32,64 @@ function parseFrames(raw: string): string[] {
   return out;
 }
 
+export type Quote = Record<string, unknown>;
+
+/**
+ * Latest quote fields for many symbols over one socket — used for NSE option chains,
+ * where the screener lists contracts but only the quote feed carries volume and `oi`.
+ * Resolves with whatever arrived by the deadline; symbols that never report are absent.
+ */
+export function fetchQuotes(symbols: string[], fields: string[], timeoutMs = 10000): Promise<Map<string, Quote>> {
+  return new Promise((resolve) => {
+    const out = new Map<string, Quote>();
+    if (!symbols.length) return resolve(out);
+    const ws = new WebSocket(URL, { headers: { Origin: "https://www.tradingview.com" } });
+    const qs = `qs_${Math.random().toString(36).slice(2, 14)}`;
+    const pending = new Set(symbols);
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch { /* already closed */ }
+      resolve(out);
+    };
+    const timer = setTimeout(finish, timeoutMs);
+
+    ws.on("open", () => {
+      ws.send(frame("set_auth_token", ["unauthorized_user_token"]));
+      ws.send(frame("quote_create_session", [qs]));
+      ws.send(frame("quote_set_fields", [qs, ...fields]));
+      for (let i = 0; i < symbols.length; i += 200) {
+        ws.send(frame("quote_add_symbols", [qs, ...symbols.slice(i, i + 200)]));
+      }
+    });
+
+    ws.on("message", (data) => {
+      for (const msg of parseFrames(data.toString())) {
+        if (msg.startsWith("~h~")) {
+          ws.send(`~m~${msg.length}~m~${msg}`);
+          continue;
+        }
+        let j: { m?: string; p?: unknown[] };
+        try { j = JSON.parse(msg); } catch { continue; }
+        if (j.m === "qsd") {
+          const d = j.p?.[1] as { n?: string; s?: string; v?: Quote } | undefined;
+          if (d?.n && d.s === "ok" && d.v) out.set(d.n, { ...(out.get(d.n) ?? {}), ...d.v });
+        } else if (j.m === "quote_completed") {
+          pending.delete(String(j.p?.[1]));
+          // Field updates trail quote_completed by a moment; give them time to land.
+          if (!pending.size) setTimeout(finish, 600);
+        }
+      }
+    });
+
+    ws.on("error", finish);
+    ws.on("close", finish);
+  });
+}
+
 export function fetchCandles(symbol: string, interval: string, bars: number): Promise<Candle[]> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(URL, { headers: { Origin: "https://www.tradingview.com" } });

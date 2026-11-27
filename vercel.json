@@ -5,6 +5,8 @@
     { "path": "/api/keepalive", "schedule": "30 3 * * *" },
     { "path": "/api/scan/terms", "schedule": "0 1 * * *" },
     { "path": "/api/scan/portfolio", "schedule": "40 1 * * *" },
-    { "path": "/api/scan/offers", "schedule": "20 2 * * *" }
+    { "path": "/api/scan/offers", "schedule": "20 2 * * *" },
+    { "path": "/api/scan/options?run=nse", "schedule": "30 10 * * 1-5" },
+    { "path": "/api/scan/options?run=us", "schedule": "30 21 * * 1-5" }
   ]
 }

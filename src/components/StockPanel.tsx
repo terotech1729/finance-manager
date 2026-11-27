@@ -5,6 +5,14 @@ import type { IChartApi, ISeriesApi, UTCTimestamp } from "lightweight-charts";
 import { PERIODS, fmtPct, fmtUsdCap, type HeatStock } from "@/lib/stockHeatmap";
 import type { Candle } from "@/lib/tvCandles";
 import type { NewsItem } from "@/app/api/stocks/news/route";
+import dynamic from "next/dynamic";
+
+const OptionsTab = dynamic(() => import("./OptionsTab").then((m) => m.OptionsTab), {
+  ssr: false,
+  loading: () => <div className="p-4 text-sm text-fg-muted">Loading options…</div>,
+});
+
+export type PanelTab = "overview" | "options";
 
 const RANGES = ["1D", "5D", "1M", "6M", "1Y", "5Y"] as const;
 type Range = (typeof RANGES)[number];
@@ -22,7 +30,15 @@ function ago(ts: number, now: number): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-export function StockPanel({ stock, market, onClose }: { stock: HeatStock; market: string; onClose: () => void }) {
+export function StockPanel({ stock, market, onClose, initialTab = "overview", onTabChange }: {
+  stock: HeatStock;
+  market: string;
+  onClose: () => void;
+  initialTab?: PanelTab;
+  onTabChange?: (t: PanelTab) => void;
+}) {
+  const [tab, setTabState] = useState<PanelTab>(initialTab);
+  const setTab = (t: PanelTab) => { setTabState(t); onTabChange?.(t); };
   const [range, setRange] = useState<Range>("6M");
   const [candles, setCandles] = useState<Candle[]>([]);
   const [candleErr, setCandleErr] = useState("");
@@ -183,7 +199,21 @@ export function StockPanel({ stock, market, onClose }: { stock: HeatStock; marke
           </div>
         </header>
 
+        <nav className="flex border-b border-border text-sm">
+          {([["overview", "Chart & news"], ["options", "Options flow"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`px-4 py-2 -mb-px border-b-2 ${tab === id ? "border-accent text-accent" : "border-transparent text-fg-muted hover:text-fg"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
         <div className="flex-1 overflow-y-auto">
+          {tab === "options" && <OptionsTab stock={stock} />}
+          <div className={tab === "options" ? "hidden" : ""}>
           <section className="p-3 sm:p-4 border-b border-border">
             <div className="flex items-center gap-2 mb-2">
               <div className="flex rounded-md border border-border overflow-hidden">
@@ -277,6 +307,7 @@ export function StockPanel({ stock, market, onClose }: { stock: HeatStock; marke
               })}
             </ul>
           </section>
+          </div>
         </div>
       </aside>
     </>

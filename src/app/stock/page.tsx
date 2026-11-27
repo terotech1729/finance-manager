@@ -5,7 +5,7 @@ import {
   MARKETS, PERIODS, fmtPct, fmtUsdCap, heatColor, squarify, tileLabel,
   type HeatStock, type HeatmapPayload, type PeriodKey, type Rect,
 } from "@/lib/stockHeatmap";
-import { StockPanel } from "@/components/StockPanel";
+import { StockPanel, type PanelTab } from "@/components/StockPanel";
 
 type Group = { key: string; label: string; stocks: HeatStock[]; cap: number; chg: number | null };
 type Tile = { stock: HeatStock; rect: Rect; group: string };
@@ -71,9 +71,19 @@ export default function StockHeatmapPage() {
   useEffect(() => { load(); }, [load]);
 
   const deepLink = useRef<string | null | undefined>(undefined);
+  const deepTab = useRef<PanelTab>("overview");
   if (deepLink.current === undefined && typeof window !== "undefined") {
-    deepLink.current = new URLSearchParams(window.location.search).get("s");
+    const qs = new URLSearchParams(window.location.search);
+    deepLink.current = qs.get("s");
+    if (qs.get("tab") === "options") deepTab.current = "options";
   }
+
+  const setUrlTab = (t: PanelTab) => {
+    const url = new URL(window.location.href);
+    if (t === "options") url.searchParams.set("tab", "options");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url);
+  };
 
   useEffect(() => {
     const want = deepLink.current;
@@ -89,7 +99,7 @@ export default function StockHeatmapPage() {
     if (deepLink.current) return;
     const url = new URL(window.location.href);
     if (selected) url.searchParams.set("s", selected.stock.symbol);
-    else url.searchParams.delete("s");
+    else { url.searchParams.delete("s"); url.searchParams.delete("tab"); }
     window.history.replaceState(null, "", url);
   }, [selected]);
 
@@ -341,7 +351,9 @@ export default function StockHeatmapPage() {
           key={selected.stock.symbol}
           stock={selected.stock}
           market={selected.market}
-          onClose={() => setSelected(null)}
+          onClose={() => { deepTab.current = "overview"; setSelected(null); }}
+          initialTab={deepTab.current}
+          onTabChange={setUrlTab}
         />
       )}
     </div>

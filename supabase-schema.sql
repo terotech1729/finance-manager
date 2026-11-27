@@ -165,3 +165,52 @@ create policy "scan runs read" on public.scan_runs
 
 grant select on public.card_overlay, public.scan_runs to anon, authenticated;
 grant select, update on public.card_intel to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Option tracking (/stock → Options tab)
+-- ---------------------------------------------------------------------------
+-- option_watch lists the underlyings the daily job (/api/scan/options) snapshots;
+-- option_snapshots keeps one row per contract per trading day, so open interest can
+-- be followed day over day. Market data, not personal data — reads are open, writes
+-- go through the service-role key on the server.
+
+create table if not exists public.option_watch (
+  symbol     text primary key,                    -- TradingView symbol, e.g. NASDAQ:NVDA
+  underlying text not null,                       -- snapshot key: NVDA, NSE:RELIANCE
+  label      text,
+  added_at   timestamptz not null default now()
+);
+
+create table if not exists public.option_snapshots (
+  day        date not null,                       -- trading day the figures belong to
+  underlying text not null,
+  contract   text not null,                       -- OCC id (US) or TradingView symbol
+  type       char(1) not null,                    -- C | P
+  expiry     date not null,
+  strike     numeric not null,
+  volume     bigint not null default 0,           -- contracts
+  oi         bigint not null default 0,           -- contracts
+  last       numeric,
+  iv         numeric,
+  primary key (day, contract)
+);
+
+create index if not exists option_snapshots_underlying_day_idx
+  on public.option_snapshots (underlying, day desc);
+
+alter table public.option_watch     enable row level security;
+alter table public.option_snapshots enable row level security;
+
+drop policy if exists "option watch read" on public.option_watch;
+create policy "option watch read" on public.option_watch
+  for select to anon, authenticated using (true);
+
+drop policy if exists "option snapshots read" on public.option_snapshots;
+create policy "option snapshots read" on public.option_snapshots
+  for select to anon, authenticated using (true);
+
+grant select on public.option_watch, public.option_snapshots to anon, authenticated;
+
+insert into public.option_watch (symbol, underlying, label)
+values ('NASDAQ:NVDA', 'NVDA', 'NVIDIA Corporation')
+on conflict (symbol) do nothing;
